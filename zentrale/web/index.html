@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modellzentrale</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='3' width='3' height='10' rx='.6' fill='%234453C8'/%3E%3Crect x='5' y='3' width='3' height='10' rx='.6' fill='%234453C8'/%3E%3Crect x='9' y='3' width='3' height='10' rx='.6' fill='%230E8A86'/%3E%3Crect x='13' y='3' width='2' height='10' rx='.6' fill='%23C3CAD0'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="kopf-titel">
+    <h1>Modellzentrale</h1>
+    <p class="kopf-stand" id="stand">Verbinde mit dem Dienst …</p>
+  </div>
+  <p class="kopf-aktion" id="aktion" hidden><span class="puls" aria-hidden="true"></span><span id="aktion-text"></span></p>
+  <button class="knopf knopf-haupt" id="freigeben" type="button">GPU freigeben</button>
+</header>
+<main>
+  <section class="karten" id="karten" aria-label="Grafikkarten"></section>
+  <div id="gruppen"></div>
+  <section class="protokoll" aria-labelledby="protokoll-titel">
+    <h2 id="protokoll-titel">Protokoll</h2>
+    <ol id="protokoll"></ol>
+  </section>
+</main>
+<dialog id="dialog" aria-labelledby="dialog-titel"></dialog>
+<script src="/app.js"></script>
+</body>
+</html>

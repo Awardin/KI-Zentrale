@@ -1,0 +1,484 @@
+/* Modellzentrale – Aluminium, Graphit, Kupfer für Wärme.
+   Signatur: die Belegungsleiste, ein Kästchen je GiB Grafikspeicher. */
+
+:root {
+  --grund: #E6E9EC;
+  --flaeche: #F7F8F9;
+  --flaeche-2: #EEF1F3;
+  --linie: #CCD2D7;
+  --text: #1B2025;
+  --leise: #5A646C;
+  --kupfer: #B35F33;
+  --heiss: #C23B2A;
+  --ok: #2E7D4F;
+  --zelle-frei: #FFFFFF;
+  --zelle-rand: #C3CAD0;
+  --schatten: 0 1px 0 rgba(27, 32, 37, .04), 0 1px 3px rgba(27, 32, 37, .06);
+  --display: "Bahnschrift SemiCondensed", "Bahnschrift", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --schrift: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund: #13171A;
+    --flaeche: #1B2025;
+    --flaeche-2: #20262C;
+    --linie: #2F373E;
+    --text: #E4E8EB;
+    --leise: #96A1A9;
+    --kupfer: #E08A5B;
+    --heiss: #FF7A66;
+    --ok: #5FC08A;
+    --zelle-frei: #242B31;
+    --zelle-rand: #3A434B;
+    --schatten: none;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html, body { margin: 0; }
+
+body {
+  background: var(--grund);
+  color: var(--text);
+  font: 15px/1.45 var(--schrift);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
+
+:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------------------------------------------------------------- Kopf */
+
+.kopf {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px max(24px, calc((100vw - 1180px) / 2));
+  background: color-mix(in srgb, var(--grund) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--linie);
+}
+
+.kopf-titel { flex: 1; min-width: 0; }
+
+.kopf h1 {
+  font: 600 26px/1.1 var(--display);
+  letter-spacing: .01em;
+}
+
+.kopf-stand {
+  color: var(--leise);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.kopf-stand.getrennt { color: var(--heiss); }
+
+.kopf-aktion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.puls {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--kupfer);
+  animation: puls 1.2s ease-in-out infinite;
+}
+
+@keyframes puls { 50% { opacity: .25; } }
+
+/* ---------------------------------------------------------------- Knöpfe */
+
+.knopf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  background: var(--flaeche);
+  color: var(--text);
+  font: 600 14px/1 var(--schrift);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.knopf:hover:not(:disabled) { background: var(--flaeche-2); }
+
+.knopf-haupt {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--flaeche);
+}
+
+.knopf-haupt:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 85%, var(--grund)); }
+
+/* Hauptaktion einer Zeile: hell, mit der Kennfarbe des Eintrags als Rand. */
+.knopf-zeile { border-color: color-mix(in srgb, var(--farbe, var(--text)) 55%, var(--linie)); }
+
+.knopf:disabled { opacity: .45; cursor: default; }
+
+/* ---------------------------------------------------------------- Seite */
+
+main {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 22px 24px 48px;
+}
+
+/* ---------------------------------------------------------------- Karten */
+
+.karte {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr) 300px;
+  grid-template-areas:
+    "name leiste werte"
+    "name legende verlauf";
+  gap: 12px 28px;
+  padding: 18px 22px;
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: 10px;
+  box-shadow: var(--schatten);
+}
+
+.karte + .karte { margin-top: 10px; }
+
+.karte-name { grid-area: name; }
+
+.karte-name h2 {
+  font: 600 24px/1.1 var(--display);
+}
+
+.karte-sub {
+  margin-top: 4px;
+  color: var(--leise);
+  font-size: 13px;
+}
+
+.karte .leiste { grid-area: leiste; align-self: end; }
+
+/* Die Signatur: ein Kästchen je GiB. Eine kleinere Karte (etwa 20 GiB) wäre sichtbar kürzer als eine mit 24 GiB. */
+.leiste {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 24), minmax(0, 1fr));
+  gap: 3px;
+  width: calc(100% * var(--n, 24) / 24);
+}
+
+.zelle {
+  aspect-ratio: 5 / 7;
+  border-radius: 3px;
+  background-color: var(--zelle-frei);
+  box-shadow: inset 0 0 0 1px var(--zelle-rand);
+  transition: background-image .4s;
+}
+
+.zelle[style*="gradient"] { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .10); }
+
+.legende {
+  grid-area: legende;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  list-style: none;
+  font-size: 13px;
+}
+
+.legende li { display: flex; align-items: center; gap: 6px; }
+
+.legende i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--f);
+}
+
+.legende li.frei i { background: var(--zelle-frei); box-shadow: inset 0 0 0 1px var(--zelle-rand); }
+
+.legende b { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.legende li[title] span { text-decoration: underline dotted var(--leise); text-underline-offset: 3px; cursor: help; }
+
+.messwerte {
+  grid-area: werte;
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  justify-content: space-between;
+  align-self: end;
+}
+
+.mw dt {
+  color: var(--leise);
+  font-size: 12px;
+}
+
+.mw dd {
+  font: 600 22px/1.15 var(--display);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mw dd small { color: var(--leise); font-size: 14px; font-weight: 400; }
+
+.mw dd.warm { color: var(--kupfer); }
+.mw dd.heiss { color: var(--heiss); }
+
+.verlauf { grid-area: verlauf; }
+
+.verlauf svg {
+  display: block;
+  width: 100%;
+  height: 40px;
+  border-bottom: 1px solid var(--linie);
+}
+
+.v-vram { fill: color-mix(in srgb, var(--leise) 16%, transparent); }
+.v-temp { fill: none; stroke: var(--kupfer); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+.verlauf figcaption {
+  margin-top: 3px;
+  color: var(--leise);
+  font-size: 11.5px;
+}
+
+.verlauf figcaption i {
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin: 0 4px 3px 8px;
+  vertical-align: middle;
+  background: var(--kupfer);
+}
+
+.verlauf figcaption i.v { height: 8px; background: color-mix(in srgb, var(--leise) 25%, transparent); }
+
+/* ---------------------------------------------------------------- Einträge */
+
+.gruppe { margin-top: 30px; }
+
+.gruppe > h2, .protokoll > h2 {
+  margin-bottom: 10px;
+  color: var(--leise);
+  font: 600 15px/1.2 var(--display);
+  letter-spacing: .02em;
+}
+
+.eintrag {
+  display: grid;
+  grid-template-columns: 5px minmax(0, 1fr) 190px auto;
+  grid-template-areas: "kennung text zustand knoepfe";
+  align-items: center;
+  gap: 0 18px;
+  padding: 14px 18px 14px 0;
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: 10px;
+  box-shadow: var(--schatten);
+  overflow: hidden;
+}
+
+.eintrag + .eintrag { margin-top: 8px; }
+
+.e-kennung {
+  grid-area: kennung;
+  align-self: stretch;
+  margin: -14px 0;
+  background: var(--farbe);
+}
+
+.e-text { grid-area: text; min-width: 0; }
+
+.e-text h3 { font: 600 19px/1.2 var(--display); }
+
+.e-unter {
+  margin-left: 10px;
+  color: var(--leise);
+  font: 400 13px var(--schrift);
+}
+
+.e-wofuer { margin-top: 3px; font-size: 14px; }
+
+.e-bedarf { margin-top: 2px; color: var(--leise); font-size: 12.5px; }
+.e-variante { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--leise); font-size: 12.5px; }
+.e-wahl { font: inherit; font-size: 13px; color: var(--text); background: var(--flaeche); border: 1px solid var(--linie);
+  border-radius: 6px; padding: 3px 6px; }
+.e-wahl:disabled { opacity: .6; }
+
+.e-zustand { grid-area: zustand; }
+
+.pille {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pille::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--leise);
+}
+
+.pille[data-zustand="bereit"]::before,
+.pille[data-zustand="laeuft"]::before { background: var(--ok); box-shadow: none; }
+
+.pille[data-zustand="startet"]::before,
+.pille[data-zustand="stoppt"]::before,
+.pille[data-zustand="teilweise"]::before { background: var(--kupfer); box-shadow: none; animation: puls 1.2s ease-in-out infinite; }
+
+.pille[data-zustand="teilweise"]::before { animation: none; }
+
+.pille[data-zustand="fremd"]::before { background: var(--heiss); box-shadow: none; }
+
+.e-detail { margin-top: 2px; color: var(--leise); font-size: 12.5px; }
+
+.e-knoepfe {
+  grid-area: knoepfe;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------- Protokoll */
+
+.protokoll { margin-top: 30px; }
+
+.protokoll ol { list-style: none; font-size: 13.5px; }
+
+.protokoll li {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--linie);
+}
+
+.protokoll time { color: var(--leise); font: 12.5px/1.6 var(--mono); }
+
+.protokoll li.fehler span { color: var(--heiss); }
+
+.protokoll li.leer { display: block; color: var(--leise); }
+
+/* ---------------------------------------------------------------- Dialog */
+
+dialog {
+  width: min(600px, calc(100vw - 32px));
+  padding: 22px 24px;
+  border: 1px solid var(--linie);
+  border-radius: 12px;
+  background: var(--flaeche);
+  color: var(--text);
+}
+
+dialog::backdrop { background: rgba(10, 14, 18, .45); }
+
+dialog h2 { margin-bottom: 12px; font: 600 21px/1.2 var(--display); }
+
+dialog p + *, dialog ul + *, dialog .projektion + * { margin-top: 12px; }
+
+.schritte { padding-left: 20px; }
+
+.schritte li { margin-top: 3px; font-weight: 600; }
+
+.warnung { color: var(--heiss); }
+
+.leise { color: var(--leise); font-size: 13.5px; }
+
+.projektion {
+  padding: 12px 14px;
+  background: var(--flaeche-2);
+  border-radius: 8px;
+}
+
+.p-titel { font: 600 15px var(--display); }
+
+.p-titel ~ .p-titel { margin-top: 10px; }
+
+.p-zeile {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  color: var(--leise);
+  font-size: 12.5px;
+}
+
+.leiste.mini { gap: 2px; }
+.leiste.mini .zelle { aspect-ratio: 3 / 5; border-radius: 2px; }
+
+.wahlen { display: grid; gap: 6px; }
+
+.wahl {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--flaeche-2);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.wahl input { width: 16px; height: 16px; margin: 0; accent-color: var(--text); }
+
+.wahl b { font-variant-numeric: tabular-nums; }
+
+.dialog-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* ---------------------------------------------------------------- Schmal */
+
+@media (max-width: 900px) {
+  .karte {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "name" "leiste" "legende" "werte" "verlauf";
+  }
+  .messwerte { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .eintrag {
+    grid-template-columns: 5px minmax(0, 1fr);
+    grid-template-areas: "kennung text" "kennung zustand" "kennung knoepfe";
+    gap: 10px 16px;
+  }
+  .e-knoepfe { justify-content: flex-start; }
+}
+
+@media (max-width: 520px) {
+  .kopf { flex-wrap: wrap; padding: 12px 16px; gap: 10px; }
+  main { padding: 16px 16px 40px; }
+  .messwerte { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .e-unter { display: block; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}

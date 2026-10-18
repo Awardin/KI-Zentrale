@@ -1,0 +1,234 @@
+{
+  "port": 3894,
+  "reserve_mib": 768,
+  "monitor_puffer_mib": 2048,
+  "monitor_puffer_grund": "14.10.2026: Auf der Karte mit dem Monitor (Suprim) belegt Windows schwankend Speicher (gemessen 0,6–0,9 GiB). Zentrale und Studio füllen sie nur so weit, dass danach noch 2 GiB frei bleiben, solange die andere Karte reicht; sonst geht es trotzdem dorthin (mit der üblichen Reserve).",
+  "karten": {
+    "0": {
+      "kurz": "RTX 3090 FE",
+      "bus": 2,
+      "name": "RTX 3090"
+    },
+    "1": {
+      "kurz": "RTX 3090 Suprim",
+      "bus": 4,
+      "name": "RTX 3090"
+    }
+  },
+  "karten_grund": "Seit 14.10.2026 zwei RTX 3090 mit je 24 GiB, die RTX 3080 ist ausgebaut. Steckplatz 02 = Founders Edition (Teilenummer 900-1G136-2510-000, 350 W, ohne Monitor), Steckplatz 04 = MSI Suprim (420 W, Monitor). Der Name gilt nur, wenn Steckplatz und gemessenes Kartenmodell passen. Keine Karte ist mehr für bestimmte Modelle reserviert: NInfer, LightOnOCR und Bilder nehmen die Karte, auf der sie passen; mehrere Modelle teilen sich eine Karte, wenn Platz ist.",
+  "ollama": {
+    "url": "http://127.0.0.1:11434",
+    "programm": "C:\\Users\\sasch\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+    "app": "C:\\Users\\sasch\\AppData\\Local\\Programs\\Ollama\\ollama app.exe",
+    "farbe_fremd": "#5F8C8A"
+  },
+  "nur_anzeigen": {
+    "transkription": {
+      "name": "Transkription (watch)",
+      "ordner": "C:\\Workstation\\Werkzeuge\\Watch",
+      "skript": "watch.py",
+      "farbe": "#C28A1E"
+    },
+    "andere": {
+      "name": "Windows & Programme",
+      "farbe": "#8C969D"
+    }
+  },
+  "eintraege": [
+    {
+      "id": "ninfer",
+      "art": "ninfer",
+      "gruppe": "Sprachmodelle",
+      "name": "Qwen3.8 27B · NInfer",
+      "untertitel": "128K Kontext · eine RTX 3090",
+      "wofuer": "Reasoning und Gegenprüfung. In DSH als „Qwen3.8-27B · NInfer 128K“ auswählbar.",
+      "farbe": "#4453C8",
+      "programm": "C:\\Users\\sasch\\Documents\\Codex\\2026-09-15\\ek\\outputs\\Lokale-LLM\\runtime\\ninfer-3090-v0.6.1\\ninfer-rtx3090-windows-x64-0.6.1-rtx3090\\ninfer-serve.exe",
+      "modelldatei": "C:\\Users\\sasch\\Documents\\Codex\\2026-09-15\\ek\\outputs\\Lokale-LLM\\models\\ninfer-qwen38-27b\\v2-hf\\qwen3_8_27b.ninfer",
+      "port": 8080,
+      "modell_id": "qwen3.8-27b-ninfer-groupwise",
+      "argumente": [
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8080",
+        "--model-id",
+        "qwen3.8-27b-ninfer-groupwise",
+        "--max-context",
+        "131072",
+        "--kv-capacity",
+        "131072",
+        "--max-concurrency",
+        "1",
+        "--max-pending-requests",
+        "16",
+        "--prefill-chunk",
+        "1024",
+        "--device",
+        "0",
+        "--kv-dtype",
+        "int8",
+        "--spec",
+        "mtp",
+        "--draft-tokens",
+        "3",
+        "--default-max-tokens",
+        "8192",
+        "--lm-head-draft",
+        "--cors"
+      ],
+      "karten": ["RTX 3090"],
+      "bedarf_je_karte_mib": 22300,
+      "karten_grund": "NInfer ist für die RTX 3090 gebaut (ninfer-rtx3090). Die Zentrale startet es auf der gewählten Karte (CUDA_VISIBLE_DEVICES, dann ist sie „--device 0“).",
+      "startzeit_max_s": 240
+    },
+    {
+      "id": "ornith-q5",
+      "art": "ollama",
+      "gruppe": "Sprachmodelle",
+      "name": "Ornith 1.5 · Q5",
+      "untertitel": "128K Kontext · Ollama verteilt auf die Karten",
+      "wofuer": "Ausführliche Langfassungen und Wissensextraktion.",
+      "farbe": "#0E8A86",
+      "tag": "ornith-q5-128k:latest",
+      "bedarf_gesamt_mib": 27500,
+      "bedarf_grund": "Ollama verteilt das Modell selbst. Gemessen 14.10.2026 auf zwei RTX 3090: 14.633 + 12.787 MiB (Kontext 131.072 fest im Modelfile), danach 95–158 Token/s; vorher auf RTX 3090 + 3080: 16.700 + 12.500 MiB.",
+      "startzeit_max_s": 600,
+      "ollama_optionen": {
+        "num_batch": 256
+      },
+      "ollama_optionen_grund": "Ollama 0.34 / llama.cpp: mit Standard-Stapelgröße stürzt der Modellprozess bei Eingaben ab etwa 1.000 Token sporadisch ab (CUDA illegal memory access, mmq.cu); gemessen 23.09.2026: Standard 6/12 bzw. 3/6 Abstürze, num_batch 256 0/12 bzw. 0/6."
+    },
+    {
+      "id": "ornith-q4",
+      "art": "ollama",
+      "gruppe": "Sprachmodelle",
+      "name": "Ornith 1.5 · Q4",
+      "untertitel": "256K oder 32K Kontext · verteilt auf die Karten",
+      "wofuer": "Schneller Standardworker für quellentreue Extraktion.",
+      "farbe": "#3F9E5A",
+      "tag": "ornith-1.5:35b",
+      "bedarf_gesamt_mib": 26500,
+      "varianten": [
+        {"id": "256k", "name": "256K Kontext", "standard": true, "bedarf_gesamt_mib": 26500,
+         "ollama_optionen": {"num_batch": 256, "num_ctx": 262144}},
+        {"id": "32k", "name": "32K Kontext (weniger Speicher)", "bedarf_gesamt_mib": 23000,
+         "ollama_optionen": {"num_batch": 256, "num_ctx": 32768}}
+      ],
+      "varianten_grund": "14.10.2026, Wunsch Sascha: Kontext in der Zentrale wählbar (256K, wenn der Platz nicht anderweitig gebraucht wird). Die Zentrale lädt mit num_ctx; die Werkstatt schickt den Kontext mit, mit dem das Modell gerade geladen ist. Andere Programme, die Q4 ohne num_ctx anfragen, lösen bei 32K ein Neuladen mit Ollamas Standard (256K) aus. Q5 bleibt fest bei 128K (Modelfile), weil Hermes es ohne Optionen anfragt.",
+      "bedarf_grund": "Ollama verteilt das Modell selbst. Gemessen 14.10.2026 auf zwei RTX 3090: 14.051 + 12.411 MiB. Ohne num_ctx im Modelfile wählt Ollama 0.40.4 den Kontext nach dem Grafikspeicher: mit 2 × 24 GiB 262.144, vorher mit RTX 3090 + 3080 32.768 (13.300 + 9.700 MiB).",
+      "startzeit_max_s": 600,
+      "ollama_optionen": {
+        "num_batch": 256
+      },
+      "ollama_optionen_grund": "Ollama 0.34 / llama.cpp: mit Standard-Stapelgröße stürzt der Modellprozess bei Eingaben ab etwa 1.000 Token sporadisch ab (CUDA illegal memory access, mmq.cu); gemessen 23.09.2026: Standard 6/12 bzw. 3/6 Abstürze, num_batch 256 0/12 bzw. 0/6."
+    },
+    {
+      "id": "flash-next-strata",
+      "art": "strata",
+      "gruppe": "Sprachmodelle",
+      "name": "Qwen3.8 Flash-Next · Strata",
+      "untertitel": "125B · IQ3_XXS (128K mit Bildern oder 256K) oder Q4 (genauer, mit Bildern) · beide Karten",
+      "wofuer": "Großes Modell für Projekte, Coding und lange Dokumente. In DSH als „Strata – Flash-Next lokal“, in Hermes als Anbieter „Strata Flash-Next“ (/model strata-local:…); OpenAI-API auf Port 8095.",
+      "farbe": "#7A4FB5",
+      "python": "C:\\LLM\\runtimes\\Strata\\.venv\\Scripts\\python.exe",
+      "server_skript": "C:\\LLM\\runtimes\\Strata\\serve\\server.py",
+      "engine": "C:\\LLM\\runtimes\\Strata\\engine\\strata.exe",
+      "vision_exe": "C:\\LLM\\runtimes\\Strata\\engine\\strata-vision.exe",
+      "konfig": "C:\\LLM\\runtimes\\Strata\\strata-iq3_xxs-2gpu-128k.json",
+      "varianten": [
+        {"id": "128k", "name": "128K Kontext · mit Bildern", "standard": true, "kontext": 131072,
+         "modell": "qwen3.8-flash-next-iq3_xxs",
+         "konfig": "C:\\LLM\\runtimes\\Strata\\strata-iq3_xxs-2gpu-128k.json"},
+        {"id": "256k", "name": "256K Kontext · ohne Bilder", "kontext": 262144,
+         "modell": "qwen3.8-flash-next-iq3_xxs",
+         "konfig": "C:\\LLM\\runtimes\\Strata\\strata-iq3_xxs-2gpu-256k.json"},
+        {"id": "q4", "name": "Q4 · genauer, etwas langsamer · 128K · mit Bildern", "kontext": 131072,
+         "modell": "qwen3.8-flash-next-unsloth-ud-iq4_xs", "ram_bedarf_gib": 40,
+         "konfig": "C:\\LLM\\runtimes\\Strata\\strata-unsloth-ud-iq4_xs-2gpu-128k.json"}
+      ],
+      "varianten_grund": "14.10.2026, Wunsch Sascha. 256K: vorhandene Einstellung (ohne --vision), geprüft 05.10.2026 auf RTX 3090 + 3080 (196.922 Token Prompt, Kennwort gefunden, 60–96 Token/s; Arbeitsspeicher während der Läufe 4–6 GiB frei, Strata empfiehlt bei 63 GB RAM 128K). Auf zwei RTX 3090 mit 0.1.44.1 geprüft (14.10.2026): bereit nach 24 s, 79 % der Experten auf den Karten, 95–106 Token/s. Q4 (16.10.2026, Wunsch Sascha): Unsloth UD-IQ4_XS (93,7 GB, seit 17.09. vorhanden) mit 32 GiB RAM-Rahmen; braucht die feste Auslagerungsdatei 64 GB (Windows zählt den Grafikspeicher zur Speicherzusage, sonst liest Strata von der SSD: 49–72 Token/s). Gemessen: bereit nach 38 s, 89–98 Token/s Text, 108–116 Code, 70K-Prompt 2.681 Token/s, RAM frei ~8 GiB; laut Strata 88,9 statt 84,5 % gleiches Wort wie Q8_0. Mit Bildteil (--vision, GPU, wie 128K) über die Zentrale, Monitor an der FE: bereit, 83–96 Token/s Text, 99–115 Code, 2.541 Token/s Einlesen, Bild 3,8 s (3 Pflanzen, richtig), RAM frei 7–8 GiB.",
+      "port": 8095,
+      "bedarf_mib": {"0": 22000, "1": 23200},
+      "bedarf_grund": "Seit 16.10.2026 hängt der Monitor an der FE (Karte 0, ~0,9–1 GiB Windows & Programme): Reserven --vram-reserve-mib 1800 (FE) und --vram-reserve-later-mib 1000 (Suprim) in allen drei Strata-Einstellungen. Gemessen 128K: 22.677 MiB auf der FE (davon ~0,85 GiB Programme) + 23.103 MiB Suprim, 92–97 Token/s Text, 122–147 Code, 70.595 Token in 19,6 s (3.609 Token/s), Bild 1,8 s; Q4: 22.735 + 22.928 MiB, 89–93 / 97–103, 2.591 Token/s. Davor (Monitor an der Suprim) 23.400 + 22.000. Bis 16.10.2026: Seit 14.10.2026 Strata 0.1.44.1 mit --vram-reserve-later-mib 1800 (Monitorkarte Suprim braucht Luft, sonst lagert Windows aus: 16–19 statt 112 Token/s). Gemessen 128K: 23.382 MiB (FE) + 22.324 MiB (Suprim, dort 1 GiB frei), 20.633 Experten auf den Karten (84 %), 112–113 Token/s Text, 145–162 Token/s Code, 70.093 Token Prompt in 19 s (3.675 Token/s), Bild 2,1 s. Mit 0.1.39 vorher: 23.380 + 23.422 MiB, 86 %, 92–95 Token/s. Strata füllt den freien Platz selbst (Experten-Zwischenspeicher); der Bedarf sorgt dafür, dass vorher beide Karten praktisch frei sind. Vorher (3090 + 3080): 23.500 + 19.400 MiB.",
+      "ram_bedarf_gib": 42,
+      "startzeit_max_s": 300
+    },
+    {
+      "id": "lightonocr",
+      "art": "llamacpp",
+      "gruppe": "Texterkennung",
+      "name": "LightOnOCR-3 · Texterkennung",
+      "untertitel": "4B · Q4_K_M · eine RTX 3090",
+      "wofuer": "Liest PDF-Seiten, Scans und Bildschirmfotos als Markdown (Überschriften, Tabellen). In der Werkstatt im Reiter „Texterkennung“; OpenAI-API auf Port 8096.",
+      "farbe": "#2B7BB9",
+      "programm": "C:\\LLM\\runtimes\\llama-b10754-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\LightOnOCR-3-4B\\LightOnOCR-3-4B.Q4_K_M.gguf",
+      "mmproj": "C:\\LLM\\models\\LightOnOCR-3-4B\\LightOnOCR-3-4B.mmproj-f16.gguf",
+      "modell_id": "lightonocr-3-4b",
+      "port": 8096,
+      "karten": ["RTX 3090"],
+      "argumente": [
+        "-ngl",
+        "99",
+        "-c",
+        "16384",
+        "-np",
+        "1",
+        "--jinja",
+        "--chat-template-kwargs",
+        "{\"enable_thinking\":false}",
+        "--image-max-tokens",
+        "4096",
+        "--no-webui"
+      ],
+      "bedarf_je_karte_mib": 4700,
+      "startzeit_max_s": 120
+    },
+    {
+      "id": "bild-video",
+      "art": "comfy",
+      "gruppe": "Bild & Video",
+      "name": "ComfyUI",
+      "untertitel": "Qwen Image 2.1 · MiniMax-H3",
+      "wofuer": "Bilder und Videos erzeugen. Im Studio einfach, in ComfyUI mit allen Workflows.",
+      "farbe": "#B1407C",
+      "comfy_ordner": "C:\\Users\\sasch\\Documents\\Codex\\2026-09-15\\ek\\outputs\\Lokale-LLM\\ComfyUI",
+      "studio_ordner": "C:\\Users\\sasch\\Documents\\Codex\\2026-09-15\\ek\\outputs\\Lokale-LLM\\2Wild-Image-Video-Gen-Studio",
+      "studio_grund": "2Wild ist seit 24.09.2026 stillgelegt (PLAN.md, Stufe 3c): Die Zentrale startet es nicht mehr, erkennt und beendet aber ein noch laufendes 2Wild (Port studio_port) mit. Die Werkstatt liest aus dem Ordner nur noch data\\jobs.json (Prompts alter Dateien, Messungen). 2Wild selbst bleibt unverändert.",
+      "ausgabe_ordner": "C:\\Workstation\\Arbeitsmaterial\\Studio",
+      "comfy_port": 8188,
+      "comfy_port_2": 8189,
+      "comfy_karte_2": 1,
+      "comfy_name_2": "ComfyUI 2 (Suprim)",
+      "comfy_2_grund": "Stufe 8 (16.10.2026, Auftrag Sascha: zwei Studio-Aufträge gleichzeitig). ComfyUI rechnet je Prozess einen Auftrag; der zweite Prozess sieht nur die Suprim (--cuda-device 1), eigene temp-/user-Ordner, gleiche Ausgabe. Aufträge über zwei Karten (Videos geteilt) bleiben beim ersten Prozess. Gutachten Astra: SPEC-studio-parallel-ASTRA-antwort.md.",
+      "studio_port": 3998,
+      "pflichtdateien": [
+        "models\\diffusion_models\\qwen_image_2.1_bf16.safetensors",
+        "models\\text_encoders\\qwen3vl_8b_bf16.safetensors",
+        "models\\vae\\qwen_image_2.1_vae_bf16.safetensors",
+        "models\\diffusion_models\\minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "models\\diffusion_models\\minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "models\\text_encoders\\qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "models\\vae\\minimax_h3_video_vae_fp16.safetensors",
+        "models\\vae\\minimax_h3_audio_vae_fp32.safetensors",
+        "models\\loras\\minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        "models\\loras\\minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+      ],
+      "karten": ["RTX 3090"],
+      "bedarf_je_karte_mib": 20000,
+      "bedarf_hinweis": "Braucht während eines Bildauftrags bis zu 20 GiB auf einer Karte, für Videos zusätzlich etwa 7 GiB auf der anderen. Das Studio wählt die Karten je Auftrag.",
+      "startzeit_max_s": 300
+    },
+    {
+      "id": "dsh",
+      "art": "programm",
+      "gruppe": "Programme",
+      "name": "DSH Desktop",
+      "untertitel": "Agentenoberfläche",
+      "wofuer": "Arbeiten mit DeepSeek oder dem lokalen Qwen3.8 über NInfer.",
+      "farbe": "#6B7680",
+      "programm": "C:\\Users\\sasch\\AppData\\Local\\Programs\\DSH Desktop\\DSH Desktop.exe"
+    }
+  ]
+}

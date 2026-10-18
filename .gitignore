@@ -1,0 +1,16 @@
+# Laufdaten der Werkstatt (Aufträge mit Prompts, Auswertungen, Messläufe) – bleiben nur lokal
+werkstatt/daten/
+
+# Protokolle (können Pfade und Zustände enthalten, wachsen ständig)
+logs/
+*.log
+
+# Python-Zwischendateien
+__pycache__/
+*.pyc
+
+# Lokale Dateien von Claude Code (Sperren, Sitzungsdaten)
+.claude/
+
+# Zwischendateien
+*.tmp

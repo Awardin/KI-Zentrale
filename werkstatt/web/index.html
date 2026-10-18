@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Werkstatt</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='2' width='14' height='3' rx='.8' fill='%23C28A1E'/%3E%3Crect x='1' y='7' width='10' height='3' rx='.8' fill='%235A646C'/%3E%3Crect x='1' y='12' width='12' height='3' rx='.8' fill='%235A646C'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="kopf-zeile">
+    <div class="kopf-titel">
+      <h1>Werkstatt</h1>
+      <p class="kopf-stand" id="stand">Verbinde mit dem Dienst …</p>
+    </div>
+    <div class="gpu-mini" id="gpu-mini" aria-label="Freier Grafikspeicher laut Modellzentrale"></div>
+    <button class="knopf" id="zentrale" type="button">Modellzentrale öffnen</button>
+  </div>
+  <nav class="reiter" aria-label="Bereiche">
+    <button type="button" data-reiter="transkription" class="aktiv" aria-current="page">Transkription</button>
+    <button type="button" data-reiter="zusammenfassung">Zusammenfassung</button>
+    <button type="button" data-reiter="bildvideo">Bild &amp; Video</button>
+    <button type="button" data-reiter="texterkennung">Texterkennung</button>
+    <button type="button" data-reiter="messungen">Messungen</button>
+  </nav>
+</header>
+
+<main id="reiter-zusammenfassung" hidden>
+  <div class="zf-raster">
+    <aside class="zf-liste" aria-labelledby="zf-liste-titel">
+      <div class="zf-liste-kopf">
+        <h2 id="zf-liste-titel" class="abschnitt">Transkripte</h2>
+        <button class="knopf knopf-klein" id="zf-neu-laden" type="button" title="Liste neu einlesen">Neu einlesen</button>
+      </div>
+      <input type="search" id="zf-suche" placeholder="Titel suchen …" aria-label="Transkripte durchsuchen">
+      <ol class="zf-transkripte" id="zf-transkripte"></ol>
+    </aside>
+    <section class="zf-haupt" id="zf-haupt" aria-live="polite">
+      <p class="zf-leer" id="zf-leer">Links ein Transkript wählen.</p>
+      <div id="zf-inhalt" hidden>
+        <header class="zf-kopf">
+          <div>
+            <h2 id="zf-titel"></h2>
+            <p class="leise" id="zf-meta"></p>
+          </div>
+          <button class="knopf knopf-klein" id="zf-ordner" type="button">Ordner öffnen</button>
+        </header>
+        <div class="zf-wahl">
+          <fieldset class="zf-gruppe">
+            <legend>Auswerter</legend>
+            <div id="zf-auswerter" class="zf-kaestchen"></div>
+            <button class="knopf knopf-klein" id="zf-auswerter-verwalten" type="button">Auswerter verwalten …</button>
+          </fieldset>
+          <fieldset class="zf-gruppe">
+            <legend>Anweisungen</legend>
+            <div id="zf-anweisungen" class="zf-kaestchen"></div>
+            <div class="zf-zeile">
+              <button class="knopf knopf-klein" id="zf-anweisung-neu" type="button">Neue Anweisung …</button>
+              <button class="knopf knopf-klein" id="zf-rahmen" type="button">Rahmen …</button>
+            </div>
+          </fieldset>
+        </div>
+        <label class="zf-frage" id="zf-frage-feld" hidden>Frage an das Transkript
+          <textarea id="zf-frage" rows="2" placeholder="Was genau soll beantwortet werden?"></textarea>
+        </label>
+        <div class="zf-start">
+          <p class="leise" id="zf-hinweis"></p>
+          <button class="knopf knopf-haupt" id="zf-auswerten" type="button" disabled>Auswerten</button>
+        </div>
+        <div class="rueckmeldung" id="zf-rueck"></div>
+        <div class="zf-fassungen-kopf">
+          <h3 class="abschnitt">Fassungen</h3>
+          <div class="umschalter" role="group" aria-label="Anordnung">
+            <button type="button" data-anordnung="nebeneinander" class="aktiv">Nebeneinander</button>
+            <button type="button" data-anordnung="untereinander">Untereinander</button>
+          </div>
+        </div>
+        <div class="fassungen nebeneinander" id="zf-fassungen"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<main id="reiter-bildvideo" class="breit" hidden>
+  <div class="bv-leiste">
+    <div class="bv-links">
+      <p class="bv-zustand" id="bv-zustand" aria-live="polite">Prüfe, ob Bild &amp; Video läuft …</p>
+    </div>
+    <div class="bv-knoepfe">
+      <a class="knopf knopf-klein" id="bv-comfy" href="#" target="_blank" rel="noopener" hidden>ComfyUI öffnen</a>
+      <button class="knopf knopf-klein" id="bv-zentrale" type="button">Modellzentrale öffnen</button>
+    </div>
+  </div>
+
+  <div class="st" id="bv-ansicht-studio">
+    <aside class="st-form" aria-labelledby="st-form-titel">
+      <h2 id="st-form-titel" class="abschnitt">Erstellen</h2>
+      <div class="st-hinweis" id="st-comfy-hinweis" hidden></div>
+      <label class="st-feld">Projekt
+        <span class="st-zeile"><select id="st-projekt"></select>
+          <button class="knopf knopf-klein" id="st-projekt-neu" type="button">Neu …</button></span>
+      </label>
+      <fieldset class="st-art">
+        <legend>Art</legend>
+        <div class="st-art-zeile"><span class="st-art-gruppe">Bild</span>
+          <label><input type="radio" name="st-art" value="bild" checked><span>Neu</span></label>
+          <label><input type="radio" name="st-art" value="bearbeiten"><span>Bearbeiten</span></label>
+          <label title="Eine markierte Stelle neu entstehen lassen, etwa eine Hand reparieren oder etwas entfernen"><input type="radio" name="st-art" value="verbessern"><span>Verbessern</span></label>
+          <label title="Das Motiv behalten, alles andere wird durchsichtig (PNG)"><input type="radio" name="st-art" value="freistellen"><span>Freistellen</span></label>
+          <label id="st-art-pose" hidden title="Pose-Skelett aus einem Bild: eine Strichfigur, mit der Qwen beim Bearbeiten genau diese Haltung übernimmt"><input type="radio" name="st-art" value="pose"><span>Pose</span></label>
+        </div>
+        <div class="st-art-zeile"><span class="st-art-gruppe">Video</span>
+          <label><input type="radio" name="st-art" value="video_text"><span>Aus Text</span></label>
+          <label><input type="radio" name="st-art" value="video_bild"><span>Aus Bild</span></label>
+          <label><input type="radio" name="st-art" value="video_referenz"><span>Mit Referenz</span></label>
+          <label title="Ein Video aus der Bibliothek verlängern, ein Stück davor setzen, zwei Videos verbinden oder eine Schleife schließen"><input type="radio" name="st-art" value="video_weiter"><span>Weiterführen</span></label>
+          <label title="Mehrere Szenen hintereinander: ein gemeinsamer Teil (Figuren, Ort, Licht, Stil) und je Szene Handlung, Kamera und Gesprochenes. Das Studio verlängert Szene für Szene."><input type="radio" name="st-art" value="video_szenen"><span>Szenenfolge</span></label>
+        </div>
+        <div class="st-art-zeile" id="st-art-modell3d" hidden><span class="st-art-gruppe">3D</span>
+          <label title="Pixal3D rechnet aus einem Drehblatt (vier Ansichten nebeneinander, Vorschlag „Drehblatt“ beim Bearbeiten) oder aus einem einzelnen Bild ein 3D-Modell mit Texturen (GLB). Dazu ein Drehteller als Vorschau-Video."><input type="radio" name="st-art" value="modell3d"><span>3D-Modell</span></label>
+        </div>
+      </fieldset>
+      <label class="st-feld" id="st-modus-feld" hidden>Wie weiterführen?
+        <select id="st-modus">
+          <option value="verlaengern">Verlängern: ein neues Stück ans Ende</option>
+          <option value="davor">Davor setzen: ein neues Stück an den Anfang</option>
+          <option value="verbinden">Verbinden: ein Übergang zwischen zwei Clips</option>
+          <option value="schleife">Schleife schließen: vom Ende zurück zum Anfang</option>
+        </select>
+      </label>
+      <div class="st-vorlagen" id="st-vorlagen-feld" hidden></div>
+      <label class="st-feld" id="st-stelle-feld" hidden
+        title="SAM3 sucht die Stelle beim Erstellen selbst. Englisch ist am verlässlichsten; mehrere gleiche Dinge mit Anzahl, etwa hand:2. Eine gemalte Markierung hat Vorrang.">Oder Stelle per Wort finden
+        <input id="st-stelle" type="text" maxlength="100" autocomplete="off"
+          placeholder="englisch, z. B. hand, face, cup · mehrere: hand:2">
+      </label>
+      <label class="st-feld" id="st-prompt-feld">Beschreibung
+        <textarea id="st-prompt" rows="6"></textarea>
+      </label>
+      <label class="st-feld" id="st-motiv-feld" hidden>Was soll bleiben?
+        <input id="st-motiv" type="text" maxlength="300" autocomplete="off"
+          placeholder="leer: das Hauptmotiv, schnell (etwa 1 s) · z. B. „die Frau mit dem Hund“ (Qwen, 15–30 s)">
+      </label>
+      <p class="st-zeile st-vorschlaege" id="st-vorschlaege" hidden></p>
+      <p class="leise st-tipp" id="st-video-tipp" hidden>Gesprochenes schreibst du als
+        <code>&lt;d&gt;[Deutsch] …&lt;/d&gt;</code>, etwa 20–24 Wörter je 8 s. Verlange ein scharfes Bild; Wörter wie
+        Körnung, Dunst oder weich machen das Video weich.</p>
+      <div class="st-zwei">
+        <label class="st-feld" id="st-format-feld">Format <select id="st-format"></select></label>
+        <label class="st-feld" id="st-groesse-feld" hidden>Größe <select id="st-groesse"></select></label>
+        <label class="st-feld" id="st-staerke-feld" hidden>Wie viel darf sich ändern? <select id="st-staerke"></select></label>
+        <label class="st-feld" id="st-neu-feld" hidden
+          title="So lang wird das neue Stück. Mögliche Längen hängen vom Modus ab; das Videomodell rechnet dafür einen Clip mit festen Längen.">Neues Stück <select id="st-neu"></select></label>
+        <label class="st-feld">Qualität <select id="st-qualitaet"></select></label>
+        <label class="st-feld" id="st-modell-stufe-feld" hidden
+          title="Fein: wie die Comfy-Org-Vorlage (700.000 Dreiecke, 2K-Texturen mit Normalen und Verschattung). Leicht: kleiner und schneller, für Webseiten und Apps.">Detailstufe <select id="st-modell-stufe"></select></label>
+      </div>
+      <div class="st-zwei" id="st-schnitt-feld" hidden>
+        <label class="st-feld" id="st-schnitt-ende-feld"
+          title="So viel fällt am Ende des Clips weg, bevor das neue Stück ansetzt, etwa ein missglücktes Ende. Wird auf ganze Bilder gerundet (24 je Sekunde).">
+          <span id="st-schnitt-ende-text">Ende kürzen um (s)</span>
+          <input type="number" id="st-schnitt-ende" min="0" max="60" step="0.1" value="0"></label>
+        <label class="st-feld" id="st-schnitt-anfang-feld"
+          title="So viel fällt am Anfang des Clips weg; das neue Stück endet genau auf dem ersten Bild, das bleibt. Wird auf ganze Bilder gerundet (24 je Sekunde).">
+          <span id="st-schnitt-anfang-text">Anfang kürzen um (s)</span>
+          <input type="number" id="st-schnitt-anfang" min="0" max="60" step="0.1" value="0"></label>
+      </div>
+      <label class="st-check" id="st-details-feld" hidden
+        title="Detail-LoRA: frischt überbelichtete, unscharfe oder komprimierte Fotos auf (Belichtung, Haut, Haare). Bei sauberen Bildern kann sie Kleinigkeiten verändern.">
+        <input type="checkbox" id="st-details"> Details auffrischen <span class="leise">(für schwache Fotos)</span></label>
+      <label class="st-check" id="st-durchsichtig-feld" hidden
+        title="Das Motiv entsteht gleich freigestellt: Hintergrund durchsichtig, gespeichert als PNG. Beschreibe nur das Motiv, keinen Hintergrund.">
+        <input type="checkbox" id="st-durchsichtig"> Durchsichtiger Hintergrund <span class="leise">(Motiv freigestellt, PNG)</span></label>
+      <label class="st-check" id="st-ausformulieren-feld" hidden
+        title="Ein lokales Sprachmodell (der Prompt-Enhancer von Qwen) schreibt aus einem kurzen Wunsch eine ausführliche englische Bildbeschreibung. Gut für kurze Wünsche; bei ausführlichen Texten und Vorschlägen nicht nötig. Es erfindet gern Schrift (Poster, Schilder); dagegen hilft „ohne Schrift“ im Wunsch.">
+        <input type="checkbox" id="st-ausformulieren"> Wunsch ausformulieren lassen <span class="leise">(für kurze Wünsche, etwa 10–25 s länger)</span></label>
+      <label class="st-check" id="st-realismus-feld" hidden
+        title="Realism-LoRA (fal): natürlichere Haut und Gesichter bei Personen, besonders in Nahaufnahmen und mit Referenzbild. In Räumen ohne Personen war sie schlechter (seltsame Kabel, Gestelle) – dort weglassen. Kostet keine Zeit.">
+        <input type="checkbox" id="st-realismus"> Realistische Personen <span class="leise">(nur für Videos mit Menschen)</span></label>
+      <label class="st-check" id="st-tauschen-feld" hidden
+        title="Character-Swap-LoRA (Akatz Labs): ersetzt eine Person im Clip „Video 1“ durch die Person aus „Bild 1“; Raum, Kamera, Bewegung und alle anderen Personen bleiben. Braucht genau einen Clip und ein Bild der neuen Person. Am besten mit dem Vorschlag „Person tauschen“ (englische Vorlage).">
+        <input type="checkbox" id="st-tauschen"> Person tauschen <span class="leise">(eine Person im Clip durch Bild 1 ersetzen)</span></label>
+      <div class="st-szenen" id="st-szenen-feld" hidden>
+        <p class="st-label">Szenen <span class="leise">je Szene: was geschieht, was die Kamera tut, was gesagt wird; das Feld oben steht vor jeder Szene</span></p>
+        <ol class="st-szenen-liste" id="st-szenen-liste"></ol>
+        <p class="st-zeile"><button class="knopf knopf-klein" id="st-szene-dazu" type="button">Szene dazu</button></p>
+      </div>
+      <label class="st-check" id="st-pruefen-feld" hidden
+        title="Nach jeder Szene hält die Folge an: Szene ansehen, dann „Passt“ (weiter mit der nächsten) oder „Nochmal“ (dieselbe Szene neu). Ohne Häkchen laufen alle Szenen durch.">
+        <input type="checkbox" id="st-pruefen" checked> Nach jeder Szene prüfen <span class="leise">(„Passt“ oder „Nochmal“)</span></label>
+      <label class="st-feld" id="st-laenge-feld" hidden>Länge <select id="st-laenge"></select></label>
+      <div class="st-zwei" id="st-eigen" hidden>
+        <label class="st-feld">Breite <input type="number" id="st-breite" min="256" max="2048" step="16" value="1328"></label>
+        <label class="st-feld">Höhe <input type="number" id="st-hoehe" min="256" max="2048" step="16" value="1328"></label>
+      </div>
+      <p class="leise" id="st-schaetzung"></p>
+      <p class="st-hinweis" id="st-rezept-hinweis" role="status" hidden></p>
+      <p class="st-hinweis" id="st-weiter-hinweis" role="status" hidden></p>
+      <div class="st-variation">
+        <label class="st-check"><input type="checkbox" id="st-zufall" checked> Zufällige Variation</label>
+        <input type="number" id="st-variation" placeholder="Variationsnummer" aria-label="Variationsnummer" disabled>
+        <label class="st-check" id="st-anzahl-feld">Anzahl <select id="st-anzahl">
+          <option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+      </div>
+      <p class="leise" id="st-variation-tipp">Gleiche Nummer und gleicher Text ergeben dasselbe Bild.</p>
+      <button class="knopf knopf-haupt st-los" id="st-erstellen" type="button">Erstellen</button>
+      <div class="rueckmeldung" id="st-rueck" aria-live="polite"></div>
+    </aside>
+
+    <section class="st-bib" aria-labelledby="st-bib-titel">
+      <div class="st-bib-kopf">
+        <h2 id="st-bib-titel" class="abschnitt">Bibliothek</h2>
+        <input type="search" id="st-suche" placeholder="In Prompts suchen …" aria-label="In Prompts suchen">
+        <select id="st-filter-projekt" aria-label="Projekt"></select>
+        <div class="umschalter" role="group" aria-label="Art">
+          <button type="button" data-st-medium="alle" class="aktiv">Alle</button>
+          <button type="button" data-st-medium="bild">Bilder</button>
+          <button type="button" data-st-medium="video">Videos</button>
+        </div>
+        <button class="knopf knopf-klein" id="st-auswaehlen" type="button">Auswählen</button>
+        <button class="knopf knopf-klein" id="st-ordner" type="button">Ordner öffnen</button>
+      </div>
+      <div class="st-auswahl" id="st-auswahl-leiste" hidden>
+        <b id="st-auswahl-zahl"></b>
+        <select id="st-ziel-projekt" aria-label="Ziel"></select>
+        <button class="knopf knopf-klein" id="st-verschieben" type="button">Verschieben</button>
+        <button class="knopf knopf-klein" id="st-papierkorb" type="button">In den Papierkorb …</button>
+        <button class="knopf knopf-klein" id="st-auswahl-ende" type="button">Fertig</button>
+      </div>
+      <ul class="st-folgen" id="st-folgen" aria-live="polite" hidden></ul>
+      <p class="leise st-zaehler" id="st-zaehler"></p>
+      <ul class="st-raster" id="st-raster" aria-live="polite"></ul>
+    </section>
+  </div>
+
+</main>
+
+<main id="reiter-texterkennung" hidden>
+  <section class="neu" aria-labelledby="te-titel">
+    <div class="te-kopf">
+      <h2 id="te-titel" class="abschnitt">PDF/Scan lesen</h2>
+      <p class="te-modell" id="te-modell" aria-live="polite"></p>
+    </div>
+    <div class="neu-raster">
+      <div class="ablage" id="te-ablage">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 30V8m0 0-8 8m8-8 8 8" /><path d="M8 28v8a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-8" /></svg>
+        <p class="ablage-titel">PDFs oder Bilder hierher ziehen</p>
+        <p class="leise">PDF, PNG oder JPG, direkt aus dem Explorer</p>
+        <button class="knopf" id="te-waehlen" type="button">Dateien wählen …</button>
+      </div>
+      <div class="eingabe">
+        <label for="te-text">Dateipfade</label>
+        <textarea id="te-text" rows="4" spellcheck="false" placeholder="C:\Scans\Befundbogen.pdf&#10;C:\Workstation\Arbeitsmaterial\Handout.png"></textarea>
+        <div class="eingabe-fuss">
+          <span class="leise">Einer pro Zeile. Ordner werden nach PDFs und Bildern durchsucht.</span>
+          <button class="knopf knopf-haupt" id="te-hinzufuegen" type="button">Lesen</button>
+        </div>
+      </div>
+    </div>
+    <div class="optionen">
+      <label class="auswahl">Seiten <input type="text" id="te-seiten" class="te-seiten" placeholder="alle" spellcheck="false" autocomplete="off"></label>
+      <p class="leise optionen-hinweis">Leer heißt alle Seiten, sonst zum Beispiel „1-5, 8“. Ergebnis: Markdown je Seite und ein
+        Volltext in <span class="pfad">Arbeitsmaterial\Texterkennung</span>. Die Quelle bleibt unverändert. Lokal mit LightOnOCR-3 auf einer RTX 3090.</p>
+    </div>
+    <p class="te-pruefen" id="te-pruefen"></p>
+    <div class="rueckmeldung" id="te-rueck" aria-live="polite"></div>
+  </section>
+
+  <section class="schlange" aria-labelledby="te-schlange-titel">
+    <div class="schlange-kopf">
+      <h2 id="te-schlange-titel" class="abschnitt">Aufträge</h2>
+      <p class="leise" id="te-zaehler"></p>
+      <button class="knopf" id="te-aufraeumen" type="button">Erledigte entfernen</button>
+    </div>
+    <ol class="auftraege" id="te-auftraege"></ol>
+  </section>
+</main>
+
+<main id="reiter-messungen" hidden>
+  <section class="m-karte" aria-labelledby="m-llm-titel">
+    <div class="m-kopf">
+      <h2 id="m-llm-titel">LLM-Messlauf</h2>
+      <p class="leise">Fester Text (etwa 1.500 Token), 256 Token Antwort, Temperatur 0. Nur mit einem Modell, das die
+        Modellzentrale geladen hat. Für saubere Werte nichts anderes daneben rechnen lassen.</p>
+    </div>
+    <div class="m-start">
+      <label class="auswahl">Modell <select id="m-modell"></select></label>
+      <button class="knopf knopf-haupt" id="m-starten" type="button">Messlauf starten</button>
+      <p class="leise" id="m-zustand" aria-live="polite"></p>
+    </div>
+    <div class="m-tabelle" id="m-laeufe"></div>
+  </section>
+  <section class="m-karte" aria-labelledby="m-tr-titel">
+    <div class="m-kopf">
+      <h2 id="m-tr-titel">Transkription</h2>
+      <p class="leise" id="m-tr-quelle"></p>
+    </div>
+    <div class="m-kacheln" id="m-tr-kacheln"></div>
+    <div class="m-tabelle" id="m-tr-letzte"></div>
+  </section>
+  <section class="m-karte" aria-labelledby="m-zf-titel">
+    <div class="m-kopf">
+      <h2 id="m-zf-titel">Zusammenfassung</h2>
+      <p class="leise">Aus den Fassungen der Werkstatt. Laufzeit enthält Warten beim Anbieter.</p>
+    </div>
+    <div class="m-tabelle" id="m-zf"></div>
+  </section>
+  <section class="m-karte" aria-labelledby="m-bv-titel">
+    <div class="m-kopf">
+      <h2 id="m-bv-titel">Bild &amp; Video</h2>
+      <p class="leise">Aus den Aufträgen des Studios, der Auftragsliste von 2Wild (ohne Prompts) und, solange ComfyUI läuft, aus dessen Verlauf.</p>
+    </div>
+    <div class="m-tabelle" id="m-bv"></div>
+  </section>
+  <section class="m-karte" aria-labelledby="m-hi-titel">
+    <div class="m-kopf">
+      <h2 id="m-hi-titel">Historisch: GPU-Lab</h2>
+      <p class="leise" id="m-hi-quelle"></p>
+    </div>
+    <input type="search" id="m-hi-suche" placeholder="Modell, Quantisierung, Laufzeit oder Karte …" aria-label="Historische Messungen filtern">
+    <div class="m-tabelle" id="m-hi"></div>
+  </section>
+</main>
+
+<main id="reiter-transkription">
+  <section class="neu" aria-labelledby="neu-titel">
+    <h2 id="neu-titel" class="abschnitt">Neue Aufträge</h2>
+    <div class="neu-raster">
+      <div class="ablage" id="ablage">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 30V8m0 0-8 8m8-8 8 8" /><path d="M8 28v8a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-8" /></svg>
+        <p class="ablage-titel">Dateien oder Ordner hierher ziehen</p>
+        <p class="leise">direkt aus dem Explorer</p>
+        <button class="knopf" id="waehlen" type="button">Dateien wählen …</button>
+      </div>
+      <div class="eingabe">
+        <label for="text">YouTube-Links oder Dateipfade</label>
+        <textarea id="text" rows="4" spellcheck="false" placeholder="https://www.youtube.com/watch?v=…&#10;C:\Kurse\Modul 1\Lektion 1.mp4"></textarea>
+        <div class="eingabe-fuss">
+          <span class="leise">Einer pro Zeile. Playlists und Kanäle werden nicht verarbeitet.</span>
+          <button class="knopf knopf-haupt" id="hinzufuegen" type="button">Hinzufügen</button>
+        </div>
+      </div>
+    </div>
+    <div class="optionen">
+      <fieldset class="segment">
+        <legend>Modus</legend>
+        <label><input type="radio" name="modus" value="0" checked><span><b>0</b> Nur Transkript</span></label>
+        <label><input type="radio" name="modus" value="0b"><span><b>0b</b> Transkript + Originalbilder</span></label>
+      </fieldset>
+      <label class="auswahl">Sprache
+        <select id="sprache">
+          <option value="auto">Automatisch</option>
+          <option value="de">Deutsch</option>
+          <option value="en">Englisch</option>
+        </select>
+      </label>
+      <p class="leise optionen-hinweis">Gilt für alles, was du jetzt hinzufügst. Whisper Medium, lokal auf den Grafikkarten.</p>
+    </div>
+    <div class="rueckmeldung" id="rueckmeldung" aria-live="polite"></div>
+  </section>
+
+  <section class="schlange" aria-labelledby="schlange-titel">
+    <div class="schlange-kopf">
+      <h2 id="schlange-titel" class="abschnitt">Warteschlange</h2>
+      <p class="leise" id="zaehler"></p>
+      <button class="knopf" id="anhalten" type="button">Anhalten</button>
+      <button class="knopf" id="aufraeumen" type="button">Erledigte entfernen</button>
+    </div>
+    <ol class="auftraege" id="auftraege"></ol>
+  </section>
+</main>
+
+<div class="ueberall" id="ueberall" hidden><p>Loslassen, um hinzuzufügen</p></div>
+<dialog id="dialog" aria-labelledby="dialog-titel"></dialog>
+<script src="/app.js"></script>
+<script src="/zusammenfassung.js"></script>
+<script src="/bildvideo.js"></script>
+<script src="/maske.js"></script>
+<script src="/studio.js"></script>
+<script src="/messungen.js"></script>
+<script src="/texterkennung.js"></script>
+</body>
+</html>

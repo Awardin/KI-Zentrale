@@ -1,0 +1,685 @@
+{
+  "port": 3895,
+  "zentrale_port": 3894,
+  "watch": {
+    "python": "C:\\Workstation\\Werkzeuge\\Watch\\venv\\Scripts\\python.exe",
+    "skript": "C:\\Workstation\\Skills\\aktiv\\watch\\scripts\\watch.py",
+    "arbeitsordner": "C:\\Workstation\\Arbeitsmaterial\\watch",
+    "bedarf_mib_je_worker": 2800,
+    "bedarf_gemessen": "Whisper Medium float16: 2.418–2.479 MiB je Worker, gemessen 23.09.2026",
+    "abschnitt_s": 300,
+    "bild_intervall_s": 15,
+    "bild_fenster_s": 1800,
+    "last_beschaeftigt_prozent": 60
+  },
+  "medien_endungen": [
+    ".mp4",
+    ".mkv",
+    ".webm",
+    ".mov",
+    ".avi",
+    ".m4v",
+    ".wmv",
+    ".mpg",
+    ".mpeg",
+    ".ts",
+    ".flv",
+    ".mp3",
+    ".m4a",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".opus",
+    ".aac",
+    ".wma"
+  ],
+  "ordner_max_dateien": 300,
+  "promptsammlung": "C:\\Users\\sasch\\Desktop\\Meine-Wissens-Prompts.md",
+  "zentrale_config": "C:\\Workstation\\Werkzeuge\\KI-Zentrale\\zentrale\\config.json",
+  "studio": {
+    "ordner": "C:\\Workstation\\Arbeitsmaterial\\Studio",
+    "ordner_2wild": "gencenter",
+    "herkunft": "Arbeitsabläufe nach 2Wild-Image-Video-Gen-Studio (MIT-Lizenz, Tony DeAngelo) mit Saschas Anpassungen",
+    "modell_name": "Qwen-Image 2.1",
+    "modelle": {
+      "unet": "qwen_image_2.1_bf16.safetensors",
+      "clip": "qwen3vl_8b_bf16.safetensors",
+      "unet_int8": "qwen_image_2.1_int8_convrot.safetensors",
+      "clip_int8": "qwen3vl_8b_int8_convrot.safetensors",
+      "vae": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "geraete": {
+      "modell": "gpu:0",
+      "clip": "gpu:0",
+      "vae": "gpu:0"
+    },
+    "geraete_grund": "Nur Vorgabe für Abläufe ohne Kartenwahl. Seit 14.10.2026 (zwei RTX 3090) wählt das Studio die Karten je Auftrag nach dem Stand der Zentrale: ein Bild möglichst ganz auf einer Karte (bevorzugt dort, wo ComfyUI schon Speicher hält, sonst die engste passende), sonst Diffusionsmodell auf der einen, Text-Encoder und VAE auf der anderen; Videos immer so geteilt.",
+    "cfg": 1.0,
+    "shift": 3.1,
+    "bearbeiten_aufloesung": 1024,
+    "bearbeiten_aufloesungen": [
+      {
+        "wert": 1024,
+        "name": "Wie Vorlage 1"
+      },
+      {
+        "wert": 1440,
+        "name": "Wie Vorlage 1 · 2 MP (hochskalieren)"
+      },
+      {
+        "wert": 2048,
+        "name": "Wie Vorlage 1 · 4 MP (hochskalieren)"
+      }
+    ],
+    "details": {
+      "lora": "elusarcas-qwen2-1-detailer-v1.safetensors",
+      "staerke": 1.0,
+      "grund": "Elusarcas Detail-Enhancer für Qwen 2.1 (ai-toolkit, Rang 16, trainiert mit „enhance this image“), von Sascha am 24.09.2026 bereitgestellt (Video Ok Todd AI „Is this the Best New Lora for Enhancing an Image with Qwen Image 2.1?“, Workflow Ep33). Vergleich 24.09.2026, gleiche Nummer, 20 Schritte: Ein überbelichtetes 512²-Porträt bekam Belichtung, Hautstruktur und Falten zurück, ohne LoRA blieb es überbelichtet; die Wirkung kommt von der LoRA, nicht vom Text. Ein komprimiertes 688×384-Foto wurde etwas detailreicher. Bei einem sauberen KI-Bild mehr Schärfe, aber auch kleine Inhaltsänderungen (Grasstreifen im Weg). Mit Turbo gleich gut (33 statt 69 s)."
+    },
+    "vorlage_zeit": {
+      "fest": 0.94,
+      "je_flaeche": 0.33,
+      "grund": "Bearbeiten wie Vorlage 1 und Freistellen rechnen die Vorlage in derselben Größe mit; die Zeit wächst mit der Fläche stärker als bei neuen Bildern. Faktor = fest + je_flaeche × Fläche (relativ zu 1328²). Messung 24.09.2026, 20 Schritte: Freistellen 1 MP 31 s, Hochskalieren 2 MP 71 s, 4 MP 188 s (neues Bild 4 MP: 117 s, linear)."
+    },
+    "freistellen": {
+      "vorlage": "Isolate the main subject: keep only {motiv}, exactly as it is. Remove everything else completely, including the whole background and the ground, so that the background is fully transparent. Output a PNG image with a transparent background.",
+      "motiv_standard": "the main subject",
+      "rest_bis": 0.4,
+      "kante_px": 1,
+      "grund": "Versuch 24.09.2026: Qwen 2.1 gibt echte Transparenz aus (VAE mit vier Kanälen). Auf unruhigem Hintergrund bleiben Reste mit Deckung unter 0,3; das Motiv ist voll deckend, die Kanten liegen pixelgenau auf dem Original. Genommen wird deshalb nur Qwens Maske: Deckung bis rest_bis wird 0, zwischen rest_bis und rest_bis + 0,25 steigt sie auf voll (weiche Kanten). Abnahme 24.09.2026 (Wiese, Porträt, Hund, breites Praxisbild): keine Reste, aber ein heller Saum aus Hintergrundfarbe an den Kanten; kante_px (bei etwa 1 MP) nimmt diesen Rand weg, ohne dass Haare oder Arme sichtbar schmaler werden. Die Maske kommt auf die Originalpixel in Originalgröße; ganz durchsichtige Stellen werden weiß.",
+      "schnell_modell": "birefnet.safetensors",
+      "schnell_grund": "Stufe 3l (27.09.2026, auf Auftrag von Comfy-Org/BiRefNet geladen, SHA-256 geprüft): Kernknoten „Remove Background“. Test an sechs Bildern (Wiese, zwei Porträts, Hund, Praxis 4 MP, Behandlung): je etwa 1 s statt 15–30 s, so sauber wie Qwen, feine Haare bleiben als weiche Kante (Qwen schneidet sie ab); halbdurchsichtige Kanten tragen etwas vom alten Hintergrund (auf dunklem Grund ein heller Saum). Kein Schleier. Lucida (ebenfalls geladen) ließ Reste und einen milchigen Schleier und wird nicht genutzt. Nimmt nur das Hauptmotiv; mit Beschreibung stellt Qwen frei."
+    },
+    "durchsichtig": {
+      "vorlage": "This is an RGBA format image with transparency. {beschreibung}. The image has an alpha channel and a transparent background.",
+      "rest_bis": 0.02,
+      "grund": "Rahmen-Prompt aus der ComfyUI-Vorlage für Qwen Image 2.1 (Video Nerdy Rodent, 1:37). Test 26.09.2026 (Person, Tasse, Pflanze je 2 Nummern, Turbo): 6 von 6 sauber freigestellt, ohne Saum auf Weiß, Magenta und Schwarz. Qwen lässt aber einen fast unsichtbaren Schleier (Deckung 1–5 von 255 auf 24–47 % der Fläche) und legt unter durchsichtige Stellen Lila (RGB 164, 57, 208). Deshalb: Deckung bis rest_bis wird 0, darüber gestreckt auf 0–1; ganz durchsichtige Stellen bekommen Weiß (wie beim Freistellen, wichtig für JPEG und Programme ohne Transparenz)."
+    },
+    "schnelle_aufmerksamkeit": {
+      "aktiv": true,
+      "backend": "comfy kitchen attention",
+      "grund": "Kernknoten ModelAttentionBackend (INT8-Aufmerksamkeit, experimentell), Video Nerdy Rodent 1:57. Test 26.09.2026, 1328², gleiche Nummer: Turbo 13,2 → 12,2 s, Standard 20 Schritte 38–42 → 34–36 s; je Stufe wiederholbar (zweiter Lauf pixelgleich). Gegenüber ohne: mittlere Abweichung 1,5–2,1 von 255, Gesicht, Hände und Schrift gleichwertig. Nur für neue Aufträge (Feld schnell), damit „Nochmal“ älterer Bilder pixelgleich bleibt."
+    },
+    "int8": {
+      "aktiv": true,
+      "zeitfaktor": 0.5,
+      "grund": "Stufe 3l (27.09.2026, auf Auftrag von Comfy-Org/Qwen-Image-2.1 geladen, SHA-256 geprüft): INT8-Fassungen von Diffusionsmodell (7,26 GB) und Text-Encoder (9,35 GB), die Standardkombination der offiziellen Vorlagen. Test mit gleicher Nummer: 1328² mit schneller Aufmerksamkeit Turbo 12,3 → 7,1 s, Standard 20 Schritte 34,6 → 16,5 s; ohne sie 4 MP Turbo 37,8 → 25,5 s, Hochskalieren 2 MP 30,6 → 22,4 s; 3090 9,1–10,4 statt 15,7–16,9 GiB (Hochskalieren 14,1 statt 20,5). Bilder gleichwertig (mittlere Abweichung zur BF16-Fassung 0,9–4,1 von 255; Gesicht, Hände, Schrift, 4 MP vergrößert verglichen). Nur für neue Aufträge (Feld int8), damit „Nochmal“ älterer Bilder pixelgleich bleibt."
+    },
+    "ausformulieren": {
+      "modell": "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
+      "geraet": "gpu:0",
+      "system_datei": "ausformulieren_t2i.txt",
+      "max_laenge": 2048,
+      "sekunden": 15,
+      "bedarf_mib": {
+        "eine": 20480,
+        "haupt": 20480,
+        "neben": 4096
+      },
+      "grund": "Stufe 3l (27.09.2026, Comfy-Org/Qwen-Image-2.1, SHA-256 geprüft): offizieller Prompt-Enhancer von Qwen (Qwen3.5 9B, INT8) mit dem Systemtext der ComfyUI-Vorlage image_qwen_image_2_1_t2i. Test mit vier kurzen deutschen Wünschen × 2 Nummern: Schulterbehandlung direkt 0 von 2 passend, ausformuliert 2 von 2; Wartezimmer deutlich stimmiger; einmal ein erfundener Wandspruch mit Tippfehler. Auf der 3090 15–34 s je Bild statt 7 s (Spitze 18,7 GiB); auf der 3080 neben dem Text-Encoder 517 s (Modell teils im Arbeitsspeicher), deshalb läuft er auf der Karte des Diffusionsmodells (seit 14.10.2026 gewählt je Auftrag; geraet ist nur die Vorgabe). Gleiche Nummer ergab denselben Text und dasselbe Bild. Nur auf Wunsch (Häkchen)."
+    },
+    "pose": {
+      "modell": "sdpose_wholebody_fp16.safetensors",
+      "beschreibung": "Pose-Skelett",
+      "personen": {
+        "text": "person:6",
+        "schwelle": 0.5,
+        "grund": "Stufe 3l (27.09.2026): Ohne Rahmen nimmt SDPose das ganze Bild als eine Person (bei einer Behandlung nur die Therapeutin). SAM3 (schon für „Stelle per Wort“ geladen) liefert mit „person:6“ bis zu sechs Personenrahmen, SDPose zeichnet jede Person: Behandlung 2 von 2 Personen; Einzelpersonen (Wiese, Porträt, Band) gleich wie ohne; ein Raum ohne Person ergibt ein leeres Skelett; stark überlappende Personen (Therapeutin hinter dem Patienten mit Band) weiter nur eine. Mit dem Zwei-Personen-Skelett als Bild 1 übernahm Qwen Aufbau und beide Haltungen 2 von 2 (Rollen getauscht). Etwa 1 s mehr. Nur für neue Aufträge (Feld personen)."
+      },
+      "grund": "Stufe 3l (27.09.2026, Comfy-Org/SDPose, SHA-256 geprüft): Pose-Skelett aus einem Bild (SDPose, Kernknoten), etwa 1–2 s. Als Bild 1 beim Bearbeiten übernahm Qwen die Haltung in 12 von 12 Bildern (Winken, Arme zur Seite, Band über dem Kopf; aus einem Foto als Bild 1 früher 1 von 4; einfache Haltungen gelangen auch nur aus Text). Geräte wie Übungsbänder zeigt das Skelett nicht: sie im Text genau beschreiben, das Band hing trotzdem oft wie ein Schal. Bei Brustbildern erfindet SDPose Beine unterhalb des Bildrands."
+    },
+    "max_vorlagen": 10,
+    "verbessern": {
+      "ausschnitt_faktor": 3,
+      "ausschnitt_min": 384,
+      "arbeit_min": 1024,
+      "arbeit_max": 1328,
+      "arbeit_seite_max": 2048,
+      "rand_px": 6,
+      "weich_px": 6,
+      "vorlage": {
+        "max": 1,
+        "megapixel": 1.0,
+        "zeitfaktor": 0.55,
+        "ausschnitt_faktor": 2,
+        "grund": "Stufe 3n (05.10.2026): ein Vorbild für die Stelle (Person, Logo, Gegenstand; Rolle „vorbild“), im Text „Bild 2“. Es geht auf etwa 1 MP verkleinert (ImageScaleToTotalPixels, 32er-Raster) als image_2 in TextEncodeQwenImage21; der Ausschnitt bleibt Bild 1 in seiner Arbeitsgröße. Vorversuche Turbo/INT8: Kopf 3 von 3 die Frau aus dem Vorbild (ohne Vorbild eine andere), Logo-Symbol 8 von 8 richtig. Mit Vorbild ist der Ausschnitt nur doppelt so groß wie die Markierung (sonst dreifach): Logo-Schriftzug 2 von 2 statt 0 von 4 richtig, Gegenstand 3 von 3 vollständig statt 2 von 4 (sonst am Rand der Markierung abgeschnitten). Zeit +6 s (10 → 16 s bei 1 MP Arbeitsgröße, 20 → 26 s bei 1,8 MP): Faktor 1 + zeitfaktor × Vorbild-Pixel / Arbeitspixel."
+      },
+      "grund": "Versuche 24.09.2026 (PLAN.md, Stufe 3d):Ausschnitt um die Markierung (3 × ihre lange Seite), auf 1024² bis 1328² gebracht; Qwen bearbeitet ihn mit ihm selbst als Vorlage und rechnet nur in der Markierung neu (Latent-Maske). Das Ergebnis kommt mit 6 px Rand und 6 px Übergang ins Original; außerhalb bleibt jedes Pixel gleich.",
+      "staerken": [
+        {
+          "wert": 1.0,
+          "name": "Alles",
+          "text": "die Stelle wird neu gestaltet",
+          "standard": true
+        },
+        {
+          "wert": 0.8,
+          "name": "Viel",
+          "text": "die grobe Form bleibt"
+        },
+        {
+          "wert": 0.6,
+          "name": "Wenig",
+          "text": "nur ausbessern"
+        }
+      ],
+      "finden": {
+        "modell": "sam3.1_multiplex_fp16.safetensors",
+        "schwelle": 0.5,
+        "verfeinern": 2,
+        "vorschau_px": 768,
+        "bedarf_mib": 2048,
+        "grund": "Stufe 3l (27.09.2026, Comfy-Org/sam3.1, SHA-256 geprüft): Stelle per Wort (SAM3, Kernknoten). Test: Hände, Gesicht, Haare, Hund, Fahrrad, Schaufenster, Liege und Baum je etwa 1 s und genau; „hand:4“ findet mehrere. Englisch ist verlässlich, Deutsch nur teilweise („Hund“, „Fahrrad“, „Hand“ gingen, „Liege“ fand die Therapeutin). Die Maske kommt auf höchstens vorschau_px verkleinert zurück (jede Überdeckung zählt) und wird auf die Originalgröße hochgerechnet; Rand und Übergang des Verbesserns decken die Stufen ab."
+      }
+    },
+    "bedarf_mib": {
+      "eine": 18432,
+      "haupt": 16384,
+      "neben": 2048
+    },
+    "bedarf_grund": "Rollen: eine = alles auf einer Karte, haupt/neben = Diffusionsmodell auf der einen, Text-Encoder und VAE auf der anderen Karte, fest = Abläufe ohne Kartenwahl auf ComfyUIs Standardkarte 0. Gemessen 23.09.2026 (BF16, RTX 3090 + 3080): Qwen-Bild 1328², 40 Schritte ~14,7 GiB auf der Modellkarte und kurz ~1,3 GiB auf der anderen (Text-Encoder); eine Karte = Summe (Ein-Karten-Betrieb 14.10.2026). Auf zwei RTX 3090 (14.10.2026, INT8 Turbo 1328²): ganz auf der Suprim neben NInfer auf der FE, Spitze 8,0 GiB, 9,4 s.",
+    "bedarf_gross_mib": {
+      "eine": 22016,
+      "haupt": 18432,
+      "neben": 6144
+    },
+    "bedarf_gross_ab_pixel": 2000000,
+    "bedarf_gross_grund": "gemessen 24.09.2026 im 1-s-Takt (Spitzen): 1920×1088 16,1 GiB auf der Modellkarte + 3,5 GiB auf der anderen, 2752×1536 17,2 + 5,9 GiB (VAE wächst mit der Bildgröße); eine Karte höchstens 22.016 MiB (24 GiB minus Reserve und Windows)",
+    "bedarf_hilfe_mib": {
+      "fest": 6144
+    },
+    "bedarf_hilfe_grund": "Stufe 3l: Pose-Skelett und schnelles Freistellen laden nur kleine Modelle (SDPose 1,9 GB, dazu für die Personenrahmen SAM3 1,75 GB; BiRefNet 0,4 GB)",
+    "max_seite": 4096,
+    "max_seite_grund": "Banner 3:1 und Panorama 4:1 (26.09.2026, Stufe 3k): 3072×1024 und 4096×1024 je 4 Läufe ohne Aufbaufehler, 26 bzw. 36 s mit Turbo; die Grenze bleibt das Pixelbudget max_pixel.",
+    "max_pixel": 4300000,
+    "sekunden_je_schritt": 1.4,
+    "sekunden_je_schritt_grund": "Schätzung ohne eigene Läufe: Qwen-Bild 1328², 40 Schritte ~55 s (gemessen 23.09.2026)",
+    "turbo": {
+      "lora": "Qwen-Image-2.1-viggle-turbo-v0.2.1-6step-lora-r128.safetensors",
+      "staerke": 1.0,
+      "sigmas": [1.0, 0.9375, 0.875, 0.75, 0.5, 0.25],
+      "mu_basis": 0.5,
+      "mu_max": 0.9,
+      "token_basis": 256,
+      "token_max": 8192,
+      "zeitfaktor": 1.4,
+      "modell": "qwen_image_2.1_turbo_int8_convrot.safetensors",
+      "modell_aktiv": true,
+      "modell_sigmas": [1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568],
+      "modell_grund": "Seit 11.10.2026: offizielles Qwen-Image 2.1 Turbo (Qwen, 09.10.2026; Comfy-Org INT8, 7,26 GB, SHA-256 8144a018…314c geprüft), 8 Schritte, Euler, CFG 1, trainierte Sigmas (am Ende 0). Vergleich 11.10.2026 gegen die Viggle-LoRA und Standard (6 Motive × 2 Nummern): gleichwertig in allen 12 Paaren (Porträt, Hände, Schrift fehlerfrei, Raum, durchsichtig, Bearbeiten mit Vorlage), neue Bilder gleich schnell (5–8 s), Bearbeiten 9 statt 13 s. Nur für neue Aufträge (Feld turbo_modell); ältere Turbo-Bilder rechnen bei „Nochmal“ weiter mit der LoRA.",
+      "grund": "Viggle/Qwen-Image-2.1-viggle-turbo v0.2.1 (SHA-256 bafb91d0…345b), Modellkarte: 6 Schritte mit diesen Sigmas, CFG 1, Euler, Stärke 1,0; verschoben mit dem offiziellen dynamischen Zeitplan von Qwen 2.1 (mu 0,5 bei 256 bis 0,9 bei 8192 Token). Vergleich 24.09.2026: etwa dreimal so schnell wie Standard, Hautdetail eher feiner."
+    },
+    "qualitaet": [
+      {
+        "schritte": 6,
+        "name": "Turbo",
+        "text": "mit Turbo-LoRA, etwa dreimal so schnell wie Standard",
+        "turbo": true
+      },
+      {
+        "schritte": 12,
+        "name": "Entwurf",
+        "text": "schnell, etwas grob"
+      },
+      {
+        "schritte": 20,
+        "name": "Standard",
+        "text": "gute Balance"
+      },
+      {
+        "schritte": 30,
+        "name": "Hoch",
+        "text": "mehr Details"
+      },
+      {
+        "schritte": 40,
+        "name": "Max",
+        "text": "am langsamsten, die meisten Details",
+        "standard": true
+      }
+    ],
+    "formate": [
+      {
+        "id": "quadrat",
+        "name": "Quadrat 1:1",
+        "breite": 1328,
+        "hoehe": 1328
+      },
+      {
+        "id": "hoch45",
+        "name": "Hochformat 4:5",
+        "breite": 1024,
+        "hoehe": 1280
+      },
+      {
+        "id": "hoch916",
+        "name": "Hochformat 9:16",
+        "breite": 928,
+        "hoehe": 1664
+      },
+      {
+        "id": "quer169",
+        "name": "Querformat 16:9",
+        "breite": 1664,
+        "hoehe": 928
+      },
+      {
+        "id": "quer32",
+        "name": "Querformat 3:2 (Foto)",
+        "breite": 1584,
+        "hoehe": 1056
+      },
+      {
+        "id": "quer43",
+        "name": "Querformat 4:3",
+        "breite": 1472,
+        "hoehe": 1104,
+        "hinweis": "leichtes Breitformat, etwa für Beitragsbilder und Präsentationen"
+      },
+      {
+        "id": "video169",
+        "name": "Für Video 16:9",
+        "breite": 1920,
+        "hoehe": 1088,
+        "hinweis": "passt später ohne Beschnitt zu einem Video"
+      },
+      {
+        "id": "video916",
+        "name": "Für Video 9:16",
+        "breite": 1088,
+        "hoehe": 1920,
+        "hinweis": "passt später ohne Beschnitt zu einem Video"
+      },
+      {
+        "id": "quadrat_gross",
+        "name": "Quadrat 1:1 · groß",
+        "breite": 2048,
+        "hoehe": 2048,
+        "hinweis": "4 Megapixel: gut doppelt so lange, mehr Grafikspeicher"
+      },
+      {
+        "id": "quer169_gross",
+        "name": "Querformat 16:9 · groß",
+        "breite": 2752,
+        "hoehe": 1536,
+        "hinweis": "4 Megapixel: gut doppelt so lange, mehr Grafikspeicher"
+      },
+      {
+        "id": "hoch916_gross",
+        "name": "Hochformat 9:16 · groß",
+        "breite": 1536,
+        "hoehe": 2752,
+        "hinweis": "4 Megapixel: gut doppelt so lange, mehr Grafikspeicher"
+      },
+      {
+        "id": "banner31",
+        "name": "Banner 3:1",
+        "breite": 3072,
+        "hoehe": 1024,
+        "hinweis": "Webseiten-Kopfbild, 3 Megapixel; Möbel und Geräte genau prüfen"
+      },
+      {
+        "id": "panorama41",
+        "name": "Panorama 4:1",
+        "breite": 4096,
+        "hoehe": 1024,
+        "hinweis": "sehr breites Kopfbild, 4 Megapixel; Möbel und Geräte genau prüfen"
+      }
+    ],
+    "modell3d": {
+      "modell_name": "Pixal3D",
+      "modelle": {
+        "multiview": "pixal3d_multiview_int8_convrot.safetensors",
+        "einzelbild": "pixal3d_int8_convrot.safetensors",
+        "dino": "dino_v3_L_naf_fp32.safetensors",
+        "vae_form": "trellis_2_shape_vae_bf16.safetensors",
+        "vae_textur": "trellis_2_texture_vae_bf16.safetensors",
+        "biref": "birefnet.safetensors",
+        "moge": "moge_2_vitl_normal_fp16.safetensors"
+      },
+      "fov": 20.0,
+      "rand": 1.1,
+      "remesh": 768,
+      "schritte": {"struktur": 12, "form": 20, "feinform": 12, "textur": 12},
+      "cfg": {"struktur": 7.5, "struktur_ab": 0.667, "struktur_rescale": 0.7, "struktur_shift": 5.0,
+              "form": 7.5, "form_ab": 0.769, "form_rescale": 0.5, "textur": 1.0},
+      "stufen": [
+        {"id": "fein", "name": "Fein (700.000 Dreiecke, 2K-Textur, Normalen)", "aufloesung": 1536, "dreiecke": 700000,
+         "textur": 2048, "normalen": true, "standard": true},
+        {"id": "leicht", "name": "Leicht fürs Web (150.000 Dreiecke, 1K-Textur)", "aufloesung": 1024, "dreiecke": 150000,
+         "textur": 1024, "normalen": false}
+      ],
+      "vorschau": {"bilder": 24, "fps": 12, "groesse": 768, "hintergrund": "#FFFFFF"},
+      "bedarf_mib": {"fest": 14336},
+      "zeit": {"fein": 200, "leicht": 60},
+      "grund": "Stufe 3t (11.10.2026, Video „I Fixed Pixal3D's Biggest Weakness“, PixelArtistry): Pixal3D (TencentARC, MIT; Comfy-Org-Dateien, SHA-256 geprüft) rechnet aus einem Drehblatt mit vier Ansichten (Qwen, Vorschlag „Drehblatt“) oder einem Bild ein texturiertes 3D-Modell (GLB). Graph und Werte nach den Comfy-Org-Vorlagen „Pixal3D: Multi Views to 3D“ und „Pixal3D & TRELLIS.2: Image to Model“ (Kernknoten, ComfyUI 0.37.0). Die Vorschau ist ein Drehteller aus RenderMesh-Bildern; die 3D-Datei liegt mit gleichem Stamm daneben. Gemessen 11.10.2026 (Anna, Drehblatt): fein 191–201 s, leicht 52 s; Spitze 12.810 MiB auf der 3090 (ComfyUI hielt davor 9.443 MiB mit Qwen); Einzelbild (Hochbeet, leicht) 114 s, Spitze 13.689 MiB bei leerem ComfyUI; Bedarf 14 GiB mit Reserve. Leicht: 6,3 MB GLB statt 40 MB, für flächige Illustrationen stimmiger (keine gebackenen Schatten)."
+    },
+    "video": {
+      "modell_name": "MiniMax-H3",
+      "modelle": {
+        "fl2va": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+        "ref2va": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        "clip": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "vae_video": "minimax_h3_video_vae_fp16.safetensors",
+        "vae_audio": "minimax_h3_audio_vae_fp32.safetensors",
+        "turbo_fl2va": "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors",
+        "turbo_ref2va": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors"
+      },
+      "geraete": {
+        "modell": "gpu:0",
+        "clip": "gpu:1",
+        "vae_video": "gpu:1",
+        "vae_audio": "gpu:1"
+      },
+      "fps": 24,
+      "turbo_bis_schritte": 8,
+      "realismus": {
+        "lora": "h3-realism-people-t2v-i2v-r2v.safetensors",
+        "staerke": 1.0,
+        "ausloeser": "r34l1sm",
+        "grund": "Stufe 3o (05.10.2026): Realism-People-LoRA von fal (Hugging Face fal/MiniMax-H3-Realism-People-LoRA, Lizenz wie MiniMax-H3, 131 MB, SHA-256 acc52960…787e geprüft), für Text, Bild und Referenz zu Video; Auslösewort r34l1sm vor dem Prompt, Stärke 1,0 laut Modellkarte. Vergleich je 2 Nummern bei 8 Schritten Turbo, gleicher Text: Nahaufnahme aus Text 2 von 2 natürlichere, matte Haut (ohne glänzend, einmal Fantasie-Schrift auf dem Oberteil); Referenzvideo 2 von 2 die Frau aus dem Porträt besser zu erkennen; Porträt als Startbild kein Unterschied; leerer Raum ohne Personen 2 von 2 schlechter (Kabel von der Decke, unplausibles Gestell). Deshalb nur auf Wunsch für Videos mit Personen; Zeit gleich."
+      },
+      "dmad": {
+        "aktiv": true,
+        "lora": "dmad_minimax_h3_4step_full_critic_comfyui.safetensors",
+        "schritte": 4,
+        "sampler": "lcm",
+        "shift_video": 12.0,
+        "shift_audio": 2.0,
+        "grund": "Seit 11.10.2026: DMAD full critic (ZhengmingYu/DMAD, Lizenz MiniMax-H3-Community, 1,96 GB, SHA-256 d3ee9f59…eb1b geprüft), 4 Schritte, lcm, Verschiebung 12/2 laut Modellkarte. Vergleich 11.10.2026 (Video „I Tested the BEST MiniMax H3 Turbo LoRAs“): gegen die Studio-LoRA bei 4 und 8 Schritten, DMAD lora critic und LightX2V 4 Schritte v1.2, drei Szenen, 960×544 und 1344×768: natürlichste, matteste Haut, sauberste Bewegung (Läufer ohne auftauchende Gegenstände), halbe Zeit von 8 Schritten. Nur für neue Videos aus Text bzw. Bild mit 4 Schritten. Befunde in PLAN.md, Stufe 3s."
+      },
+      "acc8": {
+        "aktiv": true,
+        "lora": "MiniMax-H3-Ref2VA-Acc-8Step_pruned_comfy.safetensors",
+        "schritte": 8,
+        "grund": "Seit 09.10.2026: offizielle 8-Schritt-LoRA (Parallel Decoding Distillation) von alibaba-pai für MiniMax-H3 Ref2VA, ComfyUI-Fassung von Kijai (Kijai/MiniMax-H3-experimental, pruned, 1,7 GB, SHA-256 6f18e1c2…1e39 geprüft), Lizenz wie MiniMax-H3. Ersetzt bei „Video mit Referenz“ mit 8 Schritten die Turbo-LoRA v0.1 (Sampler euler); nur für neue Aufträge. Befunde in PLAN.md, Stufe 3r."
+      },
+      "schnelle_aufmerksamkeit": {
+        "aktiv": true,
+        "backend": "comfy kitchen attention",
+        "zeitfaktor": 0.6,
+        "grund": "Seit 17.10.2026 (Stufe 3u, Anlass Video „MiniMax H3 Just Got 2.6x Faster“): Kernknoten ModelAttentionBackend (INT8) wie bei Bildern, für neue MiniMax-Videos (Text, Bild, Referenz, Weiterführen, Szenenfolge; nicht Zeitlupe/Freistellen). Gemessen auf der Suprim, 960×544, 5 s, gleiche Nummer: Schnell (DMAD, 4 Schritte) 64,6 → 49,0 s, Referenz 8 Schritte 117,8 → 83,6 s, Beste (20) 245,1 → 167,0 s; Zeit je Schritt ohne Grundzeit ×0,55–0,64 (zeitfaktor 0,6); zweite Nummer gleich (49,0 / 83,2 / 167,3 s). Gleiche Nummer ohne Knoten bleibt bitgleich; mit Knoten eine leicht andere Fassung derselben Szene (gleiche Person, gleicher Raum, gleiche Worte – Whisper 5 von 6 Paaren wortgleich; Gesten oder nicht beschriebene Kleidung können abweichen), gleichwertige Qualität. Nur für neue Aufträge (Feld schnell), damit „Nochmal“ älterer Videos gleich bleibt. Abschalten: aktiv auf false."
+      },
+      "zeitlupe": {
+        "modell": "rife_v4.25.safetensors",
+        "zeit": {"grund_s": 3, "je_bild_s": 0.03},
+        "bedarf_mib": {"fest": 4096},
+        "grund": "Seit 09.10.2026: RIFE 4.25 (Comfy-Org/frame_interpolation, MIT/Apache, 23 MB, SHA-256 1505884b…9481 geprüft), Kernknoten FrameInterpolate. Ein ruhiges 5-s-Video (124 Bilder) ×2 in 10 s, Zwischenbilder ohne sichtbare Verzerrung. Der 16-Bilder/s-Trick aus dem Video „One LoRA …“ passt nicht zu MiniMax-H3 (rechnet fest 24 Bilder/s, der Ton hängt daran); RIFE dient deshalb als Zeitlupe für Videos ohne Ton."
+      },
+      "freistellen": {
+        "verfahren": "kombi",
+        "motiv": "person",
+        "sam3": "sam3.1_multiplex_fp16.safetensors",
+        "biref": "birefnet.safetensors",
+        "erweitern_px": 16,
+        "crf": 20,
+        "zeit": {"grund_s": 40, "je_bild_s": 0.15},
+        "bedarf_mib": {"fest": 8192},
+        "grund": "Seit 09.10.2026 (zurückgestellt am 05.10.2026, Auftrag Sascha 09.10.2026): Person im Video freistellen nur mit Kernknoten und vorhandenen Modellen – SAM3-Videoverfolgung wählt das Motiv, BiRefNet liefert je Bild die Kanten, WebM (VP9) mit Alpha. Test 09.10.2026 an drei Videos (ein Mann, zwei Personen, Selfie mit Haaren): kombi so weich wie BiRefNet an Haaren und Händen, SAM3 allein mit harter Kante, hellem Saum und Löchern am Bildrand; 58–71 s je Video. Befunde in PLAN.md, Stufe 3r."
+      },
+      "tauschen": {
+        "lora": "h3_character_swap_pro4500_1000.safetensors",
+        "staerke": 1.0,
+        "vorlage": "Replace only {wer} in <Video 1> with the character in <Picture 1>. Keep the replacement character's identity, outfit, and art style from <Picture 1>. Preserve the source video's camera, background, lighting, objects, and all other people. Match the target person's position, scale, pose, and movement. Do not show the reference sheet or its background.",
+        "wer_beispiel": "the woman in the mint green T-shirt on the left",
+        "grund": "Stufe 3q (06./09.10.2026): Character-Swap-LoRA von Akatz Labs (Hugging Face akatz-ai/MiniMax-H3-Character-Swap-LoRA, trainiert auf minimax_h3_ref2va_pruned_int8_convrot, Rang 16, Lizenz wie MiniMax-H3, 155 MB, SHA-256 4b2a3f42…4e79 geprüft), Prompt-Vorlage des Autors. Befunde in PLAN.md, Stufe 3q."
+      },
+      "szenen": {
+        "max_szenen": 8,
+        "ohne_schnitt": "Eine durchgehende Einstellung ohne Schnitt: Die Kamera bleibt in derselben Einstellung wie am Anfang, sie bewegt sich nur langsam mit.",
+        "grund": "Stufe 3p (05.10.2026): Szenenfolge = Szene 1 als eigener Clip, jede weitere verlängert das freigegebene Video (39 Bilder samt Ton festgehalten). Vorversuch: drei Verlängerungen hintereinander hielten das Gesicht auch ohne Referenzbild; Referenzbilder (ref2va + MiniMaxH3AddGuide) brachten keinen sichtbaren Vorteil (+12 s je Runde). In Runde 3 sprang das Modell 2 von 2 in eine neue Einstellung (Sprung 58–61 bei sonst 4–7); mit diesem Zusatz am Ende jeder Szene 2 von 2 sauber (4,8–4,9), die Handlung fand trotzdem statt."
+      },
+      "max_referenzbilder": 9,
+      "max_clips": 3,
+      "bedarf_mib": {
+        "eine_ohne_monitor": 22528,
+        "haupt": 20480,
+        "neben": 7168
+      },
+      "bedarf_grund": "gemessen 23.09.2026: H3-Video 960×544, 5 s belegt in ComfyUI ~22 GiB auf der Modellkarte (ComfyUI nutzt, was frei ist) und ~6,2 GiB auf der anderen (Text-Encoder, VAE) beim Entschlüsseln; passt nicht auf eine Karte. Auf zwei RTX 3090 (14.10.2026, 960×544, 5 s, Schnell): Spitzen 23,3 GiB auf der Modellkarte und bis 20,8 GiB auf der anderen, 74–76 s – ComfyUI wächst in den freien Platz; das Diffusionsmodell kommt deshalb nicht auf die Monitorkarte. Eine RTX 3090 allein (16.10.2026, ComfyUI 2 nur auf der Suprim, dynamisches Laden): 960×544, 5 s, 8 Schritte 118,7 s (über zwei Karten 119,5 s), 1344×768, 5 s 327,8 s (am 11.10. über zwei Karten 366–398 s), 1344×768, 10 s 1058 s; Spitze 23,8 GiB, RAM frei mindestens 26 GiB. Deshalb „eine_ohne_monitor“ 22 GiB: ein Video ganz auf einer Karte, nie auf der Monitorkarte (die FE hat mit Monitor ~21,3 GiB frei). Mit zwei ComfyUI-Prozessen rechnet Prozess 2 die Videos auf der Suprim, Prozess 1 Bilder daneben auf der FE.",
+      "zeit": {
+        "grund_s": 30,
+        "je_schritt_s": 12.4,
+        "exponent": 2.0,
+        "grund": "gemessen 27.09.2026 (Stufe 3m): Zeit = Grundzeit + Schritte × Sekunden je Schritt × (Pixel × Bilder / 960×544×124) ^ 2; festgehaltene Bilder und Schlüsselbilder zählen mit. Je Schritt: 124 + Endbild 13,8 s, 124 + 39 festgehalten 20,5 s, 175 + 39 32–34 s, 768×1344 × 124 50,7 s, 277 + 40 93 s (die 3090 ist dann voll, Modellteile werden nachgeladen). Exponent 2,0 passt allen Punkten auf ±15 % (1,7: bis −24 %). Die lineare Schätzung vorher ergab für 175 + 39 nur 197 statt 301 s. Die Werkstatt lernt je_schritt_s aus eigenen Läufen (ohne Referenz-Clips)."
+      },
+      "qualitaet": [
+        {
+          "schritte": 4,
+          "name": "Schnell",
+          "text": "am schnellsten; aus Text und Bild mit DMAD: natürlichste Haut, besonders für Personen"
+        },
+        {
+          "schritte": 6,
+          "name": "Schnell+",
+          "text": "mit Turbo, etwas mehr Details"
+        },
+        {
+          "schritte": 8,
+          "name": "Schnell beste",
+          "text": "mit Turbo, die beste der schnellen"
+        },
+        {
+          "schritte": 12,
+          "name": "Mittel",
+          "text": "ohne Turbo, kann weich wirken"
+        },
+        {
+          "schritte": 16,
+          "name": "Gut",
+          "text": "ohne Turbo, fast wie „Beste“, etwas schneller"
+        },
+        {
+          "schritte": 20,
+          "name": "Beste",
+          "text": "ohne Turbo, wie die guten Clips bisher",
+          "standard": true
+        }
+      ],
+      "formate": [
+        {
+          "id": "breit",
+          "name": "Breit 16:9 (schneller)",
+          "breite": 960,
+          "hoehe": 544,
+          "standard": true
+        },
+        {
+          "id": "breit_nativ",
+          "name": "Breit 16:9 (höchste Auflösung)",
+          "breite": 1344,
+          "hoehe": 768,
+          "hinweis": "deutlich langsamer"
+        },
+        {
+          "id": "hoch",
+          "name": "Hoch 9:16 (schneller)",
+          "breite": 544,
+          "hoehe": 960
+        },
+        {
+          "id": "hoch_nativ",
+          "name": "Hoch 9:16 (höchste Auflösung)",
+          "breite": 768,
+          "hoehe": 1344,
+          "hinweis": "deutlich langsamer"
+        },
+        {
+          "id": "quadrat",
+          "name": "Quadrat 1:1 (schneller)",
+          "breite": 704,
+          "hoehe": 704
+        },
+        {
+          "id": "quadrat_nativ",
+          "name": "Quadrat 1:1 (höchste Auflösung)",
+          "breite": 992,
+          "hoehe": 992,
+          "hinweis": "deutlich langsamer"
+        }
+      ],
+      "laengen": [
+        {
+          "bilder": 124,
+          "name": "etwa 5 s",
+          "standard": true
+        },
+        {
+          "bilder": 192,
+          "name": "etwa 8 s"
+        },
+        {
+          "bilder": 243,
+          "name": "etwa 10 s"
+        },
+        {
+          "bilder": 311,
+          "name": "etwa 13 s"
+        },
+        {
+          "bilder": 362,
+          "name": "etwa 15 s (so lang, wie es gut hält)"
+        }
+      ]
+    }
+  },
+  "cloud_parallel": 2,
+  "deepseek": {
+    "url": "https://api.deepseek.com",
+    "schluessel_datei": "C:\\Users\\sasch\\.dsh\\.credentials.yaml",
+    "schluessel_name": "DEEPSEEK_API_KEY",
+    "max_tokens": 65536,
+    "preise_stand": "23.09.2026 laut api-docs.deepseek.com/quick_start/pricing; $ je Million Token zur Hauptzeit",
+    "hauptzeit_utc": [
+      [
+        1,
+        4
+      ],
+      [
+        6,
+        10
+      ]
+    ],
+    "nebenzeit_faktor": 0.5,
+    "modelle": {
+      "deepseek-flash": {
+        "name": "Flash",
+        "kontext": 1000000,
+        "beschreibung": "schnell und sehr günstig",
+        "preise": {
+          "cache_treffer": 0.006,
+          "eingabe": 0.3,
+          "ausgabe": 1.2
+        }
+      },
+      "deepseek-v4-pro": {
+        "name": "V4 Pro",
+        "kontext": 1000000,
+        "beschreibung": "stärker, etwa dreimal so teuer",
+        "preise": {
+          "cache_treffer": 0.044,
+          "eingabe": 1.32,
+          "ausgabe": 3.96
+        }
+      }
+    }
+  },
+  "openrouter": {
+    "schluessel_datei": "C:\\Workstation\\00_Secrets\\OpenRouter\\api-key.txt",
+    "praefixe": []
+  },
+  "claude_modelle": [
+    {
+      "modell": "claude-fable-5-1",
+      "name": "Fable 5.1",
+      "kontext": 1000000,
+      "beschreibung": "Stärkstes Modell"
+    },
+    {
+      "modell": "claude-opus-5-5",
+      "name": "Opus 5.5",
+      "kontext": 1000000,
+      "beschreibung": "Sehr stark, schneller als Fable"
+    },
+    {
+      "modell": "claude-sonnet-5",
+      "name": "Sonnet 5",
+      "kontext": 1000000,
+      "beschreibung": "Ausgewogen"
+    },
+    {
+      "modell": "claude-haiku-4-5-20251001",
+      "name": "Haiku 4.5",
+      "kontext": 200000,
+      "beschreibung": "Schnell und günstig"
+    }
+  ],
+  "auswerter_vorschlag": [
+    {
+      "id": "codex-sol",
+      "anbieter": "codex",
+      "modell": "gpt-6-sol",
+      "stufe": "medium",
+      "name": "Codex · GPT-6-Sol · mittel"
+    },
+    {
+      "id": "codex-luna",
+      "anbieter": "codex",
+      "modell": "gpt-6-luna",
+      "stufe": "low",
+      "name": "Codex · GPT-6-Luna · niedrig"
+    },
+    {
+      "id": "claude-sonnet",
+      "anbieter": "claude",
+      "modell": "claude-sonnet-5",
+      "stufe": null,
+      "name": "Claude · Sonnet 5"
+    },
+    {
+      "id": "nemotron-frei",
+      "anbieter": "openrouter",
+      "modell": "nvidia/nemotron-3-super-120b-a12b:free",
+      "stufe": null,
+      "name": "OpenRouter · NVIDIA: Nemotron 3 Super · kostenlos"
+    },
+    {
+      "id": "deepseek-flash",
+      "anbieter": "deepseek",
+      "modell": "deepseek-flash",
+      "stufe": null,
+      "name": "DeepSeek · Flash"
+    },
+    {
+      "id": "deepseek-pro",
+      "anbieter": "deepseek",
+      "modell": "deepseek-v4-pro",
+      "stufe": null,
+      "name": "DeepSeek · V4 Pro"
+    },
+    {
+      "id": "ornith-q5",
+      "anbieter": "lokal",
+      "modell": "ornith-q5",
+      "stufe": null,
+      "name": "Lokal · Ornith 1.5 · Q5"
+    }
+  ],
+  "gpu_lab_db": "C:\\Users\\sasch\\Documents\\Codex\\2026-09-15\\ek\\outputs\\Lokale-LLM\\GPU-Lab\\data\\dashboard.sqlite3",
+  "texterkennung": {
+    "eintrag": "lightonocr",
+    "pdf_python": "C:\\Workstation\\Werkzeuge\\PDF\\venv\\Scripts\\python.exe",
+    "ausgabe_ordner": "C:\\Workstation\\Arbeitsmaterial\\Texterkennung",
+    "endungen": [".pdf", ".png", ".jpg", ".jpeg"],
+    "ordner_max_dateien": 300,
+    "kante_px": 2048,
+    "temperatur": 0.2,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "seed": 1,
+    "stapel": 4,
+    "zeitlimit_s": 600,
+    "sekunden_je_seite": 6.5,
+    "grund": "Werte laut Modellkarte LightOnOCR-3 und Test 11.10.2026 (Lokale-Wissensextraktion\\nachweise\\LightOnOCR-3-Test-2026-10-11): leerer Prompt = Transkription, PDF-Seiten mit längster Kante 2048 px, Q4_K_M etwa 6,3 s je Seite auf der RTX 3080."
+  }
+}
