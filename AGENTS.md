@@ -98,10 +98,15 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
   `Arbeitsmaterial\Texterkennung\<Name>\` (Markdown je Seite, `Volltext.md`, `lauf.json`). Echt aussehende Fehlwörter
   möglich → Stichproben. Agenten lesen über den gemeinsamen Skill `texterkennung` (`scripts\ocr.py lesen`).
   Schnittstelle in README.md, Befunde in PLAN.md, Stufe 4.
+- **Ornith über PolyStrata** (18.10.2026, Auftrag Sascha): Zentrale-Eintrag „Ornith 1.5 · PolyStrata“ (Art
+  `polystrata`, Port 8097, eine RTX 3090 nach Kartenwahl, `--gpu`), PolyStrata v0.1.45-poly.1 in
+  `C:\LLM\runtimes\PolyStrata` (Handaufbau ohne Setup, Engine-Zip SHA-256 geprüft, nutzt Strata's venv nur lesend),
+  Ornith Q4_K_M als unveränderte Ollama-Datei, 128K, Bilder. Ollama-Ornith bleibt daneben. Messung und Vergleich mit
+  llama.cpp: `Projekte\Lokale-Wissensextraktion\auswertungen\2026-10-18-polystrata.md`.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
-  nie auf der Monitorkarte (sonst geteilt, Videomodell nicht auf der Monitorkarte). Strata 0.1.44.1 (Update 14.10.2026) mit Reserve für die Monitorkarte (seit 16.10.2026 Monitor an der FE:
+  nie auf der Monitorkarte (sonst geteilt, Videomodell nicht auf der Monitorkarte). Strata 0.1.45 (Update 18.10.2026, vorher 0.1.44.1) mit Reserve für die Monitorkarte (seit 16.10.2026 Monitor an der FE:
   `--vram-reserve-mib 1800`, Suprim `--vram-reserve-later-mib 1000`; vorher Suprim 1800): 112 Token/s
   Text, 145–162 Code, Prompt 3.675 Token/s; ohne die Reserve lagert Windows aus (16–19 Token/s). Ornith Q4 läuft jetzt
   Kontext wählbar (Varianten): Ornith Q4 256K oder 32K, Strata 128K mit Bildern, 256K oder Q4 mit Bildern (UD-IQ4_XS, genauer, seit 16.10.2026; braucht feste
@@ -154,6 +159,10 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
 
 ## Arbeiten am Code
 
+- **Git** (seit 18.10.2026, Wunsch Sascha): der Ordner ist ein Repository, verbunden mit dem privaten
+  `github.com/Awardin/KI-Zentrale` (Zweig `main`). Nicht im Repository (`.gitignore`): `werkstatt\daten` (Aufträge mit
+  Prompts), `logs`, Python-Zwischendateien, `.claude`. Keine Schlüssel oder persönlichen Daten einchecken; Commits und
+  Pushes nur auf Saschas Auftrag.
 - Oberflächentexte auf Deutsch, aus Sicht der Nutzerin bzw. des Nutzers. Zustände nicht aus Technikbegriffen ableiten.
 - Tests im Ordner `KI-Zentrale`: `python -m unittest discover -s zentrale\tests` und
   `python -m unittest discover -s werkstatt\tests`

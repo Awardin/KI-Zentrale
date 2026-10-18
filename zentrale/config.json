@@ -124,6 +124,31 @@
       "ollama_optionen_grund": "Ollama 0.34 / llama.cpp: mit Standard-Stapelgröße stürzt der Modellprozess bei Eingaben ab etwa 1.000 Token sporadisch ab (CUDA illegal memory access, mmq.cu); gemessen 23.09.2026: Standard 6/12 bzw. 3/6 Abstürze, num_batch 256 0/12 bzw. 0/6."
     },
     {
+      "id": "ornith-polystrata",
+      "art": "polystrata",
+      "gruppe": "Sprachmodelle",
+      "name": "Ornith 1.5 · PolyStrata",
+      "untertitel": "Q4 (Ollama-Datei) · 128K · mit Bildern · eine RTX 3090",
+      "wofuer": "Schnellster Ornith-Weg auf einer Karte (gemessen 182 Token/s Text, 200–211 Code, auch mit Temperatur; Bild ~1 s). Die zweite Karte bleibt frei. OpenAI-API auf Port 8097. Ollama-Ornith bleibt daneben.",
+      "farbe": "#2E8B6E",
+      "python": "C:\\LLM\\runtimes\\Strata\\.venv\\Scripts\\python.exe",
+      "server_skript": "C:\\LLM\\runtimes\\PolyStrata\\serve\\server.py",
+      "engine": "C:\\LLM\\runtimes\\PolyStrata\\engine-poly\\strata-poly.exe",
+      "vision_exe": "C:\\LLM\\runtimes\\PolyStrata\\engine-poly\\strata-vision.exe",
+      "konfig": "C:\\LLM\\runtimes\\PolyStrata\\strata-ornith-q4-ollama-1gpu.json",
+      "modell": "ornith-1.5-35b-a3b-q4_k_m-ollama",
+      "port": 8097,
+      "karten": [
+        "RTX 3090"
+      ],
+      "bedarf_je_karte_mib": 23000,
+      "bedarf_grund": "18.10.2026, PolyStrata v0.1.45-poly.1 mit Ornith Q4_K_M aus Ollama (Blob aaeb640f…, unverändert), 128K, Bild-Encoder auf der Karte: 23.329 MiB auf der Suprim, alle 10.496 Experten im Grafikspeicher (18,7 GiB). Mit weniger freiem Platz rechnet PolyStrata die übrigen Experten auf der CPU (langsamer). Die Monitorkarte füllt die Zentrale nur, wenn danach 2 GiB frei bleiben – praktisch also die Suprim.",
+      "ram_bedarf_gib": 24,
+      "ram_grund": "PolyStrata liest die GGUF-Datei direkt (Dateicache ~21,7 GB); gemessen fiel der freie Arbeitsspeicher beim Laden um ~22 GiB.",
+      "startzeit_max_s": 180,
+      "eingebaut_grund": "18.10.2026, Auftrag Sascha: „bau PolyStrata mit Ornith Q4 (Ollama-Datei, eine Karte, 128K, Bilder) als zusätzliche Variante in die Zentrale ein; Ollama-Ornith bleibt daneben.“ PolyStrata liegt in C:\\LLM\\runtimes\\PolyStrata (Handaufbau ohne Setup) und nutzt die Python-Umgebung von Strata nur lesend. Messung: Projekte\\Lokale-Wissensextraktion\\auswertungen\\2026-10-18-polystrata.md."
+    },
+    {
       "id": "flash-next-strata",
       "art": "strata",
       "gruppe": "Sprachmodelle",

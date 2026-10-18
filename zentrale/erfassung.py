@@ -66,6 +66,11 @@ class Erfassung:
         self.llamacpp = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'llamacpp'}
         self._llamacpp_kennung = {i: (norm(e['programm']), f"--port {e['port']}", norm(e['modelldatei']))
                                   for i, e in self.llamacpp.items()}
+        # PolyStrata (18.10.2026): Strata-artiger Server mit eigener Engine auf einer Karte; erkannt an Engine- und
+        # Bildprogramm im PolyStrata-Ordner bzw. an Server-Skript und Port in der Kommandozeile von Python.
+        self.polystrata = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'polystrata'}
+        self._polystrata_kennung = {i: (norm(e['server_skript']), f"--port {e['port']}", norm(e['engine']),
+                                        norm(e['vision_exe'])) for i, e in self.polystrata.items()}
         self.ollama_tags = {e['tag']: e for e in cfg['eintraege'] if e['art'] == 'ollama'}
         self.ninfer_exe = norm(self.ninfer['programm'])
         self.ninfer_port_arg = f"--port {self.ninfer['port']}"
@@ -140,6 +145,24 @@ class Erfassung:
                 return eid
         return None
 
+    def ist_polystrata(self, pid, procs):
+        """-> ID des PolyStrata-Eintrags, zu dem der Prozess gehört, sonst None."""
+        if not self.polystrata or pid not in procs:
+            return None
+        name = procs[pid][1].lower()
+        if name not in ('strata-poly.exe', 'strata-vision.exe', 'python.exe', 'pythonw.exe'):
+            return None
+        i = self.info(pid, procs[pid][1])
+        cmd = i['cmd'].replace('"', '')
+        for eid, (skript, port_arg, engine, vision) in self._polystrata_kennung.items():
+            if name == 'strata-poly.exe' and i['pfad'] == engine:
+                return eid
+            if name == 'strata-vision.exe' and i['pfad'] == vision:
+                return eid
+            if name in ('python.exe', 'pythonw.exe') and skript in cmd and port_arg in cmd:
+                return eid
+        return None
+
     def gehoert_zu_comfy(self, pid, procs, skript=None):
         """ComfyUI ('main.py') oder 2Wild ('server.py'), gestartet mit Pythons aus dem ComfyUI-Ordner."""
         kette = self._vorfahren(pid, procs, tiefe=1)
@@ -182,6 +205,9 @@ class Erfassung:
         eid = self.ist_llamacpp(pid, procs)
         if eid:
             return 'llamacpp:' + eid, self.llamacpp[eid]['name']
+        eid = self.ist_polystrata(pid, procs)
+        if eid:
+            return 'polystrata:' + eid, self.polystrata[eid]['name']
         if self.ist_ollama(pid, procs):
             return 'ollama', 'Ollama'
         if self.gehoert_zu_comfy(pid, procs):
@@ -294,6 +320,25 @@ class Erfassung:
             elif s['pids']:
                 s['zustand'] = 'startet'
             d[eid] = s
+        # PolyStrata: /health meldet „loaded“, Kontext und Modell wie bei Strata.
+        for eid, e in self.polystrata.items():
+            s = {'zustand': 'aus', 'pids': [p for p in procs if self.ist_polystrata(p, procs) == eid], 'fremd': None,
+                 'kontext': None, 'modell': None}
+            pid = lausch.get(e['port'])
+            if pid is not None:
+                if self.ist_polystrata(pid, procs) == eid:
+                    s['zustand'] = 'startet'
+                    try:
+                        h = http_json(f"http://127.0.0.1:{e['port']}/health", timeout=1.0) or {}
+                        if h.get('loaded'):
+                            s.update(zustand='bereit', kontext=h.get('max_context'), modell=h.get('model'))
+                    except Exception:
+                        pass
+                else:
+                    s.update(zustand='fremd', fremd=freundlich(procs.get(pid, (0, ''))[1]))
+            elif s['pids']:
+                s['zustand'] = 'startet'
+            d[eid] = s
         # ComfyUI (zwei Prozesse seit Stufe 8) und 2Wild
         c = self.comfy
 
@@ -363,6 +408,11 @@ class Erfassung:
             if 'llamacpp:' + eid in gruppen:
                 out.append({'eintrag': eid, 'schluessel': 'llamacpp:' + eid, 'name': e['name'], 'farbe': e['farbe'],
                             'mib_je_karte': gruppen['llamacpp:' + eid]['mib'], 'blockiert': None,
+                            'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
+        for eid, e in self.polystrata.items():
+            if 'polystrata:' + eid in gruppen:
+                out.append({'eintrag': eid, 'schluessel': 'polystrata:' + eid, 'name': e['name'], 'farbe': e['farbe'],
+                            'mib_je_karte': gruppen['polystrata:' + eid]['mib'], 'blockiert': None,
                             'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
         if 'ollama' in gruppen:
             gesamt = sum(m['vram_mib'] for m in ollama['geladen']) or 1

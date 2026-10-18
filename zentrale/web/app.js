@@ -231,13 +231,13 @@ function knoepfeFuer(e, s, beschaeftigt) {
       : [knopf('Öffnen', () => starten(e), true)];
   }
   const out = [];
-  if ((e.art === 'comfy' && (z === 'bereit' || z === 'teilweise')) || (e.art === 'strata' && z === 'bereit')) {
+  if ((e.art === 'comfy' && (z === 'bereit' || z === 'teilweise')) || (['strata', 'polystrata'].includes(e.art) && z === 'bereit')) {
     for (const l of e.links) {
       if (z === 'bereit' || l.art === 'comfy') out.push(h('a', { class: 'knopf', href: l.url, target: '_blank', rel: 'noopener' }, l.text));
     }
   }
   if (z === 'aus' || z === 'teilweise') out.push(knopf(e.art === 'ollama' ? 'Laden' : 'Starten', () => starten(e), true));
-  if (z === 'bereit' || z === 'teilweise' || (z === 'startet' && ['ninfer', 'strata', 'llamacpp'].includes(e.art))) {
+  if (z === 'bereit' || z === 'teilweise' || (z === 'startet' && ['ninfer', 'strata', 'llamacpp', 'polystrata'].includes(e.art))) {
     out.push(knopf(e.art === 'ollama' ? 'Entladen' : 'Beenden', () => stoppen(e, s)));
   }
   return out;

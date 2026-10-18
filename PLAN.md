@@ -2172,6 +2172,41 @@ Zentrale, Hermes-Einzelanfrage mit Bild (`hermes chat --oneshot --provider strat
 beschrieben, 3 Pflanzen, 22 s. **Achtung:** Solange Strata läuft, nicht auf Ornith zurückschalten – Ollama würde
 Ornith Q5 neben Strata laden (beide Karten voll). Erst Strata in der Zentrale beenden.
 
+**Strata-Update 0.1.44.1 → 0.1.45 (18.10.2026, Sascha: „Strata würde ich auf jeden Fall mal updaten“).** Nach dem
+IQ3_S-Download einer anderen Sitzung `git pull --ff-only` (v0.1.45 = `477ac13c`), dann `setup.py --update`: neue Engine
+0,17 GB, SHA-256 gegen GitHub geprüft, alte in `engine\.previous` (`setup.py --rollback-engine`); Pakete und
+CUDA-Bibliotheken unverändert. Alle 13 `strata-*.json`, `packs\iq3_s` und `models\IQ3_S` vorher/nachher verglichen:
+unverändert. **Flash-Next IQ3_XXS 128K (Zentrale-Einstellung, Monitor an der FE):** Text 106–116, Code 142–158 Token/s,
+70.595 Token mit 3.863 Token/s, Bild 1,8 s richtig – gleich oder besser als vorher (92–97 / 122–147 / 3.609).
+**Ornith Q5 über den `qwen35moe`-Weg** liest jetzt Bilder (Ollama-Projektor, 1,9 s richtig), schreibt bei fester
+Wortwahl aber langsamer als mit 0.1.44.1 (113–129 statt 123–164 Token/s), mit Temperatur etwas schneller (Schulter-Test
+105–109 statt 95–100). Q4 geht dort weiter nicht. Vergleich mit PolyStrata und llama.cpp:
+`Projekte\Lokale-Wissensextraktion\auswertungen\2026-10-18-polystrata.md`.
+
+## Ornith über PolyStrata in der Zentrale (18.10.2026)
+
+Auftrag Sascha: „bau PolyStrata mit Ornith Q4 (Ollama-Datei, eine Karte, 128K, Bilder) als zusätzliche Variante in
+die Zentrale ein; Ollama-Ornith bleibt daneben.“ Anlass: Messung desselben Tages (PolyStrata auf einer 3090 182 Token/s
+Text, 200–211 Code, auch mit Temperatur; Bild 1,1 s; llama.cpp auf zwei Karten 138–172; Ollama Q5 116–154).
+
+- **Eigener Eintrag statt Variante von „Ornith 1.5 · Q4“:** Varianten teilen in der Zentrale die Art (Ollama-Optionen
+  bzw. Strata-Einstellung); PolyStrata ist ein eigener Server. Neuer Eintrag `ornith-polystrata`, Art `polystrata`.
+- **Kartenwahl wie LightOnOCR** (`karten` + `bedarf_je_karte_mib` 23.000): die engste passende Karte, die Monitorkarte
+  nur mit 2 GiB Rest – praktisch die Suprim. Die Karte geht als `--gpu <n>` an PolyStratas Server (nvidia-smi-Zählung).
+- **Start wie Strata:** `python server.py --engine strata --config strata-ornith-q4-ollama-1gpu.json --port 8097 --gpu n`
+  mit Strata's venv (gleiche Pakete und CUDA-13-Bibliotheken, nur gelesen), RAM-Prüfung 24 GiB, bereit bei `/health`
+  `loaded`. Beenden: erst `strata-poly.exe`, dann `strata-vision.exe`, dann Python – nur Prozesse mit PolyStrata-Pfad
+  bzw. Server-Skript und Port 8097 (`erfassung.ist_polystrata`); Strata wird davon nicht berührt (Test).
+- Anzeige: „Kontext 131.072 · Port 8097 · RTX 3090“, Link „Chat öffnen“, „GPU freigeben“ bietet „beenden“ an.
+- Tests: Zentrale 127 (11 neu in `tests/test_polystrata.py`), Werkstatt 214 grün. Die Werkstatt bietet PolyStrata
+  nicht an (sie nutzt für Zusammenfassungen nur Ollama und NInfer).
+- **Live geprüft (18.10.2026, 14:56):** Zentrale neu gestartet (nur der Prozess auf 3894 mit `zentrale\server.py`),
+  Plan wählt „RTX 3090 Suprim“ ohne Freigabe-Schritte; bereit nach 26 s, Anzeige „Kontext 131.072 · Port 8097 ·
+  RTX 3090 Suprim“, Belegungsleiste ordnet 23,3 GiB „Ornith 1.5 · PolyStrata“ zu. Probe über Port 8097: Text
+  178–180 Token/s, Code 199–200, Bild 0,6 s (3 Pflanzen, richtig). Beenden über die Zentrale: Port frei, keine
+  PolyStrata-Prozesse mehr. (Ein gleichzeitiger ComfyUI-Start aus der Werkstatt ließ „Beenden“ kurz warten – die
+  Zentrale nimmt immer nur eine Aktion an.)
+
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
 Alle Läufe mit denselben Proben (`llm_test.py`: kurz, 2× Text à 400, 2× Code à 600 Token, langer Prompt ≈ 70.600 Token);

@@ -53,6 +53,8 @@ class Aktionen:
         e = planung.variante(self.eintraege[eintrag_id], variante)
         if e['art'] == 'llamacpp':
             return self._llamacpp_starten(e, karte)
+        if e['art'] == 'polystrata':
+            return self._polystrata_starten(e, karte)
         if e['art'] == 'ninfer':
             return self._ninfer_starten(e, karte)
         return {'ollama': self._ollama_laden,
@@ -67,6 +69,8 @@ class Aktionen:
             return self._strata_stoppen(e)
         if e['art'] == 'llamacpp':
             return self._llamacpp_stoppen(e)
+        if e['art'] == 'polystrata':
+            return self._polystrata_stoppen(e)
         if e['art'] == 'ollama':
             return self._ollama_entladen(e['tag'], e['name'])
         if e['art'] == 'comfy':
@@ -83,6 +87,8 @@ class Aktionen:
             return self._strata_stoppen(self.erf.strata)
         if art == 'beenden' and ziel in self.erf.llamacpp:
             return self._llamacpp_stoppen(self.erf.llamacpp[ziel])
+        if art == 'beenden' and ziel in self.erf.polystrata:
+            return self._polystrata_stoppen(self.erf.polystrata[ziel])
         if art == 'entladen':
             e = self.erf.ollama_tags.get(ziel)
             return self._ollama_entladen(ziel, e['name'] if e else ziel)
@@ -218,6 +224,77 @@ class Aktionen:
                     not any(self.erf.ist_strata(p, procs) for p in procs))
         if not _warten(frei, 15, 0.5):
             raise Fehler(f"Strata ist nach dem Beenden noch nicht aus (Port {e['port']} oder Prozesse noch vorhanden).")
+        return f"{e['name']} beendet."
+
+    # ------------------------------------------------------------ PolyStrata (Ornith auf einer Karte)
+
+    def _polystrata_starten(self, e, karte=None):
+        """PolyStratas Server (Strata-artig) mit seiner Einstellung; die Zentrale wählt die Karte (`--gpu`)."""
+        if karte is None:
+            raise Fehler(f"Keine Karte für {e['name']} gewählt.")
+        s = self.erf.messen()['dienste'][e['id']]
+        if s['zustand'] == 'bereit':
+            return f"{e['name']} läuft bereits."
+        if s['zustand'] == 'fremd':
+            raise Fehler(f"Port {e['port']} ist von {s['fremd']} belegt. {e['name']} wurde nicht gestartet.")
+        for pfad in (e['python'], e['server_skript'], e['engine'], e['vision_exe'], e['konfig']):
+            if not os.path.exists(pfad):
+                raise Fehler(f'Datei fehlt: {pfad}')
+        prozess = None
+        beginn = time.time()
+        if s['zustand'] != 'startet':
+            frei = winapi.freier_arbeitsspeicher_mib() / 1024
+            bedarf = e['ram_bedarf_gib']
+            if frei < bedarf:
+                frei_text = f'{frei:.1f}'.replace('.', ',')
+                bedarf_text = f'{bedarf:.1f}'.replace('.', ',')
+                raise Fehler(f"Zu wenig freier Arbeitsspeicher: {frei_text} GiB frei, {e['name']} braucht etwa "
+                             f"{bedarf_text} GiB. Bitte große Programme schließen.")
+            env = dict(os.environ, PYTHONIOENCODING='utf-8')
+            prozess = winapi.starte_losgeloest(
+                [e['python'], e['server_skript'], '--engine', 'strata', '--config', e['konfig'],
+                 '--port', str(e['port']), '--gpu', str(karte)],
+                os.path.dirname(os.path.dirname(e['server_skript'])), env, log_basis=os.path.join(self.logs, e['id']))
+            self.log(f"{e['name']} gestartet auf Karte {karte} ({os.path.basename(e['konfig'])}), PID {prozess.pid}, "
+                     f"Port {e['port']}")
+        url = f"http://127.0.0.1:{e['port']}/health"
+        frist = time.time() + e.get('startzeit_max_s', 180)
+        while time.time() < frist:
+            if prozess is not None and prozess.poll() is not None:
+                grund = _letzte_meldung(os.path.join(self.logs, e['id'] + '.out.log'))
+                raise Fehler(f"{e['name']} hat sich beim Start beendet. {grund}".strip())
+            try:
+                h = http_json(url, timeout=1.0) or {}
+                if h.get('loaded'):
+                    kontext = f"{h['max_context']:,}".replace(',', '.')
+                    return f"{e['name']} ist bereit ({round(time.time() - beginn)} s, Kontext {kontext})."
+            except Exception:
+                pass
+            time.sleep(1)
+        raise Fehler(f"{e['name']} antwortet nach {e.get('startzeit_max_s', 180)} s nicht.")
+
+    def _polystrata_stoppen(self, e):
+        procs = self.erf.messen()['procs']
+        ziele = [p for p in procs if self.erf.ist_polystrata(p, procs) == e['id']]
+        if not ziele:
+            return f"{e['name']} lief nicht."
+        engine, vision = norm(e['engine']), norm(e['vision_exe'])
+
+        # Erst die Engine, dann der Bildprozess, dann Python-Dienst und Starter.
+        def reihenfolge(pid):
+            pfad = self.erf.info(pid, procs[pid][1])['pfad']
+            return 0 if pfad == engine else 1 if pfad == vision else 2
+        ziele.sort(key=reihenfolge)
+        for pid in ziele:
+            winapi.beenden(pid)
+            self.log(f"{e['name']} beendet, PID {pid}")
+
+        def frei():
+            procs = winapi.prozesse()
+            return (e['port'] not in {p for _, p, _ in winapi.lauschende_ports()} and
+                    not any(self.erf.ist_polystrata(p, procs) == e['id'] for p in procs))
+        if not _warten(frei, 15, 0.5):
+            raise Fehler(f"{e['name']} ist nach dem Beenden noch nicht aus (Port {e['port']} oder Prozesse noch vorhanden).")
         return f"{e['name']} beendet."
 
     # ------------------------------------------------------------ llama.cpp (z. B. LightOnOCR)

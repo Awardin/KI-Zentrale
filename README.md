@@ -40,10 +40,16 @@ nur ein weiteres Fenster, keinen zweiten Dienst.
   (Port 8096, etwa 4,4 GiB, bereit nach wenigen Sekunden). Ihn nutzt die Werkstatt im Reiter „Texterkennung“.
   Die Karte wählt die Zentrale (Abschnitt „Kartenwahl“); die Anzeige nennt die gemessene Karte. Für Strata
   (braucht beide Karten) muss er weichen; der Startdialog bietet das an.
+- **Ornith über PolyStrata** (seit 18.10.2026): „Ornith 1.5 · PolyStrata“ startet PolyStratas Server
+  (`C:\LLM\runtimes\PolyStrata`, Engine `strata-poly`) mit der unveränderten Ollama-Datei Ornith Q4_K_M auf **einer**
+  RTX 3090, 128K Kontext, mit Bildern; OpenAI-API auf Port 8097, „Chat öffnen“ wie bei Strata. Gemessen 182 Token/s
+  Text, 200–211 Code (auch mit Temperatur), Bild ~1 s, etwa 23 GiB. Die Karte wählt die Zentrale (praktisch die
+  Suprim, weil die FE den Monitor trägt) und übergibt sie mit `--gpu`; der Server läuft mit Strata's Python-Umgebung
+  (nur gelesen). Die Ollama-Einträge Ornith Q4/Q5 bleiben daneben; nicht beide gleichzeitig laden, wenn der Platz fehlt.
 
 ### Kartenwahl (seit 14.10.2026)
 
-- **Eine beliebige Karte** (`karten` + `bedarf_je_karte_mib`): NInfer, LightOnOCR und ComfyUI. Passt es ohne
+- **Eine beliebige Karte** (`karten` + `bedarf_je_karte_mib`): NInfer, LightOnOCR, Ornith über PolyStrata und ComfyUI. Passt es ohne
   Freigabe auf mehrere Karten, nimmt die Zentrale die engste – kleine Modelle teilen sich eine Karte, die andere
   bleibt für große frei. Die Monitorkarte (nvidia-smi `display_attached`) füllt sie nur so weit, dass dort noch
   `monitor_puffer_mib` (2 GiB) für Windows frei bleiben, solange die andere Karte reicht. Passt es nirgends, schlägt
@@ -271,7 +277,8 @@ Ablage ins Wissen, Auswertung mit Bildern und OCR bleiben bei den Agenten (Skill
 | Qwen3.8 27B · NInfer, 128K | eigener Server, Port 8080, eine RTX 3090 | 21,8 GiB (14.10.2026: auf der FE, 22.286 MiB) |
 | Ornith 1.5 Q5, 128K | Ollama `ornith-q5-128k:latest`, verteilt | 14.10.2026: 14.633 (FE) + 12.787 MiB (Suprim) |
 | Ornith 1.5 Q4 | Ollama `ornith-1.5:35b`, verteilt | 14.10.2026: 14.051 + 12.411 MiB bei 256K Kontext (Ollama wählt ihn nach dem Grafikspeicher; mit 3090 + 3080 waren es 32K, 13,0 + 9,4 GiB) |
-| Qwen3.8 Flash-Next · Strata, IQ3_XXS, 128K, Bilder | eigener Server, Port 8095, beide Karten | Strata 0.1.44.1 (14.10.2026): 23.382 (FE) + 22.324 MiB (Suprim, 1 GiB Luft für Windows), 84 % der Experten auf den Karten, 112–113 Token/s Text, 145–162 Code, Prompt 3.675 Token/s; Bedarf 23.400 + 22.000 MiB (vorher mit 3080: 23.359 + 19.299 MiB) |
+| Qwen3.8 Flash-Next · Strata, IQ3_XXS, 128K, Bilder | eigener Server, Port 8095, beide Karten | Strata 0.1.45 (seit 18.10.2026; Monitor an der FE: 106–116 Token/s Text, 142–158 Code, 70K 3.863 Token/s). Strata 0.1.44.1 (14.10.2026): 23.382 (FE) + 22.324 MiB (Suprim, 1 GiB Luft für Windows), 84 % der Experten auf den Karten, 112–113 Token/s Text, 145–162 Code, Prompt 3.675 Token/s; Bedarf 23.400 + 22.000 MiB (vorher mit 3080: 23.359 + 19.299 MiB) |
+| Ornith 1.5 · PolyStrata (Q4_K_M aus Ollama, 128K, Bilder) | PolyStrata 0.1.45-poly.1 (`strata-poly`), Port 8097, eine RTX 3090 | 18.10.2026: 23.329 MiB auf der Suprim, alle Experten auf der Karte, 182 Token/s Text, 200–211 Code, 70K-Prompt 2.393 Token/s; Bedarf 23.000 MiB, RAM-Prüfung 24 GiB |
 | LightOnOCR-3 · Texterkennung (4B, Q4_K_M, Bilder) | llama.cpp b10754, Port 8096, eine RTX 3090 | 4.311–4.535 MiB, gemessen 11.10.2026 (14.10.2026: 4.350 MiB auf der Suprim); Bedarf 4.700 MiB |
 | ComfyUI (Bild & Video; 2Wild stillgelegt) | Port 8188, Ausgabe nach `Arbeitsmaterial\Studio` | im Leerlauf 0,4 GiB, nach einem Qwen-Bild 14,5 GiB |
 | DSH Desktop | Programm | keine nennenswerte |

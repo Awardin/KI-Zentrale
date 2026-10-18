@@ -140,6 +140,18 @@ class Zentrale:
                     detail = f"Port {e['port']}" + (f' · {karte}' if karte else '')
                 elif zustand == 'fremd':
                     detail = f"Port {e['port']} ist von {s['fremd']} belegt."
+            elif e['art'] == 'polystrata':
+                s = d[e['id']]
+                zustand = s['zustand']
+                if zustand == 'bereit':
+                    karte = self._karte_von(roh, 'polystrata:' + e['id'])
+                    teile = [f"Kontext {s['kontext']:,}".replace(',', '.')] if s.get('kontext') else []
+                    teile.append(f"Port {e['port']}")
+                    if karte:
+                        teile.append(karte)
+                    detail = ' · '.join(teile)
+                elif zustand == 'fremd':
+                    detail = f"Port {e['port']} ist von {s['fremd']} belegt."
             elif e['art'] == 'ollama':
                 m = next((m for m in roh['ollama']['geladen'] if m['tag'] == e['tag']), None)
                 if not roh['ollama']['erreichbar']:
@@ -182,7 +194,7 @@ class Zentrale:
             z[e['id']] = {'zustand': self.laufend.get(e['id'], zustand), 'detail': detail,
                           'auftrag': e['art'] == 'comfy' and (d['comfy']['auftraege_laufend']
                                                               + (d.get('comfy2') or {}).get('auftraege_laufend', 0)) > 0}
-            if e['art'] in ('llamacpp', 'ninfer'):
+            if e['art'] in ('llamacpp', 'ninfer', 'polystrata'):
                 z[e['id']]['karte'] = karte
         return z
 
@@ -369,7 +381,7 @@ class Zentrale:
                                                          (self.erf.ollama_tags.get(ziel) or {}).get('id'))
             if ziel == 'strata':
                 eintrag = self.erf.strata['id'] if self.erf.strata else None
-            elif ziel in self.erf.llamacpp:
+            elif ziel in self.erf.llamacpp or ziel in self.erf.polystrata:
                 eintrag = ziel
             if eintrag:
                 self.laufend[eintrag] = 'stoppt'
@@ -449,8 +461,8 @@ class Zentrale:
                                   for v in e['varianten']]
             if e['art'] == 'comfy':
                 x['links'] = [{'art': 'comfy', 'text': 'ComfyUI öffnen', 'url': f"http://127.0.0.1:{e['comfy_port']}/"}]
-            elif e['art'] == 'strata':
-                x['links'] = [{'art': 'strata', 'text': 'Chat öffnen', 'url': f"http://127.0.0.1:{e['port']}/"}]
+            elif e['art'] in ('strata', 'polystrata'):
+                x['links'] = [{'art': e['art'], 'text': 'Chat öffnen', 'url': f"http://127.0.0.1:{e['port']}/"}]
             eintraege.append(x)
         return {'eintraege': eintraege, 'reserve_mib': self.cfg['reserve_mib'],
                 'karten_namen': {i: c.get('kurz') for i, c in self.cfg.get('karten', {}).items()},
