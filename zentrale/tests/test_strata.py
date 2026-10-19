@@ -217,11 +217,20 @@ class Strata(unittest.TestCase):
         self.assertIn('Kontext 131.072', meldung)
         args, kwargs = self.starte_losgeloest.call_args
         self.assertEqual(args[0], [self.e['python'], self.e['server_skript'], '--engine', 'strata',
-                                  '--config', self.e['konfig'], '--port', '8095'])
+                                  '--config', self.e['konfig'], '--port', '8095', '--fit-max-tokens'])
         self.assertEqual(args[1], r'C:\LLM\runtimes\Strata')
         self.assertEqual(args[2]['PYTHONIOENCODING'], 'utf-8')
         self.assertEqual(kwargs['log_basis'], os.path.join('logs', 'strata'))
         self.antwort.assert_called_with('http://127.0.0.1:8095/health', timeout=1.0)
+
+    def test_ohne_fit_max_tokens_kein_schalter(self):
+        # Der Schalter kommt nur aus dem Eintrag (18.10.2026: Antwortlänge kürzen statt mit 400 ablehnen).
+        self.e['fit_max_tokens'] = False
+        self.starte_losgeloest.return_value = Mock(pid=30, poll=Mock(return_value=None))
+        self.antwort.return_value = {'loaded': True, 'max_context': 131072}
+        with patch('zentrale.aktionen.time.sleep'):
+            self.akt.starten(self.e['id'])
+        self.assertNotIn('--fit-max-tokens', self.starte_losgeloest.call_args[0][0])
 
     def test_bereits_startender_prozess_wird_nicht_doppelt_gestartet(self):
         self.erf.messen.return_value['dienste']['strata']['zustand'] = 'startet'

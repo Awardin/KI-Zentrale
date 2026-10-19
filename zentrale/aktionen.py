@@ -185,7 +185,8 @@ class Aktionen:
             env = dict(os.environ, PYTHONIOENCODING='utf-8')
             prozess = winapi.starte_losgeloest(
                 [e['python'], e['server_skript'], '--engine', 'strata', '--config', e['konfig'],
-                 '--port', str(e['port'])], os.path.dirname(os.path.dirname(e['server_skript'])),
+                 '--port', str(e['port'])] + (['--fit-max-tokens'] if e.get('fit_max_tokens') else []),
+                os.path.dirname(os.path.dirname(e['server_skript'])),
                 env, log_basis=os.path.join(self.logs, 'strata'))
             self.log(f'Strata gestartet ({os.path.basename(e["konfig"])}), PID {prozess.pid}, Port {e["port"]}')
         url = f"http://127.0.0.1:{e['port']}/health"
@@ -253,7 +254,7 @@ class Aktionen:
             env = dict(os.environ, PYTHONIOENCODING='utf-8')
             prozess = winapi.starte_losgeloest(
                 [e['python'], e['server_skript'], '--engine', 'strata', '--config', e['konfig'],
-                 '--port', str(e['port']), '--gpu', str(karte)],
+                 '--port', str(e['port']), '--gpu', str(karte)] + (['--fit-max-tokens'] if e.get('fit_max_tokens') else []),
                 os.path.dirname(os.path.dirname(e['server_skript'])), env, log_basis=os.path.join(self.logs, e['id']))
             self.log(f"{e['name']} gestartet auf Karte {karte} ({os.path.basename(e['konfig'])}), PID {prozess.pid}, "
                      f"Port {e['port']}")

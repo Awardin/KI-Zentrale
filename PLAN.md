@@ -2207,6 +2207,53 @@ Text, 200–211 Code, auch mit Temperatur; Bild 1,1 s; llama.cpp auf zwei Karten
   PolyStrata-Prozesse mehr. (Ein gleichzeitiger ComfyUI-Start aus der Werkstatt ließ „Beenden“ kurz warten – die
   Zentrale nimmt immer nur eine Aktion an.)
 
+## Strata mit `--fit-max-tokens` (18.10.2026)
+
+Auftrag Sascha nach dem Pac-Man-Test über DSH („Antwortgrenze 65536 … Zentrale mit --fit-max-tokens“). Anlass: DSH schickt
+bei jeder Anfrage die volle Antwortgrenze als `max_tokens` und kürzt sie nicht selbst; Strata lehnt dann mit 400 ab, sobald
+Verlauf + `max_tokens` über den Kontext gehen (Q4 brach bei 66.103 + 65.536 > 131.072 ab). Akte:
+`Projekte\Lokale-Wissensextraktion\README.md` (Nächste Versuche, 18.10.).
+
+- Eintrag `flash-next-strata`: `"fit_max_tokens": true` (mit `fit_max_tokens_grund`); die Zentrale hängt dann beim Start
+  `--fit-max-tokens` an (alle drei Varianten 128K, 256K, Q4). Strata kürzt `max_tokens` auf den Restplatz statt 400.
+  Gilt für DSH, Hermes und Werkstatt gleich. Stratas Einstellungsdateien bleiben unverändert.
+- Tests: Zentrale 128 grün (Startbefehl mit Schalter; neu: ohne Eintrag kein Schalter).
+- **Live geprüft (18.10.2026):** Zentrale neu gestartet, Strata über die Zentrale gestartet – Kommandozeile endet auf
+  `--port 8095 --fit-max-tokens`; Anfrage mit `max_tokens` 140.000 (mehr als der Kontext) → HTTP 200 statt 400. Danach
+  über die Zentrale gestoppt.
+- Daneben in DSH Desktop (`~\.dsh\settings.yaml`, nicht Teil der Zentrale): Antwortgrenze für „Strata – Flash-Next lokal“
+  8.192 → 65.536. Verdichtung ab 50 % war gewünscht, geht in DSH Desktop 0.1.5 aber nicht sauber (steckt in den
+  mitgelieferten Agent-Voreinstellungen; eigene Überschreibung ersetzt deren ganze Liste und zöge Updates nicht mit) –
+  bleibt bei 80 % (~104.900 Token); danach kürzt Strata lange Antworten auf den Rest.
+
+## Ornith Q6 mit 256K auf beiden Karten; DSH über Ornith (19.10.2026)
+
+Auftrag Sascha: „in der Modellzentrale die Möglichkeit einrichten, Ornith auf 1 Karte zu starten als auch mit Q6 auf
+beiden Karten, Kontextfenster bei Q6 auf 256K“ und „DSH über Ornith steuern können, Einstellungen wie für Strata“.
+
+- **Eine Karte** gab es schon: „Ornith 1.5 · PolyStrata“ (Q4, 128K, Bilder, Kartenwahl). Dazu startet PolyStrata jetzt
+  wie Strata mit `--fit-max-tokens` (`fit_max_tokens` im Eintrag; derselbe Schalter im Startcode der Art `polystrata`).
+- **Neuer Eintrag „Ornith 1.5 · Q6“** (`ornith-q6`, Art `ollama`): Ollama-Fassung `ornith-q6-256k:latest`, angelegt mit
+  `ollama create` (über `/api/create`) aus den vorhandenen Q6_K-Gewichten `hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q6_K`
+  (30,1 GB, gleiche Datei, nichts kopiert) mit `num_ctx 262144` und `num_batch 256` im Modelfile – wie bei
+  `ornith-q5-128k`, damit DSH und Hermes über `/v1` (ohne Optionen) nicht mit anderem Kontext neu laden. Bedarf 33.500 MiB
+  gesamt, Ollama verteilt auf beide Karten. Für den Webdesign-Test entstand außerdem `ornith-q6-128k:latest` (128K,
+  gleiche Gewichte); bleibt vorerst, kann bei Bedarf weg (nur die Fassung, die Gewichte bleiben).
+- Tests: Zentrale 128 grün (PolyStrata-Startbefehl mit Schalter).
+- **Live geprüft (19.10.2026):** Zentrale neu gestartet; Q6 über die Zentrale geladen: bereit nach 9 s, `/api/ps` zeigt
+  Kontext 262.144, 31,2 GiB ganz im Grafikspeicher (18.742 MiB FE inkl. ~1,1 GiB Windows, 15.644 MiB Suprim). Eine
+  `/v1`-Anfrage wie von DSH lädt nicht neu (gleiche Kennung, Kontext unverändert, bleibt dauerhaft geladen), 121 Token/s.
+  Entladen über die Zentrale: Karten frei. PolyStrata über die Zentrale gestartet: Kommandozeile endet auf
+  `--gpu 1 --fit-max-tokens`, Anfrage mit `max_tokens` 200.000 → 200 statt 400; gestoppt.
+- **DSH Desktop** (`~\.dsh\settings.yaml`, nicht Teil der Zentrale): neue Anbieter „Ornith – Ollama lokal“
+  (`ornith-q6-256k:latest`, Kontext 262.144, Antwortgrenze 49.152 – Ollama kürzt nicht selbst, DSH Desktop fasst bei 80 %
+  ≈ 209.700 zusammen) und „Ornith – PolyStrata (eine Karte)“ (Port 8097, 131.072, Antwortgrenze 65.536 dank
+  `--fit-max-tokens`). Q4 über Ollama bewusst nicht: Dessen Kontext legt erst die Zentrale beim Laden fest, eine
+  DSH-Anfrage würde neu laden. Als Schlüssel nutzen beide den vorhandenen Platzhalter `STRATA_LOCAL_API_KEY`
+  (Ollama/PolyStrata prüfen keinen); die Zugangsdatei von DSH blieb unberührt.
+- Befund aus dem Webdesign-Test: Ornith arbeitet über DSH als Agent schlecht (viele fehlgeschlagene Werkzeugaufrufe,
+  keine fertige Seite) – für Agentenarbeit Flash-Next nehmen (Akte Lokale-Wissensextraktion, 19.10.).
+
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
 Alle Läufe mit denselben Proben (`llm_test.py`: kurz, 2× Text à 400, 2× Code à 600 Token, langer Prompt ≈ 70.600 Token);

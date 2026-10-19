@@ -10,7 +10,8 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
 
 - **Modellzentrale** (`zentrale\`, Port 3894): fertig und abgenommen am 23.09.2026. Seit 05.10.2026 mit Eintrag
   „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, IQ3_XXS 128K auf beiden Karten, RAM-Prüfung 42 GiB;
-  [SPEC-strata.md](SPEC-strata.md), Abnahme in PLAN.md).
+  [SPEC-strata.md](SPEC-strata.md), Abnahme in PLAN.md). Seit 18.10.2026 startet Strata mit `--fit-max-tokens`
+  (`fit_max_tokens` im Eintrag): zu große `max_tokens` werden auf den Restplatz gekürzt statt mit 400 abgelehnt (DSH).
 - **Werkstatt** (`werkstatt\`, Port 3895): fertig und abgenommen am 23.09.2026 – Transkription,
   Zusammenfassung, Studio (Bilder, Videos, Bibliothek), Messungen. Claude ist angemeldet, DeepSeek direkt
   angebunden (Schlüssel wird aus DSH Desktop gelesen), OpenRouter nur für kostenlose Modelle. Ornith hat
@@ -102,7 +103,12 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
   `polystrata`, Port 8097, eine RTX 3090 nach Kartenwahl, `--gpu`), PolyStrata v0.1.45-poly.1 in
   `C:\LLM\runtimes\PolyStrata` (Handaufbau ohne Setup, Engine-Zip SHA-256 geprüft, nutzt Strata's venv nur lesend),
   Ornith Q4_K_M als unveränderte Ollama-Datei, 128K, Bilder. Ollama-Ornith bleibt daneben. Messung und Vergleich mit
-  llama.cpp: `Projekte\Lokale-Wissensextraktion\auswertungen\2026-10-18-polystrata.md`.
+  llama.cpp: `Projekte\Lokale-Wissensextraktion\auswertungen\2026-10-18-polystrata.md`. Seit 19.10.2026 mit
+  `--fit-max-tokens` wie Strata.
+- **Ornith Q6 auf beiden Karten** (19.10.2026, Auftrag Sascha): Eintrag „Ornith 1.5 · Q6“ (`ornith-q6`, Ollama-Fassung
+  `ornith-q6-256k:latest` mit num_ctx 262144 und num_batch 256 im Modelfile, Bedarf 33.500 MiB, 31,2 GiB gemessen,
+  121 Token/s). DSH Desktop kennt Ornith Q6 (Ollama) und Ornith Q4 (PolyStrata) als Anbieter. Für Agentenarbeit
+  (Webseiten bauen) Flash-Next statt Ornith nehmen – Ornith scheiterte über DSH an den Werkzeugen. PLAN.md, 19.10.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,

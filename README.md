@@ -276,6 +276,7 @@ Ablage ins Wissen, Auswertung mit Bildern und OCR bleiben bei den Agenten (Skill
 |---|---|---|
 | Qwen3.8 27B · NInfer, 128K | eigener Server, Port 8080, eine RTX 3090 | 21,8 GiB (14.10.2026: auf der FE, 22.286 MiB) |
 | Ornith 1.5 Q5, 128K | Ollama `ornith-q5-128k:latest`, verteilt | 14.10.2026: 14.633 (FE) + 12.787 MiB (Suprim) |
+| Ornith 1.5 Q6, 256K | Ollama `ornith-q6-256k:latest` (Q6_K, num_ctx und num_batch 256 im Modelfile), beide Karten | 19.10.2026: 18.742 (FE, inkl. ~1,1 GiB Windows) + 15.644 MiB (Suprim), 31,2 GiB ganz im Grafikspeicher, bereit nach 9 s, 121 Token/s; Bedarf 33.500 MiB |
 | Ornith 1.5 Q4 | Ollama `ornith-1.5:35b`, verteilt | 14.10.2026: 14.051 + 12.411 MiB bei 256K Kontext (Ollama wählt ihn nach dem Grafikspeicher; mit 3090 + 3080 waren es 32K, 13,0 + 9,4 GiB) |
 | Qwen3.8 Flash-Next · Strata, IQ3_XXS, 128K, Bilder | eigener Server, Port 8095, beide Karten | Strata 0.1.45 (seit 18.10.2026; Monitor an der FE: 106–116 Token/s Text, 142–158 Code, 70K 3.863 Token/s). Strata 0.1.44.1 (14.10.2026): 23.382 (FE) + 22.324 MiB (Suprim, 1 GiB Luft für Windows), 84 % der Experten auf den Karten, 112–113 Token/s Text, 145–162 Code, Prompt 3.675 Token/s; Bedarf 23.400 + 22.000 MiB (vorher mit 3080: 23.359 + 19.299 MiB) |
 | Ornith 1.5 · PolyStrata (Q4_K_M aus Ollama, 128K, Bilder) | PolyStrata 0.1.45-poly.1 (`strata-poly`), Port 8097, eine RTX 3090 | 18.10.2026: 23.329 MiB auf der Suprim, alle Experten auf der Karte, 182 Token/s Text, 200–211 Code, 70K-Prompt 2.393 Token/s; Bedarf 23.000 MiB, RAM-Prüfung 24 GiB |

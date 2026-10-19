@@ -116,7 +116,7 @@ class PolyStrata(unittest.TestCase):
                              f"{self.e['name']} ist bereit (0 s, Kontext 131.072).")
         args, kwargs = self.starte_losgeloest.call_args
         self.assertEqual(args[0], [self.e['python'], self.e['server_skript'], '--engine', 'strata', '--config',
-                                   self.e['konfig'], '--port', '8097', '--gpu', '1'])
+                                   self.e['konfig'], '--port', '8097', '--gpu', '1', '--fit-max-tokens'])
         self.assertEqual(args[1], r'C:\LLM\runtimes\PolyStrata')
         self.assertEqual(kwargs['log_basis'], os.path.join('logs', 'ornith-polystrata'))
         self.assertIn('gestartet auf Karte 1', self.log.call_args.args[0])

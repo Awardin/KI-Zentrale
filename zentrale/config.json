@@ -100,6 +100,23 @@
       "ollama_optionen_grund": "Ollama 0.34 / llama.cpp: mit Standard-Stapelgröße stürzt der Modellprozess bei Eingaben ab etwa 1.000 Token sporadisch ab (CUDA illegal memory access, mmq.cu); gemessen 23.09.2026: Standard 6/12 bzw. 3/6 Abstürze, num_batch 256 0/12 bzw. 0/6."
     },
     {
+      "id": "ornith-q6",
+      "art": "ollama",
+      "gruppe": "Sprachmodelle",
+      "name": "Ornith 1.5 · Q6",
+      "untertitel": "256K Kontext · beide Karten · genaueste Ornith-Fassung",
+      "wofuer": "Wenn Ornith möglichst genau arbeiten soll und beide Karten frei sind; in DSH und Hermes über Ollama.",
+      "farbe": "#1B6F9A",
+      "tag": "ornith-q6-256k:latest",
+      "bedarf_gesamt_mib": 33500,
+      "bedarf_grund": "19.10.2026, Auftrag Sascha („Q6 auf beiden Karten, Kontext 256K“). Ollama-Fassung ornith-q6-256k aus den vorhandenen Q6_K-Gewichten (hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q6_K, 30,1 GB, nichts kopiert) mit num_ctx 262144 und num_batch 256 im Modelfile, damit DSH und Hermes über /v1 nicht mit anderem Kontext neu laden. 30 GB passen auf keine Karte allein, Ollama verteilt auf beide. Gemessen 19.10.2026 über die Zentrale: bereit nach 9 s, Kontext 262.144, 31,2 GiB ganz im Grafikspeicher (18.742 MiB FE inkl. ~1,1 GiB Windows + 15.644 MiB Suprim), 121 Token/s; eine /v1-Anfrage (Weg von DSH) lädt nicht neu. Mit 128K waren es 28,9 GiB.",
+      "startzeit_max_s": 600,
+      "ollama_optionen": {
+        "num_batch": 256
+      },
+      "ollama_optionen_grund": "Wie Q5: ohne num_batch 256 sporadischer CUDA-Absturz bei langen Eingaben; steht zusätzlich im Modelfile."
+    },
+    {
       "id": "ornith-q4",
       "art": "ollama",
       "gruppe": "Sprachmodelle",
@@ -138,6 +155,8 @@
       "konfig": "C:\\LLM\\runtimes\\PolyStrata\\strata-ornith-q4-ollama-1gpu.json",
       "modell": "ornith-1.5-35b-a3b-q4_k_m-ollama",
       "port": 8097,
+      "fit_max_tokens": true,
+      "fit_max_tokens_grund": "19.10.2026 wie Strata: DSH schickt die volle Antwortgrenze; PolyStrata kürzt sie auf den Restplatz statt 400.",
       "karten": [
         "RTX 3090"
       ],
@@ -174,6 +193,8 @@
       ],
       "varianten_grund": "14.10.2026, Wunsch Sascha. 256K: vorhandene Einstellung (ohne --vision), geprüft 05.10.2026 auf RTX 3090 + 3080 (196.922 Token Prompt, Kennwort gefunden, 60–96 Token/s; Arbeitsspeicher während der Läufe 4–6 GiB frei, Strata empfiehlt bei 63 GB RAM 128K). Auf zwei RTX 3090 mit 0.1.44.1 geprüft (14.10.2026): bereit nach 24 s, 79 % der Experten auf den Karten, 95–106 Token/s. Q4 (16.10.2026, Wunsch Sascha): Unsloth UD-IQ4_XS (93,7 GB, seit 17.09. vorhanden) mit 32 GiB RAM-Rahmen; braucht die feste Auslagerungsdatei 64 GB (Windows zählt den Grafikspeicher zur Speicherzusage, sonst liest Strata von der SSD: 49–72 Token/s). Gemessen: bereit nach 38 s, 89–98 Token/s Text, 108–116 Code, 70K-Prompt 2.681 Token/s, RAM frei ~8 GiB; laut Strata 88,9 statt 84,5 % gleiches Wort wie Q8_0. Mit Bildteil (--vision, GPU, wie 128K) über die Zentrale, Monitor an der FE: bereit, 83–96 Token/s Text, 99–115 Code, 2.541 Token/s Einlesen, Bild 3,8 s (3 Pflanzen, richtig), RAM frei 7–8 GiB.",
       "port": 8095,
+      "fit_max_tokens": true,
+      "fit_max_tokens_grund": "18.10.2026, Auftrag Sascha nach dem Pac-Man-Test über DSH: Strata startet mit --fit-max-tokens. Passt Verlauf + verlangte Antwortlänge (max_tokens) nicht in den Kontext, kürzt Strata die Antwortlänge auf den Restplatz, statt mit 400 abzulehnen. DSH schickt immer die volle Antwortgrenze und kürzt nicht selbst (im Test brach Q4 bei 66.103 Token Verlauf + 65.536 ab); gilt ebenso für Hermes und die Werkstatt.",
       "bedarf_mib": {"0": 22000, "1": 23200},
       "bedarf_grund": "Seit 16.10.2026 hängt der Monitor an der FE (Karte 0, ~0,9–1 GiB Windows & Programme): Reserven --vram-reserve-mib 1800 (FE) und --vram-reserve-later-mib 1000 (Suprim) in allen drei Strata-Einstellungen. Gemessen 128K: 22.677 MiB auf der FE (davon ~0,85 GiB Programme) + 23.103 MiB Suprim, 92–97 Token/s Text, 122–147 Code, 70.595 Token in 19,6 s (3.609 Token/s), Bild 1,8 s; Q4: 22.735 + 22.928 MiB, 89–93 / 97–103, 2.591 Token/s. Davor (Monitor an der Suprim) 23.400 + 22.000. Bis 16.10.2026: Seit 14.10.2026 Strata 0.1.44.1 mit --vram-reserve-later-mib 1800 (Monitorkarte Suprim braucht Luft, sonst lagert Windows aus: 16–19 statt 112 Token/s). Gemessen 128K: 23.382 MiB (FE) + 22.324 MiB (Suprim, dort 1 GiB frei), 20.633 Experten auf den Karten (84 %), 112–113 Token/s Text, 145–162 Token/s Code, 70.093 Token Prompt in 19 s (3.675 Token/s), Bild 2,1 s. Mit 0.1.39 vorher: 23.380 + 23.422 MiB, 86 %, 92–95 Token/s. Strata füllt den freien Platz selbst (Experten-Zwischenspeicher); der Bedarf sorgt dafür, dass vorher beide Karten praktisch frei sind. Vorher (3090 + 3080): 23.500 + 19.400 MiB.",
       "ram_bedarf_gib": 42,
