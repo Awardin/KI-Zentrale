@@ -2254,6 +2254,76 @@ beiden Karten, Kontextfenster bei Q6 auf 256K“ und „DSH über Ornith steuern
 - Befund aus dem Webdesign-Test: Ornith arbeitet über DSH als Agent schlecht (viele fehlgeschlagene Werkzeugaufrufe,
   keine fertige Seite) – für Agentenarbeit Flash-Next nehmen (Akte Lokale-Wissensextraktion, 19.10.).
 
+## Strata 0.2.0-beta, dann v0.2.1.3 mit Engine 0.1.45.3; Monitor wieder an der Suprim (20.10.2026)
+
+Auftrag Sascha: Release v0.2.0-beta (19.10.2026) lesen und als Update der vorhandenen Installation
+`C:\LLM\runtimes\Strata` einspielen. Dabei fiel auf, dass der Monitor wieder an der **Suprim** hängt
+(`display_active` Bus 04); Sascha bestätigte: „das muss geändert werden“.
+
+- **Was 0.2.0 ist:** vor allem eine neue Verpackung – Desktop-App (Installer mit eigener Engine und Modellverwaltung),
+  „Terminal“ (`strata launch/monitor/connect/update`) und die Engine als eigenes, signiertes Paket (Ed25519-Feed, Update
+  mit Probestart). Für uns relevant ist die Engine 0.1.45.3: **RTX 30 (sm_86) bekommt neun bitgleiche Tempo-Schalter
+  standardmäßig** (`STRATA_SM86_PERF=0` schaltet ab; Protokoll: „sm_86 (Ampere): 9 exact speed switches on by default“).
+  Server: `--fit-max-tokens` ist jetzt Standard (unser Schalter bleibt gültig), neue Optionen `--parallel`, `--max-queue`
+  u. a., keine entfernt; die Engine hängt in einem Windows-Job am Server (stirbt mit ihm). `/health` unverändert.
+  „Bilder standardmäßig an“ betrifft nur neue Einrichtungen: die 256K-Einstellung ohne `vision`-Abschnitt bleibt ohne Bilder.
+  Kein neues Paket im venv (cmake/ninja nur aus der Laufzeitliste genommen), kein neues Pack, kein Requantisieren.
+- **Wichtig für künftige Updates:** Bei unserer Quellcode-Installation holt `UPDATE.bat` (`setup.py --update`) seit 0.2.0
+  **keine neue Engine** mehr (`MIN_ENGINE` bleibt 0.1.45, und die Releases haben kein `strata-windows-x64.zip` mehr). Die
+  Engine kommt aus dem Release-Paket `strata-engine-<ver>-windows-x86_64-cuda-cuda13.tar.gz`.
+- **Ablauf:** `git merge --ff-only v0.2.0-beta` (Rückweg: `477ac13c` = v0.1.45), `setup.py --update` (keine Fragen;
+  Pakete, alle 13 `strata-*.json` vorher/nachher gleich). Engine-Paket 580 MB geladen: SHA-256 = GitHub-Angabe =
+  `SHA256SUMS.txt` = signierter Feed; Feed- und Manifest-Signatur mit Stratas `strata_control/signing.py` und
+  `update_keys.json` geprüft, jede Datei gegen das Manifest. Übernommen nur `strata.exe`, `strata-vision.exe`,
+  `strata_kq.dll`, `BUILD.json`; die mitgelieferten cuBLAS-DLLs sind bitgleich mit denen im venv (`lib_dirs`). Alte
+  Engine 0.1.45 in `engine\.previous` (`setup.py --rollback-engine`, hin und zurück geprüft), die dort liegende 0.1.44.1
+  im Papierkorb. PolyStrata (eigener Server, nutzt das venv nur lesend) ist davon unberührt.
+- **Monitor an der Suprim:** wie bis 16.10. `--vram-reserve-mib 700` (FE) und `--vram-reserve-later-mib 1800` (Suprim)
+  in allen drei Einstellungen (128K, 256K, Q4; 256K hatte bis 16.10. keine eigene Erst-Reserve, jetzt 700), Bedarf
+  in der Zentrale 23.400 + 22.000 MiB. PolyStrata wählt dadurch jetzt die FE. Der neue Server warnt, auf der FE seien
+  beim Start nur ~450 MiB frei, und empfiehlt `--vram-reserve-mib 1280`; gemessen kein Auslagern (FE ohne Monitor),
+  daher nicht geändert.
+- **Gemessen über die Zentrale** (`/api/plan` + `/api/starten`, Kommandozeile endet auf `--fit-max-tokens`, `max_tokens`
+  140.000 → 200), gleiche Proben wie 16./18.10., je Lauf frisch gestartet, RAM vor dem Start 50–52 GiB frei; Skript und
+  Rohwerte: `Projekte\Lokale-Wissensextraktion\nachweise\2026-10-20-strata-020\`:
+
+| Lauf (Monitor an der Suprim) | Text (Token/s) | Code | 70K-Prompt | Bild | bereit |
+|---|---|---|---|---|---|
+| 128K, Engine 0.1.45 (Code 0.2.0) | 104–105 | 133–151 | 3.858 | 2,3 s, 3 Pflanzen | 32 s |
+| **128K, Engine 0.1.45.3**, zwei Läufe | **109–115** | 131–175 (175 bei kürzerer Antwort) | 3.846–3.877 | 2,0–2,1 s, 3 Pflanzen | 32 s |
+| Q4, Engine 0.1.45 | 72–81 | 83–98 | 2.531 | 3,2 s, 3 Pflanzen | 42 s |
+| **Q4, Engine 0.1.45.3** | **77–91** | 94–99 | 2.512 | 3,0 s, 3 Pflanzen | 45 s |
+
+  Ergebnis: Schreiben rund 5–12 % schneller, Einlesen gleich; 84 % der Experten auf den Karten, 23.361 + 23.397 MiB.
+  Gegenüber 18.10. (Monitor an der FE, 106–116 / 142–158 / 3.863) etwa gleich. Ein erster Lauf mit der alten Engine bei
+  nur 44 GiB freiem RAM (geladen 0,6 GiB frei) schrieb 91 / 133 – knapper Arbeitsspeicher kostet spürbar.
+  PolyStrata kurz über die Zentrale: auf der FE bereit nach 30 s, 172 Token/s, sauber beendet.
+- **Neue Oberflächen:** Stratas Webseite liegt wie bisher unter `http://127.0.0.1:8095/`, solange Strata läuft. Der
+  Terminal-Monitor (`strata.py monitor --url http://127.0.0.1:8095`) braucht das Paket `rich` (nicht im venv, nicht
+  installiert). Die Desktop-App ist ein eigener Installer neben der Zentrale – nicht installiert.
+- Zentrale-Tests: 128 grün (kein Code geändert, nur `config.json`).
+
+**Nachtrag am selben Abend: Code v0.2.1.3, Engine bleibt 0.1.45.3** (Sascha: „Warum nicht die neueste?“ – „go“).
+v0.2.1 (Engine 0.1.46) kam am 20.10. um 09:47, v0.2.1.1–0.2.1.3 sind nur Tags (Control/Terminal 0.1.46.1–0.1.46.2, deren
+Dateien hängen am Release 0.2.1); die neueste Windows-CUDA-13-Engine ist 0.1.46. Für uns in 0.2.1 nur: mehrere Anfragen
+auf zwei NVIDIA-Karten in einer Gruppe (nur mit `--batch`), kleinere Standard-Reserve auf Karten ohne Monitor (wir setzen
+eigene Werte, die gelten weiter), eigene Optionen bleiben bei App/Setup erhalten (`user_args`, nur bei Einrichtungsläufen).
+- `git merge --ff-only v0.2.1.3` (`cbfd5b92`), `setup.py --update`: Einstellungen und venv gleich, Engine unverändert.
+  Engine 0.1.46 geladen und geprüft wie oben (SHA-256 = GitHub = `SHA256SUMS.txt` = Feed Nr. 105; Feed- und
+  Manifest-Signatur gültig; cuBLAS bitgleich mit dem venv), eingesetzt, 0.1.45 in den Papierkorb.
+- Gemessen wie oben (Monitor an der Suprim, RAM vor dem Start 50–51 GiB frei):
+
+| Lauf | Text (Token/s) | Code | 70K-Prompt | Bild |
+|---|---|---|---|---|
+| 128K, Engine 0.1.46, zwei Läufe | 106–116 | 134–160 (177 kurz) | 3.745–3.752 | 1,9–2,0 s, 3 Pflanzen |
+| **128K, Engine 0.1.45.3, Code 0.2.1.3** | **115–117** | **159–179** | **3.895** | 1,6 s, 3 Pflanzen |
+| Q4, Engine 0.1.46 | 82–85 | 89–112 | 2.570 | 3,3 s, 3 Pflanzen |
+| **Q4, Engine 0.1.45.3, Code 0.2.1.3** | **86–93** | **100–117** | **2.673** | 3,0 s, 3 Pflanzen |
+
+  Die 0.1.46 liest in allen Läufen 3–4 % langsamer ein und schreibt nicht schneller. **Entschieden: neuester Code
+  v0.2.1.3 mit Engine 0.1.45.3** (aktiv); 0.1.46 liegt in `engine\.previous` – `setup.py --rollback-engine` schaltet um.
+  PolyStrata danach kurz: FE, 172 Token/s, sauber beendet. Bei der nächsten Engine (> 0.1.46) wieder beide vergleichen.
+
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
 Alle Läufe mit denselben Proben (`llm_test.py`: kurz, 2× Text à 400, 2× Code à 600 Token, langer Prompt ≈ 70.600 Token);

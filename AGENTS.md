@@ -1,8 +1,8 @@
 # KI-Zentrale – Arbeitsregeln für Agenten
 
 Lokale Apps für Saschas zwei Grafikkarten: seit 14.10.2026 zwei RTX 3090 mit je 24 GiB – „RTX 3090 FE“ = Karte 0
-(gpu:0, Steckplatz 02, seit 16.10.2026 mit Monitor) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; Monitor bis
-16.10.2026); die RTX 3080 ist ausgebaut.
+(gpu:0, Steckplatz 02; Monitor 16.–20.10.2026) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; seit 20.10.2026
+wieder mit Monitor, vorher bis 16.10.2026); die RTX 3080 ist ausgebaut.
 Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen nach freiem Platz (README.md, „Kartenwahl“).
 Bedienung und Aufbau: [README.md](README.md). Entscheidungen, Stufen, Abnahme: [PLAN.md](PLAN.md).
 Studio (Bild & Video) im Detail – Arten, LoRAs, Rezepte, Prompt-Regeln, Grenzen, Schnittstelle: [STUDIO.md](STUDIO.md).
@@ -112,9 +112,12 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
-  nie auf der Monitorkarte (sonst geteilt, Videomodell nicht auf der Monitorkarte). Strata 0.1.45 (Update 18.10.2026, vorher 0.1.44.1) mit Reserve für die Monitorkarte (seit 16.10.2026 Monitor an der FE:
-  `--vram-reserve-mib 1800`, Suprim `--vram-reserve-later-mib 1000`; vorher Suprim 1800): 112 Token/s
-  Text, 145–162 Code, Prompt 3.675 Token/s; ohne die Reserve lagert Windows aus (16–19 Token/s). Ornith Q4 läuft jetzt
+  nie auf der Monitorkarte (sonst geteilt, Videomodell nicht auf der Monitorkarte). Strata-Code v0.2.1.3 mit Engine 0.1.45.3 (Update 20.10.2026, vorher 0.1.45; Engine 0.1.46 gemessen und
+  langsamer beim Einlesen, liegt in `engine\.previous`; Engine von Hand aus dem Release-Paket, `UPDATE.bat` bringt bei
+  dieser Quellcode-Installation keine neue Engine mehr – PLAN.md, „Strata 0.2.0-beta, dann v0.2.1.3“) mit Reserve für die
+  Monitorkarte (seit 20.10.2026 wieder Monitor an der Suprim: `--vram-reserve-mib 700` FE, `--vram-reserve-later-mib 1800`
+  Suprim; 16.–20.10. Monitor an der FE: 1800 / 1000): 115–117 Token/s Text, 159–179 Code, Prompt 3.895 Token/s; ohne
+  die Reserve lagert Windows aus (16–19 Token/s). Ornith Q4 läuft jetzt
   Kontext wählbar (Varianten): Ornith Q4 256K oder 32K, Strata 128K mit Bildern, 256K oder Q4 mit Bildern (UD-IQ4_XS, genauer, seit 16.10.2026; braucht feste
   Auslagerungsdatei 64 GB); Q5 fest 128K. PLAN.md, Stufe 6.
 - **2Wild ist stillgelegt** (Stufe 3c, 24.09.2026): wird nicht mehr gestartet oder eingebettet.
