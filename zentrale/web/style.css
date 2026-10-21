@@ -103,6 +103,63 @@ h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
 
 @keyframes puls { 50% { opacity: .25; } }
 
+/* ---------------------------------------------------------------- Reiter und Chat */
+
+.reiter {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  background: var(--flaeche-2);
+}
+
+.reiter-knopf {
+  padding: 6px 14px;
+  border-radius: 6px;
+  color: var(--leise);
+  font: 600 14px/1.2 var(--schrift);
+  text-decoration: none;
+}
+
+.reiter-knopf:hover { color: var(--text); }
+
+.reiter-knopf[aria-current="page"] {
+  background: var(--flaeche);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--kupfer), var(--schatten);
+}
+
+body.mit-chat #freigeben { display: none; }
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 70px);
+  padding: 12px max(24px, calc((100vw - 1180px) / 2)) 16px;
+  gap: 10px;
+}
+
+.chat-leiste {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-stand {
+  flex: 1;
+  color: var(--leise);
+  font-size: 13px;
+}
+
+.chat-rahmen {
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--linie);
+  border-radius: 8px;
+  background: var(--flaeche);
+}
+
 /* ---------------------------------------------------------------- Knöpfe */
 
 .knopf {

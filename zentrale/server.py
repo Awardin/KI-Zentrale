@@ -15,7 +15,7 @@ BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASIS)
 
 from gemeinsam import dienst  # noqa: E402
-from zentrale import planung  # noqa: E402
+from zentrale import chat_app, planung  # noqa: E402
 from zentrale.aktionen import Aktionen, Fehler  # noqa: E402
 from zentrale.erfassung import Erfassung  # noqa: E402
 
@@ -493,6 +493,9 @@ class Anfrage(dienst.Anfrage):
         if pfad == '/api/verlauf':
             with z._lock:
                 return self._senden(200, list(z.verlauf))
+        if pfad == '/api/chat-app':
+            c = z.cfg.get('chat_app')
+            return self._senden(200, chat_app.status(c) if c else {'eingerichtet': False, 'laeuft': False})
         self._senden(404, {'fehler': 'Unbekannte Adresse.'})
 
     def do_POST(self):
@@ -532,6 +535,16 @@ class Anfrage(dienst.Anfrage):
                 return self._senden(*z.platz_halten(daten))
             if pfad == '/api/platz/freigeben':
                 return self._senden(*z.platz_freigeben(daten))
+            if pfad in ('/api/chat-app/starten', '/api/chat-app/beenden'):
+                c = z.cfg.get('chat_app')
+                if not c:
+                    return self._senden(409, {'fehler': 'Die Chat-App ist nicht eingerichtet.'})
+                if pfad.endswith('starten'):
+                    code, antwort = chat_app.starten(c)
+                    z.log(f'Chat-App gestartet: {antwort}' if code == 200 else f'Chat-App startet nicht: {antwort}')
+                    return self._senden(code, antwort)
+                z.log('Chat-App beendet.')
+                return self._senden(*chat_app.beenden(c))
         except Exception as ex:
             z.log(traceback.format_exc())
             return self._senden(500, {'fehler': str(ex)})

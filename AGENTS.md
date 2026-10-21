@@ -120,6 +120,10 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
   die Reserve lagert Windows aus (16–19 Token/s). Ornith Q4 läuft jetzt
   Kontext wählbar (Varianten): Ornith Q4 256K oder 32K, Strata 128K mit Bildern, 256K oder Q4 mit Bildern (UD-IQ4_XS, genauer, seit 16.10.2026; braucht feste
   Auslagerungsdatei 64 GB); Q5 fest 128K. PLAN.md, Stufe 6.
+- **Reiter „Chat“** (21.10.2026, Auftrag Sascha): die Strata-Oberfläche (`C:\LLM\runtimes\Strata\apps\host`, gebaut mit
+  Node 24 portabel) als Dienst auf 127.0.0.1:8791, gestartet/beendet von der Zentrale (`zentrale\chat_app.py`, Eintrag
+  `chat_app`), abgesichert (`STRATA_NO_ACQUIRE`, keine mitgelieferte Engine); Tunnel/Freigabe nicht benutzen.
+  Modelle der Zentrale sind darin als Verbindungen eingetragen. README.md „Reiter Chat“, PLAN.md 21.10.2026.
 - **2Wild ist stillgelegt** (Stufe 3c, 24.09.2026): wird nicht mehr gestartet oder eingebettet.
 - **Lizenz** (entschieden 24.09.2026, Einschätzung Sascha): Die Bilder aus Qwen-Image 2.1 und der Turbo-LoRA dürfen privat
   und gewerblich genutzt werden (z. B. YouTube); eine Lizenz braucht es erst bei Weitergabe des Systems (z. B. mit einem
@@ -129,8 +133,6 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
 
 ## Feste Grenzen
 
-- Python nur mit Standardbibliothek. Keine neuen Pakete, Umgebungen, Downloads oder Modelle. (`werkstatt\pdf_seiten.py`
-  läuft nicht in der Werkstatt, sondern als externer Aufruf im vorhandenen PDF-venv, wie watch in seinem venv.)
 - Alles nur an `127.0.0.1`. Keine Firewall-, Autostart- oder Systemänderungen.
 - Nur die in `zentrale\config.json` bestätigten Einträge verwalten. Keine Laufwerks- oder Modellsuche.
   `D:\LLM-lokal` bleibt tabu.

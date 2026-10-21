@@ -2,6 +2,16 @@
   "port": 3894,
   "reserve_mib": 768,
   "monitor_puffer_mib": 2048,
+  "chat_app": {
+    "grund": "21.10.2026 (Auftrag Sascha): Reiter „Chat“ zeigt die Strata-Oberfläche (apps\\host, gebaut mit Node 24 portabel). Abgesichert gestartet (keine Downloads/Installationen, nur 127.0.0.1); die Modelle der Zentrale sind darin als Verbindungen eingetragen.",
+    "node": "C:\\LLM\\runtimes\\node-v24.22.0-win-x64\\node.exe",
+    "ordner": "C:\\LLM\\runtimes\\Strata\\apps\\host",
+    "port": 8791,
+    "daten": "C:\\LLM\\runtimes\\Strata-App\\daten",
+    "modelle": "C:\\LLM\\runtimes\\Strata-App\\modelle",
+    "logs": "C:\\LLM\\runtimes\\Strata-App\\logs",
+    "arbeitsordner": "C:\\Workstation\\Arbeitsmaterial\\Strata-Chat"
+  },
   "monitor_puffer_grund": "14.10.2026: Auf der Karte mit dem Monitor (Suprim) belegt Windows schwankend Speicher (gemessen 0,6–0,9 GiB). Zentrale und Studio füllen sie nur so weit, dass danach noch 2 GiB frei bleiben, solange die andere Karte reicht; sonst geht es trotzdem dorthin (mit der üblichen Reserve).",
   "karten": {
     "0": {

@@ -47,6 +47,26 @@ nur ein weiteres Fenster, keinen zweiten Dienst.
   Karte ohne Monitor, seit 20.10.2026 wieder die FE) und übergibt sie mit `--gpu`; der Server läuft mit Strata's Python-Umgebung
   (nur gelesen). Die Ollama-Einträge Ornith Q4/Q5 bleiben daneben; nicht beide gleichzeitig laden, wenn der Platz fehlt.
 
+### Reiter „Chat“ (seit 21.10.2026)
+
+Oben rechts wechselt die Zentrale zwischen **Modelle** und **Chat**. Der Reiter Chat zeigt die Oberfläche von Strata
+(`C:\LLM\runtimes\Strata\apps\host`, gebaut mit Node 24 portabel unter `C:\LLM\runtimes\node-v24.22.0-win-x64`) als
+eigenen Dienst auf `http://127.0.0.1:8791/`. „Chat-App starten“ startet ihn losgelöst (er läuft weiter, wenn die Zentrale
+neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem Fenster“ öffnet ihn im Browser.
+
+- **Modelle:** In der App sind die Modelle der Zentrale als Verbindungen eingetragen: Flash-Next (Strata, 8095),
+  Ornith Q4 (PolyStrata, 8097), Qwen3.8-27B (NInfer, 8080), Ornith Q6 (Ollama) und zum Testen Ornith 122B
+  (llama.cpp, 8098). Laden und Entladen bleibt hier im Reiter Modelle; im Chat oben das geladene wählen.
+  **Achtung Ollama:** Wählt man im Chat ein Ollama-Modell, das nicht geladen ist, lädt Ollama es selbst – an der
+  Zentrale vorbei. Ollama-Modelle deshalb vorher im Reiter Modelle laden.
+- **Abgesichert gestartet:** keine Downloads oder Installationen (`STRATA_NO_ACQUIRE`), keine mitgelieferte Engine,
+  nur `127.0.0.1`; Tunnel (Cloudflare) und Freigabe nach außen nur auf eigenen Klick – nicht benutzen. Die App weist
+  Steueraufrufe fremder Webseiten ab; ihre Modell-Schnittstelle `/v1` ist wie bei Strata ohne Schlüssel erreichbar.
+- **Ordner:** Einstellungen und Chats in `C:\LLM\runtimes\Strata-App\daten`, Arbeitsordner des Agenten
+  `C:\Workstation\Arbeitsmaterial\Strata-Chat`, Protokoll `C:\LLM\runtimes\Strata-App\logs`.
+- **Aktualisieren:** Die App ist Teil des Strata-Ordners; nach einem Strata-Update mit Node 24 neu bauen
+  (`npm ci --ignore-scripts`, `npm run build` in `apps\host`).
+
 ### Kartenwahl (seit 14.10.2026)
 
 - **Eine beliebige Karte** (`karten` + `bedarf_je_karte_mib`): NInfer, LightOnOCR, Ornith über PolyStrata und ComfyUI. Passt es ohne
@@ -309,6 +329,9 @@ lässt sich über „GPU freigeben“ entladen.
   schließen. Nur Prozesse mit exakt passendem Programmpfad werden angefasst: zuerst alle Top-Level-Fenster
   (auch unsichtbare) sanft schließen, bis zu 8 s warten, dann verbliebene Prozesse nach erneuter Pfadprüfung
   hart beenden. Nach weiteren höchstens 5 s wird geprüft, ob alle passenden Prozesse beendet sind.
+- Die Chat-App (Reiter „Chat“) wird nur erkannt und beendet, wenn sie auf Port 8791 lauscht, ihr Programm die
+  eingetragene `node.exe` ist und die Kommandozeile das Skript `apps\host\server\index.mjs` aus dem eingetragenen
+  Ordner nennt.
 - Keine Downloads, keine Modellkopien, kein Autostart, keine Firewall- oder
   Systemänderungen. Das Protokoll `logs\zentrale.log` enthält nur Aktionen,
   PIDs, Ports und Zeiten, keine Prompts.
@@ -317,7 +340,8 @@ lässt sich über „GPU freigeben“ entladen.
 
 Python 3.12 nur mit Standardbibliothek (vorhandenes uv-Python unter
 `%APPDATA%\uv\python\cpython-3.12.14-…`, dasselbe wie unter `watch`), Oberfläche
-als HTML/CSS/JS ohne externe Bibliotheken. Nichts wurde installiert.
+als HTML/CSS/JS ohne externe Bibliotheken. Nichts wurde installiert. Ausnahme ist der Reiter „Chat“: Er zeigt die
+Strata-App, die mit Node 24 portabel und ihren npm-Paketen gebaut ist (siehe oben).
 
 ```
 KI-Zentrale\

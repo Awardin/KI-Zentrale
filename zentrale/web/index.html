@@ -13,10 +13,14 @@
     <h1>Modellzentrale</h1>
     <p class="kopf-stand" id="stand">Verbinde mit dem Dienst …</p>
   </div>
+  <nav class="reiter" aria-label="Bereiche">
+    <a href="#modelle" class="reiter-knopf" id="reiter-modelle" aria-current="page">Modelle</a>
+    <a href="#chat" class="reiter-knopf" id="reiter-chat">Chat</a>
+  </nav>
   <p class="kopf-aktion" id="aktion" hidden><span class="puls" aria-hidden="true"></span><span id="aktion-text"></span></p>
   <button class="knopf knopf-haupt" id="freigeben" type="button">GPU freigeben</button>
 </header>
-<main>
+<main id="bereich-modelle">
   <section class="karten" id="karten" aria-label="Grafikkarten"></section>
   <div id="gruppen"></div>
   <section class="protokoll" aria-labelledby="protokoll-titel">
@@ -24,6 +28,15 @@
     <ol id="protokoll"></ol>
   </section>
 </main>
+<section class="chat" id="bereich-chat" aria-label="Chat" hidden>
+  <div class="chat-leiste">
+    <p class="chat-stand" id="chat-stand">Prüfe die Chat-App …</p>
+    <a class="knopf" id="chat-fenster" href="http://127.0.0.1:8791/" target="_blank" rel="noopener" hidden>In eigenem Fenster</a>
+    <button class="knopf" id="chat-beenden" type="button" hidden>Chat-App beenden</button>
+    <button class="knopf knopf-haupt" id="chat-starten" type="button" hidden>Chat-App starten</button>
+  </div>
+  <iframe class="chat-rahmen" id="chat-rahmen" title="Strata-Chat" hidden></iframe>
+</section>
 <dialog id="dialog" aria-labelledby="dialog-titel"></dialog>
 <script src="/app.js"></script>
 </body>

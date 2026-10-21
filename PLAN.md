@@ -2324,6 +2324,39 @@ eigene Werte, die gelten weiter), eigene Optionen bleiben bei App/Setup erhalten
   v0.2.1.3 mit Engine 0.1.45.3** (aktiv); 0.1.46 liegt in `engine\.previous` – `setup.py --rollback-engine` schaltet um.
   PolyStrata danach kurz: FE, 172 Token/s, sauber beendet. Bei der nächsten Engine (> 0.1.46) wieder beide vergleichen.
 
+## Regel „nur Standardbibliothek, keine Pakete/Downloads“ gestrichen (21.10.2026)
+
+Sascha: „Das kam aus einem Video, nicht von mir“ – die feste Grenze „Python nur mit Standardbibliothek. Keine neuen
+Pakete, Umgebungen, Downloads oder Modelle“ ist aus AGENTS.md entfernt. Bestehender Code bleibt, wie er ist; neue
+Pakete, Umgebungen, Downloads oder Modelle sind möglich, wenn Sascha sie beauftragt (globale Regel: nichts ungefragt).
+Ältere Einträge hier und in den SPEC-Dateien, die „nur Standardbibliothek“ nennen, beschreiben den damaligen Stand.
+
+## Reiter „Chat“ mit der Strata-Oberfläche (21.10.2026)
+
+Auftrag Sascha: „Prüf zuerst die Strata-App aus apps\host: was sie beim Start tut, Updater/Tunnel abschalten, dann als
+Reiter in die Zentrale einbetten“, danach „Node 24 portabel nach C:\LLM\runtimes, npm-Pakete holen, UI bauen“.
+
+- **Geprüft (Strata v0.2.1.3, `apps\host\server\index.mjs`):** Beim Start lauscht die App nur auf `STRATA_BIND`
+  (127.0.0.1) und `STRATA_PORT`. Cloudflare-Tunnel und Freigabe nach außen starten nur über `/api/serving/tunnel` bzw.
+  `/api/serving/share` (Klick). Die Update-Prüfung liest nur die Release-Liste von GitHub, wenn man sie in den
+  Einstellungen anstößt. Downloads/Installationen sperrt `STRATA_NO_ACQUIRE=1`; `STRATA_NO_BUNDLED_ENGINE=1` verhindert
+  das Auspacken einer mitgelieferten Engine (im Quellordner gibt es ohnehin keine). `/api/*` weist fremde Herkunft
+  (Origin nicht localhost) mit 403 ab; `/v1/*` ist offen (CORS `*`), wie Stratas eigene Schnittstelle. Ohne
+  `STRATA_REAL_ENGINE=1` liefe die Modellbibliothek als Vorführung (vorgetäuschte Antworten), deshalb gesetzt.
+- **Eingerichtet:** Node v24.22.0 portabel (`C:\LLM\runtimes\node-v24.22.0-win-x64`, SHA-256 aus `SHASUMS256.txt`
+  geprüft; Node 22 auf dem PC reicht nicht, die App will ≥ 24.12). In `apps\host`: `npm ci --ignore-scripts`
+  (80 Pakete), `npm run build` → `dist`. Daten `C:\LLM\runtimes\Strata-App\daten`, Modellordner (leer)
+  `…\modelle`, Arbeitsordner `C:\Workstation\Arbeitsmaterial\Strata-Chat`.
+- **Zentrale:** `zentrale\chat_app.py` (Status, Starten losgelöst, Beenden nur bei passendem Port, `node.exe` und Skript),
+  Eintrag `chat_app` in `config.json`, `GET /api/chat-app`, `POST /api/chat-app/starten|beenden`, Reiter „Modelle | Chat“
+  im Kopf, eingebettet per iframe (die App setzt kein `X-Frame-Options`). Tests `test_chat_app.py`; Zentrale 132 OK.
+- **Verbindungen in der App** (über `/api/model-providers`): Flash-Next (8095), Ornith Q4 PolyStrata (8097),
+  Qwen3.8-27B NInfer (8080), Ornith Q6 Ollama (11434), Test Ornith 122B llama.cpp (8098).
+- **Am echten System geprüft:** Start über den Reiter, App eingebettet und bedienbar, Verbindungen gespeichert.
+  Noch offen: ein Chat mit geladenem Modell durch die App.
+- **Grenze:** Ein Ollama-Modell, das nicht geladen ist, lädt Ollama auf Anfrage der App selbst (an der Zentrale
+  vorbei) – in README.md als Hinweis.
+
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
 Alle Läufe mit denselben Proben (`llm_test.py`: kurz, 2× Text à 400, 2× Code à 600 Token, langer Prompt ≈ 70.600 Token);

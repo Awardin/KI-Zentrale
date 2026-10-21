@@ -423,6 +423,62 @@ function protokollZeichnen() {
     : [h('li', { class: 'leer', text: 'Noch keine Aktionen seit dem Start des Dienstes.' })]));
 }
 
+// ------------------------------------------------------------------ Reiter „Chat“ (Strata-Oberfläche)
+
+let CHAT = null;
+let chatBeschaeftigt = false;
+
+function reiterZeigen() {
+  const chat = location.hash === '#chat';
+  $('#bereich-modelle').hidden = chat;
+  $('#bereich-chat').hidden = !chat;
+  document.body.classList.toggle('mit-chat', chat);
+  $(chat ? '#reiter-chat' : '#reiter-modelle').setAttribute('aria-current', 'page');
+  $(chat ? '#reiter-modelle' : '#reiter-chat').removeAttribute('aria-current');
+  if (chat) chatPruefen();
+}
+
+function chatZeichnen() {
+  const s = CHAT;
+  const laeuft = !!s?.laeuft;
+  const rahmen = $('#chat-rahmen');
+  let text;
+  if (!s) text = 'Keine Verbindung zum Dienst der Modellzentrale.';
+  else if (chatBeschaeftigt) text = laeuft ? 'Chat-App wird beendet …' : 'Chat-App startet …';
+  else if (laeuft) text = 'Chat-App läuft. Modelle lädst du im Reiter „Modelle“; im Chat wählst du oben das geladene.';
+  else if (!s.eingerichtet) text = 'Die Chat-App ist nicht eingerichtet.';
+  else if (s.port_fremd_belegt) text = 'Der Port der Chat-App ist von einem anderen Programm belegt.';
+  else text = 'Die Chat-App ist beendet.';
+  $('#chat-stand').textContent = text;
+  $('#chat-starten').hidden = laeuft || !s?.eingerichtet;
+  $('#chat-starten').disabled = chatBeschaeftigt;
+  $('#chat-beenden').hidden = !laeuft;
+  $('#chat-beenden').disabled = chatBeschaeftigt;
+  $('#chat-fenster').hidden = !laeuft;
+  if (s?.url) $('#chat-fenster').href = s.url;
+  rahmen.hidden = !laeuft;
+  if (laeuft && !rahmen.getAttribute('src')) rahmen.src = s.url;
+  if (!laeuft && rahmen.getAttribute('src')) rahmen.removeAttribute('src');
+}
+
+async function chatPruefen() {
+  try { CHAT = await api('/api/chat-app'); } catch { CHAT = null; }
+  chatZeichnen();
+}
+
+async function chatSchalten(pfad) {
+  chatBeschaeftigt = true;
+  chatZeichnen();
+  try {
+    CHAT = await api(pfad, {});
+  } catch (err) {
+    melden(err.message);
+  } finally {
+    chatBeschaeftigt = false;
+    await chatPruefen();
+  }
+}
+
 // ------------------------------------------------------------------ Ablauf
 
 async function aktualisieren() {
@@ -463,6 +519,11 @@ async function beginnen() {
   }
   zeilenAnlegen();
   $('#freigeben').addEventListener('click', gpuFreigeben);
+  $('#chat-starten').addEventListener('click', () => chatSchalten('/api/chat-app/starten'));
+  $('#chat-beenden').addEventListener('click', () => chatSchalten('/api/chat-app/beenden'));
+  window.addEventListener('hashchange', reiterZeigen);
+  reiterZeigen();
+  setInterval(() => { if (location.hash === '#chat' && !chatBeschaeftigt) chatPruefen(); }, 5000);
   schleife();
 }
 
