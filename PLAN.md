@@ -2357,6 +2357,36 @@ Reiter in die Zentrale einbetten“, danach „Node 24 portabel nach C:\LLM\runt
 - **Grenze:** Ein Ollama-Modell, das nicht geladen ist, lädt Ollama auf Anfrage der App selbst (an der Zentrale
   vorbei) – in README.md als Hinweis.
 
+## Reiter „Monitor“ mit Stratas Monitor-Seite (21.10.2026)
+
+Sascha: Gemeint war eigentlich Stratas Anzeige mit Token/s, Vorgängen und Temperaturen – „Bau einen Reiter Monitor,
+der Stratas eigene Monitor-Seite zeigt (Strata 8095 oder PolyStrata 8097, je nachdem was läuft)“. Nur Oberfläche
+(`web\index.html`, `app.js`, `style.css`): Der Reiter nimmt die laufenden Einträge der Arten `strata`/`polystrata` aus
+dem Status und bettet `http://127.0.0.1:<port>/#monitor` ein (Strata setzt keine Rahmen-Sperre); laufen beide, Auswahl
+per Knopf; beim Verlassen wird die Seite entladen (sie fragt sonst `/metrics` weiter ab). Den API-Monitor mit
+gespeicherten Prompts (`--api-monitor`) nicht eingeschaltet. Geprüft am echten System: ohne Strata Hinweistext; mit
+Flash-Next (Zentrale gestartet) Anzeige live – Testanfrage 114,8 Token/s, 56 °C, 527 W.
+
+## Ornith 1.5 122B getestet (21.10.2026, nicht in der Zentrale)
+
+Auftrag Sascha nach dem Video von Fahd Mirza: „lad mal runter wir testen“. AtomicChat `AD-Q5_K-IQ4_XS` (70,8 GiB,
+KL 0,023, Top-1 94 %), SHA-256 = Hugging Face, in `C:\LLM\models\Ornith-1.5-122B\` (zwei Teile und zusammengefügt eine
+Datei für PolyStrata, `llama-gguf-split --merge`). Bauart Qwen3.5-MoE: 48 Schichten, 256 Experten, 8 je Token
+(~10 Mrd. aktiv). Gleiche drei Messungen (Text 570, Code ~1.000 Antworttoken, PLAN.md als langer Text 39.198 Token):
+
+| Weg | Text | Code | lang: lesen / schreiben | im VRAM |
+|---|---:|---:|---:|---|
+| llama.cpp b10754, `--fit`, MTP | 9,7 | 19,1 | 125 / 20,3 Token/s | 43 GiB, ~28 GiB Experten rechnet die CPU |
+| PolyStrata 0.1.45-poly.1, Expert-Cache | 13,2 | 27,8 | **808** / 16,7 Token/s | 6.147 von 12.544 Experten (31,6 GiB) |
+
+- PolyStrata liest 6,5-mal schneller ein, schreibt aber kaum schneller: Die Hälfte der Experten bleibt auf der CPU.
+  Nach dem Laden waren nur noch 0,3 GiB RAM frei. Zum Vergleich Flash-Next über Strata: 115–117 / 159–179 / 3.895.
+- Lehre: Der Q5-Fassung fehlt VRAM, nicht RAM. Schneller würde eine kleinere Fassung, die fast ganz in 2 × 24 GiB
+  passt (etwa `AD-IQ3_XXS-IQ2_S`, 44 GiB, Top-1 86 %) – dann aber ungenauer. Agententest über DSH ausgelassen (zu
+  langsam). Einstellungen: `C:\LLM\runtimes\PolyStrata\strata-ornith-122b-2gpu.json`, Tokenizer `packs\ornith-122b`;
+  Skripte und `ergebnisse.jsonl` in `Projekte\Lokale-Wissensextraktion\nachweise\2026-10-18-strata-webdesign\`
+  (`ornith122_test.py`, `ornith122_poly.py`).
+
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
 Alle Läufe mit denselben Proben (`llm_test.py`: kurz, 2× Text à 400, 2× Code à 600 Token, langer Prompt ≈ 70.600 Token);

@@ -428,14 +428,58 @@ function protokollZeichnen() {
 let CHAT = null;
 let chatBeschaeftigt = false;
 
+const REITER = ['modelle', 'monitor', 'chat'];
+const reiter = () => (REITER.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'modelle');
+
 function reiterZeigen() {
-  const chat = location.hash === '#chat';
-  $('#bereich-modelle').hidden = chat;
-  $('#bereich-chat').hidden = !chat;
-  document.body.classList.toggle('mit-chat', chat);
-  $(chat ? '#reiter-chat' : '#reiter-modelle').setAttribute('aria-current', 'page');
-  $(chat ? '#reiter-modelle' : '#reiter-chat').removeAttribute('aria-current');
-  if (chat) chatPruefen();
+  const r = reiter();
+  for (const name of REITER) {
+    $(`#bereich-${name}`).hidden = name !== r;
+    if (name === r) $(`#reiter-${name}`).setAttribute('aria-current', 'page');
+    else $(`#reiter-${name}`).removeAttribute('aria-current');
+  }
+  document.body.classList.toggle('mit-chat', r !== 'modelle');
+  if (r === 'chat') chatPruefen();
+  if (r === 'monitor') monitorZeichnen();
+  else $('#monitor-rahmen').removeAttribute('src');  // Strata-Seite fragt sonst im Hintergrund weiter /metrics ab
+}
+
+// ------------------------------------------------------------------ Reiter „Monitor“ (Stratas eigene Monitor-Seite)
+
+let MONITOR_ID = null;  // gewählter Eintrag, wenn Strata und PolyStrata zugleich laufen
+
+function monitorQuellen() {
+  if (!KONFIG || !STAND) return [];
+  return KONFIG.eintraege
+    .filter((e) => ['strata', 'polystrata'].includes(e.art) && e.links?.length)
+    .filter((e) => (STAND.eintraege[e.id] || {}).zustand === 'bereit')
+    .map((e) => ({ id: e.id, name: e.name, url: e.links[0].url }));
+}
+
+function monitorZeichnen() {
+  const quellen = monitorQuellen();
+  const q = quellen.find((x) => x.id === MONITOR_ID) || quellen[0] || null;
+  MONITOR_ID = q?.id ?? null;
+  const rahmen = $('#monitor-rahmen');
+  $('#monitor-stand').textContent = q
+    ? `Monitor von ${q.name}: Token/s, laufende Anfragen, Speicher und Temperaturen.`
+    : (STAND ? 'Weder Strata noch PolyStrata läuft. Starte eines davon im Reiter „Modelle“; dann erscheint hier sein Monitor.'
+      : 'Keine Verbindung zum Dienst der Modellzentrale.');
+  const wahl = $('#monitor-wahl');
+  const schluessel = quellen.map((x) => x.id).join('|') + '>' + MONITOR_ID;
+  if (wahl.dataset.schluessel !== schluessel) {
+    wahl.dataset.schluessel = schluessel;
+    wahl.replaceChildren(...(quellen.length > 1 ? quellen.map((x) => h('button', {
+      class: 'knopf', type: 'button', 'aria-pressed': String(x.id === MONITOR_ID), text: x.name,
+      onclick: () => { MONITOR_ID = x.id; monitorZeichnen(); },
+    })) : []));
+  }
+  const ziel = q ? `${q.url}#monitor` : null;
+  $('#monitor-fenster').hidden = !q;
+  if (q) $('#monitor-fenster').href = ziel;
+  rahmen.hidden = !q;
+  if (!q) rahmen.removeAttribute('src');
+  else if (rahmen.getAttribute('src') !== ziel) rahmen.src = ziel;
 }
 
 function chatZeichnen() {
@@ -498,6 +542,7 @@ async function aktualisieren() {
     if (STAND) {
       kartenZeichnen();
       zeilenZeichnen();
+      if (reiter() === 'monitor') monitorZeichnen();
     }
     protokollZeichnen();
   } catch {

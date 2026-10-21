@@ -15,6 +15,7 @@
   </div>
   <nav class="reiter" aria-label="Bereiche">
     <a href="#modelle" class="reiter-knopf" id="reiter-modelle" aria-current="page">Modelle</a>
+    <a href="#monitor" class="reiter-knopf" id="reiter-monitor">Monitor</a>
     <a href="#chat" class="reiter-knopf" id="reiter-chat">Chat</a>
   </nav>
   <p class="kopf-aktion" id="aktion" hidden><span class="puls" aria-hidden="true"></span><span id="aktion-text"></span></p>
@@ -28,6 +29,14 @@
     <ol id="protokoll"></ol>
   </section>
 </main>
+<section class="chat" id="bereich-monitor" aria-label="Monitor" hidden>
+  <div class="chat-leiste">
+    <p class="chat-stand" id="monitor-stand">Prüfe, ob Strata oder PolyStrata läuft …</p>
+    <div class="monitor-wahl" id="monitor-wahl"></div>
+    <a class="knopf" id="monitor-fenster" href="#" target="_blank" rel="noopener" hidden>In eigenem Fenster</a>
+  </div>
+  <iframe class="chat-rahmen" id="monitor-rahmen" title="Strata-Monitor" hidden></iframe>
+</section>
 <section class="chat" id="bereich-chat" aria-label="Chat" hidden>
   <div class="chat-leiste">
     <p class="chat-stand" id="chat-stand">Prüfe die Chat-App …</p>

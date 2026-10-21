@@ -146,6 +146,10 @@ body.mit-chat #freigeben { display: none; }
   gap: 10px;
 }
 
+.monitor-wahl { display: flex; gap: 6px; }
+
+.monitor-wahl .knopf[aria-pressed="true"] { box-shadow: inset 0 -2px 0 var(--kupfer); }
+
 .chat-stand {
   flex: 1;
   color: var(--leise);

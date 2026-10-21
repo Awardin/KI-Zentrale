@@ -47,9 +47,16 @@ nur ein weiteres Fenster, keinen zweiten Dienst.
   Karte ohne Monitor, seit 20.10.2026 wieder die FE) und übergibt sie mit `--gpu`; der Server läuft mit Strata's Python-Umgebung
   (nur gelesen). Die Ollama-Einträge Ornith Q4/Q5 bleiben daneben; nicht beide gleichzeitig laden, wenn der Platz fehlt.
 
+### Reiter „Monitor“ (seit 21.10.2026)
+
+Zeigt Stratas eigene Monitor-Seite (`http://127.0.0.1:8095/#monitor`, bei PolyStrata Port 8097): Token/s beim Lesen und
+Schreiben, laufende und letzte Anfragen, Grafikspeicher, Temperatur, Leistung, PCIe, CPU und Kontext. Die Seite gibt es
+nur, solange Strata oder PolyStrata in der Zentrale läuft; laufen beide, wählt man oben, welcher. Für Ollama, NInfer und
+llama.cpp gibt es dort keine Anzeige. „In eigenem Fenster“ öffnet sie im Browser.
+
 ### Reiter „Chat“ (seit 21.10.2026)
 
-Oben rechts wechselt die Zentrale zwischen **Modelle** und **Chat**. Der Reiter Chat zeigt die Oberfläche von Strata
+Oben rechts wechselt die Zentrale zwischen **Modelle**, **Monitor** und **Chat**. Der Reiter Chat zeigt die Oberfläche von Strata
 (`C:\LLM\runtimes\Strata\apps\host`, gebaut mit Node 24 portabel unter `C:\LLM\runtimes\node-v24.22.0-win-x64`) als
 eigenen Dienst auf `http://127.0.0.1:8791/`. „Chat-App starten“ startet ihn losgelöst (er läuft weiter, wenn die Zentrale
 neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem Fenster“ öffnet ihn im Browser.

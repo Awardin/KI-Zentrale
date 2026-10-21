@@ -124,6 +124,7 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
   Node 24 portabel) als Dienst auf 127.0.0.1:8791, gestartet/beendet von der Zentrale (`zentrale\chat_app.py`, Eintrag
   `chat_app`), abgesichert (`STRATA_NO_ACQUIRE`, keine mitgelieferte Engine); Tunnel/Freigabe nicht benutzen.
   Modelle der Zentrale sind darin als Verbindungen eingetragen. README.md „Reiter Chat“, PLAN.md 21.10.2026.
+  Reiter **„Monitor“** (21.10.2026) bettet Stratas eigene Monitor-Seite ein (8095 bzw. PolyStrata 8097, nur wenn laufend).
 - **2Wild ist stillgelegt** (Stufe 3c, 24.09.2026): wird nicht mehr gestartet oder eingebettet.
 - **Lizenz** (entschieden 24.09.2026, Einschätzung Sascha): Die Bilder aus Qwen-Image 2.1 und der Turbo-LoRA dürfen privat
   und gewerblich genutzt werden (z. B. YouTube); eine Lizenz braucht es erst bei Weitergabe des Systems (z. B. mit einem
