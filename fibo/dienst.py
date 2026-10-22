@@ -14,6 +14,7 @@ austauschbar.
 import argparse
 import base64
 import binascii
+import gc
 import io
 import json
 import math
@@ -539,6 +540,9 @@ class Dienst:
             self.pipe.transformer = self.transformer_dev
             if not behalten:
                 self.transformer_turbo = None
+        # Den abgelegten Transformer (≈16 GB) wirklich freigeben; ohne Anstoß blieben beim Wechsel Dev → Turbo → Dev
+        # gemessen 40 GB Arbeitsspeicher belegt (22.10.2026).
+        gc.collect()
         self.pipe.enable_model_cpu_offload()
         self.aktiv = ziel
 
