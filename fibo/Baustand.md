@@ -92,3 +92,52 @@ Python: `C:\Users\sasch\AppData\Roaming\uv\python\cpython-3.12.14-windows-x86_64
   `3acdcbff52abf2ee6174b1c1c414afd52af89565`
 - Teil B (`Zentrale: Art python_dienst und Eintrag Fibo 2.0`):
   `74fdb2c1ac6bd63a533a5ff59120f821ee480342`
+
+## Platzreserve
+
+Nachtrag 22.10.2026: Fibo hält sein Modell im Arbeitsspeicher und belegt im Leerlauf fast nichts auf der Karte.
+Damit die Zentrale seinen Bedarf trotzdem freihält, meldet der Dienst seine Karte und die Zentrale führt eine
+Reserve.
+
+Gebaut:
+
+- `fibo/dienst.py`: `/health` enthält `karte` aus `CUDA_VISIBLE_DEVICES`, wenn dort genau eine ganze Zahl steht
+  (z. B. `1`), sonst `null`. Der Wert steht in allen Health-Zuständen (`loading`, `ok`, `error`).
+- `zentrale/erfassung.py`: Zustand `karte` wird aus `/health` übernommen. Ein laufender `python_dienst`
+  (`startet`/`bereit`) erscheint auch dann als freigebbarer Verbraucher mit `beenden:<id>`, wenn die Messung
+  fast oder gar nichts liefert; die Karte dafür kommt aus `/health`.
+- `zentrale/server.py`: `_reservierungen` bildet je Dienst `bedarf_je_karte_mib` auf der gemeldeten Karte und
+  zieht die gemessene Belegung (`angemeldet_rest` mit leerer Basis und Schlüssel `python_dienst:<id>`) ab.
+  Die Reserve geht in Kartenwahl und Plan, in `/api/platz` und in die Belegungsleiste ein. In der Leiste heißt
+  sie „<Name> (reserviert)“ und trägt die Eintragsfarbe mit `80` (halbtransparent wie die Werkstatt-Anmeldungen).
+  `angemeldet` je Karte enthält Werkstatt- und Reserveanteile, damit „frei“ nicht zu groß erscheint.
+- `zentrale/server.py`: Die Statuszeile nimmt die Karte aus `/health`, wenn die Messung keine Karte liefert
+  (zum Beispiel bei 200 MiB, also unter der 256-MiB-Schwelle).
+- `zentrale/planung.py`: `mit_anmeldungen` kann den Verbraucher einem Eintrag zuordnen (`eintrag`), damit die
+  eigene Reserve beim Planen desselben Eintrags nicht als fremdes Hindernis zählt. Werkstatt-Aufrufe bleiben
+  unverändert (Standard `None`).
+- `zentrale/tests/test_python_dienst.py`: neue Tests für Kartenwahl und Plan eines anderen Eintrags mit Reserve,
+  kein Doppelzählen (18.800 von 19.500 → 700), keine Reserve bei `aus` oder ohne Karte, Anzeigename und Farbe,
+  Reserve in `/api/platz`, Karte aus `/health` in der Statuszeile und Freigabe ohne Messwert.
+- `fibo/tests/test_dienst.py`: Test für `karte` aus `CUDA_VISIBLE_DEVICES` (einfache Zahl, Liste, leer, fremder
+  Wert) und angepasste Health-Erwartungen.
+
+Verifikation in diesem Worktree (Windows PowerShell 5.1, Python
+`C:\Users\sasch\AppData\Roaming\uv\python\cpython-3.12.14-windows-x86_64-none\python.exe`):
+
+- `python -m unittest discover -s zentrale/tests` → `Ran 153 tests`, `OK` (vorher 145).
+- `python -m unittest discover -s fibo/tests` → `Ran 23 tests`, `OK` (vorher 22).
+- `python -m unittest discover -s werkstatt/tests` → `Ran 214 tests`, `OK` (unverändert).
+- `python -m unittest discover -s atelier/tests` → `Ran 24 tests`, `OK` (unverändert).
+- `node --check zentrale/web/app.js` → keine Ausgabe; die Web-Oberfläche wurde nicht geändert.
+
+Entscheidungen:
+
+- Die Reserve gilt nur bei `startet` oder `bereit` und nur mit gemeldeter Karte; bei `aus`, `fremd` oder ohne
+  Karte bleibt sie aus. So entsteht keine Phantom-Belegung nach einem Stopp.
+- Die gemessene Belegung wird auf der gemeldeten Karte abgezogen, auch wenn der Dienst gerade rechnet. Dadurch
+  zählt Fibo beim Rechnen nicht doppelt (18.800 gemessen + 700 Reserve = 19.500 Bedarf).
+- „GPU freigeben“ beendet den Dienst wie bisher über `beenden:<id>`; bei laufendem Auftrag bleibt die
+  Bestätigung im Dialog der Zentrale.
+- Kein Push, kein Merge, kein Rebase; nur die genannten Dateien geändert (keine Änderungen an `atelier/`,
+  `werkstatt/`, `gemeinsam/`, `SPEC-atelier*.md` oder bestehenden `zentrale/config.json`-Einträgen).

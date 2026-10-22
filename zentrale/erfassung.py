@@ -366,7 +366,7 @@ class Erfassung:
         # Allgemeine Python-Dienste: /health meldet `loading`, bis das Modell bereit ist, danach `ok`.
         for eid, e in self.python_dienst.items():
             s = {'zustand': 'aus', 'pids': [p for p in procs if self.ist_python_dienst(p, procs) == eid],
-                 'fremd': None, 'laufend': None, 'aktiv': None}
+                 'fremd': None, 'laufend': None, 'aktiv': None, 'karte': None}
             pid = lausch.get(e['port'])
             if pid is not None:
                 if self.ist_python_dienst(pid, procs) == eid:
@@ -378,6 +378,7 @@ class Erfassung:
                             s['zustand'] = 'bereit'
                         s['laufend'] = h.get('laufend')
                         s['aktiv'] = h.get('aktiv')
+                        s['karte'] = h.get('karte')
                     except Exception:
                         pass
                 else:
@@ -462,11 +463,22 @@ class Erfassung:
                             'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
         for eid, e in self.python_dienst.items():
             schluessel = 'python_dienst:' + eid
-            if schluessel not in gruppen:
+            dienst = dienste.get(eid) or {}
+            # Auch ein laufender Dienst mit fast keiner Messung ist freigebbar (Beenden). Die Karte kommt aus
+            # /health, damit der Eintrag ohne Messwert nicht verschwindet.
+            if schluessel not in gruppen and dienst.get('zustand') not in ('startet', 'bereit'):
                 continue
-            laufend = (dienste.get(eid) or {}).get('laufend')
+            mib = dict((gruppen.get(schluessel) or {}).get('mib') or {})
+            if not mib:
+                karte = dienst.get('karte')
+                if karte is not None:
+                    try:
+                        mib = {int(karte): 0}
+                    except (TypeError, ValueError):
+                        mib = {}
+            laufend = dienst.get('laufend')
             out.append({'eintrag': eid, 'schluessel': schluessel, 'name': e['name'], 'farbe': e['farbe'],
-                        'mib_je_karte': gruppen[schluessel]['mib'],
+                        'mib_je_karte': mib,
                         'blockiert': f"In {e['name']} läuft gerade ein Auftrag." if laufend else None,
                         'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
         if 'ollama' in gruppen:
