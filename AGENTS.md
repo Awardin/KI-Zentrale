@@ -7,6 +7,8 @@ Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen n
 Bedienung und Aufbau: [README.md](README.md). Entscheidungen, Stufen, Abnahme: [PLAN.md](PLAN.md).
 Studio (Bild & Video) im Detail – Arten, LoRAs, Rezepte, Prompt-Regeln, Grenzen, Schnittstelle: [STUDIO.md](STUDIO.md).
 Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studio` (`C:\Workstation\Skills\aktiv\bild-video-studio`).
+Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-kommerziell – über den Skill `atelier`
+(`C:\Workstation\Skills\aktiv\atelier`); nie direkt an die Ports.
 
 - **Modellzentrale** (`zentrale\`, Port 3894): fertig und abgenommen am 23.09.2026. Seit 05.10.2026 mit Eintrag
   „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, IQ3_XXS 128K auf beiden Karten, RAM-Prüfung 42 GiB;

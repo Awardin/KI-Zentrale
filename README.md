@@ -328,6 +328,27 @@ braucht Werkstatt und ComfyUI. Projekte liegen in `C:\Workstation\Arbeitsmateria
 - Grenzen (Abnahme 22.10.2026): mehrere Referenzbilder in einem Auftrag scheitern; Stilwechsel (Aquarell) schwach;
   Fibo liefert ≈1 MP, für A4-Druck vergrößert das Atelier mit Hinweis „unscharf beim Druck“.
 
+### Schnittstelle Atelier und Fibo für Agenten
+
+Agenten nutzen beides über den Skill **`atelier`** (`C:\Workstation\Skills\aktiv\atelier`, Skript `scripts\atelier.py`) –
+nicht direkt. Kurzüberblick der Schnittstellen, nur `127.0.0.1`:
+
+- **Zentrale (3894)**, Kopfzeile `X-Zentrale: 1`: `POST /api/plan {"id":"fibo2","aktion":"starten"}` → bei `schritte` ≠ leer
+  oder `genug_platz: false` nicht starten (fremde Modelle müssten weichen); sonst `POST /api/starten {"id":"fibo2",
+  "schritte":[]}` (läuft im Hintergrund) und `/health` von Fibo abfragen; `POST /api/stoppen {"id":"fibo2"}` ohne
+  `erzwingen`. GPU-Besitz vorher mit `gpu_fahrplan.py claim --stufe fibo` eintragen.
+- **Fibo-Dienst (8098)**, POST nur mit `X-Atelier: 1`: `GET /health` (`status` loading/ok/error, `aktiv`, `karte`, `laufend`,
+  `warteschlange`); `POST /api/auftrag` (`art` bild|bearbeiten, `prompt` Text oder VGL-Objekt, `beschreiber` keiner|deepseek,
+  `breite`/`hoehe`, `schritte`, `seed`, `bilder` Base64, `maske` Base64 weiß = neu, `modell` dev|turbo) → `id`;
+  `GET /api/auftrag/<id>` (Zustand, Schritt, Ergebnis mit `/api/datei/<id>.png`); `POST /api/auftrag/<id>/abbrechen`.
+  Rohergebnisse mit Begleit-JSON (inkl. Lizenz) unter `C:\Workstation\Arbeitsmaterial\Atelier\_fibo\<Datum>\`.
+- **Atelier (3896)**, POST nur mit `X-Atelier: 1`: Projekte (`/api/projekte`, `/api/projekt`, `/api/projekt/neu`,
+  `/api/projekt/speichern`), Bilder ins Projekt (`/api/hochladen`, `/api/studio/uebernehmen`, `/api/fibo/uebernehmen`),
+  Freistellen über die Werkstatt (`/api/freistellen/status`, `/api/freistellen`). Der Export rendert im Browser – ohne
+  Editor kein Export.
+- Regeln: Fibo nur nicht-kommerziell; an DeepSeek nur Text, nie Bilder; Agenten legen nur **neue** Projekte an (der offene
+  Editor speichert automatisch und würde fremde Änderungen überschreiben); Fibo nur beenden, wenn man es selbst gestartet hat.
+
 ## Verwaltete Einträge
 
 | Eintrag | Art | Belegung (gemessen 23.09.2026 mit RTX 3090 + 3080; seit 14.10.2026 zwei RTX 3090) |
