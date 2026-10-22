@@ -1813,11 +1813,14 @@
 
   function fiboCaption(obj) {
     if (!obj || !istFibo(obj) || !obj.fiboDaten || !obj.fiboDaten.caption) return null;
+    // Nur echte VGL-Beschreibungen neu erzeugter Bilder. Nach einer Bearbeitung steht hier die Anweisung als Text;
+    // daraus neu zu rechnen ergäbe ein ganz anderes Bild (Abnahme 22.10.2026).
     let caption = obj.fiboDaten.caption;
     if (typeof caption === 'string') {
-      try { caption = JSON.parse(caption); } catch (fehler) { caption = {short_description: caption}; }
+      try { caption = JSON.parse(caption); } catch (fehler) { return null; }
     }
-    return caption && typeof caption === 'object' ? caption : null;
+    if (!caption || typeof caption !== 'object' || Array.isArray(caption) || caption.edit_instruction) return null;
+    return (caption.lighting || caption.aesthetics || caption.objects) ? caption : null;
   }
 
   function kiAktualisieren() {
@@ -1846,12 +1849,12 @@
     el.kiBildStarten.disabled = !Z.fiboBereit;
     el.kiEditStarten.disabled = !(Z.fiboBereit && obj);
     el.kiMaskeStarten.disabled = !(Z.fiboBereit && obj);
-    el.kiFreiStarten.disabled = !(Z.fiboBereit && obj && Z.freistellenBereit);
+    el.kiFreiStarten.disabled = !(obj && Z.freistellenBereit);  // braucht nur Werkstatt und ComfyUI, nicht Fibo
     el.kiMergeStarten.disabled = !(Z.fiboBereit && !!Z.projekt);
     const caption = fiboCaption(obj);
     el.kiBeschreibungStarten.disabled = !(Z.fiboBereit && caption);
     setzeText(el.kiBeschreibungHinweis, caption ? 'Beschreibung von „' + nameVon(obj) + '“ ändern.'
-      : 'Nur für Fibo-Ebenen mit Beschreibung.');
+      : 'Nur für neu erzeugte Fibo-Bilder mit DeepSeek-Beschreibung (nicht nach einer Bearbeitung).');
   }
 
   async function freistellenAktualisieren() {
