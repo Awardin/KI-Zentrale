@@ -1,12 +1,15 @@
 'use strict';
 
 /*
- * Atelier – Ebenen-Editor (Scheibe 2, ohne KI-Aktionen).
+ * Atelier – Ebenen-Editor (Scheibe 3, mit KI-Aktionen 1–6).
  * Leinwand: Fabric.js 6.4.3 (lokal, MIT). Projekte liegen beim Atelier-Dienst.
  */
 (function () {
   const FIBO_AUS = 'aus – in der Modellzentrale starten';
-  const CUSTOM = ['atelierArt', 'atelierName', 'quelle', 'atelierGesperrt'];
+  const FREI_AUS = 'Die Werkstatt ist aus. Bitte zuerst die Werkstatt starten.';
+  const MERGE_PROMPT = 'Make the image one coherent photograph with matching lighting, color and perspective; ' +
+    'keep every element in its place.';
+  const CUSTOM = ['atelierArt', 'atelierName', 'quelle', 'atelierGesperrt', 'fiboDaten'];
   const FALLBACK_FORMATE = [
     {id: 'youtube', name: 'YouTube-Thumbnail', breite: 1280, hoehe: 720},
     {id: 'instagram', name: 'Instagram', breite: 1080, hoehe: 1080},
@@ -40,7 +43,20 @@
     laden: false,
     dragObjekt: null,
     fiboBereit: false,
-    exportLaeuft: false
+    fiboStatus: null,
+    freistellenBereit: false,
+    freistellenText: '',
+    exportLaeuft: false,
+    auftraege: [],
+    auftragTimer: null,
+    auftragPruefung: false,
+    panX: 0,
+    panY: 0,
+    leertaste: false,
+    panAktiv: false,
+    panStart: null,
+    maske: null,
+    beschreibungZiel: null
   };
 
   const el = {};
@@ -223,12 +239,23 @@
       'dialog-export', 'export-dateiformat', 'export-qualitaet-feld', 'export-qualitaet', 'export-qualitaet-wert',
       'export-fibo-warnung', 'export-ok',
       'dialog-studio', 'studio-status', 'studio-liste', 'studio-neu-laden',
+      'ki-status', 'ki-aus', 'ki-aktionen', 'ki-bild-prompt', 'ki-bild-beschreiber', 'ki-bild-ziel',
+      'ki-bild-qualitaet', 'ki-bild-seed', 'ki-bild-starten', 'ki-edit-hinweis', 'ki-edit-anweisung',
+      'ki-edit-dev', 'ki-edit-starten', 'ki-maske-hinweis', 'ki-maske-starten', 'ki-frei-hinweis',
+      'ki-frei-art', 'ki-frei-motiv', 'ki-frei-starten', 'ki-merge-anweisung', 'ki-merge-starten',
+      'ki-beschreibung-hinweis', 'ki-beschreibung-starten', 'ki-auftraege', 'ki-auftraege-liste',
+      'dialog-maske', 'masken-buehne', 'masken-vorschau', 'masken-status', 'maske-pinsel', 'maske-radierer',
+      'maske-groesse', 'maske-groesse-wert', 'maske-leeren', 'masken-anweisung', 'masken-fehler', 'masken-ok',
+      'dialog-beschreibung', 'beschreibung-kurz', 'beschreibung-licht', 'beschreibung-aesthetik',
+      'beschreibung-kamera', 'beschreibung-stil', 'beschreibung-text', 'beschreibung-fehler',
+      'beschreibung-ok',
       'willkommen', 'willkommen-neu', 'ablegen-hinweis', 'toast'];
     ids.forEach(function (id) {
       el[id.replace(/-([a-zA-Z0-9])/g, function (treffer, zeichen) {
         return zeichen.toUpperCase();
       })] = $(id);
     });
+    if (el.kiMergeAnweisung && !el.kiMergeAnweisung.value) el.kiMergeAnweisung.value = MERGE_PROMPT;
 
     await konfigurationLaden();
     if (!window.fabric) {
@@ -243,7 +270,11 @@
     formatAnzeigen(Z.format);
     leinwandAnpassen();
     await fiboAktualisieren();
+    await freistellenAktualisieren();
     setInterval(fiboAktualisieren, 5000);
+    setInterval(freistellenAktualisieren, 10000);
+    kiAktualisieren();
+    auftraegeZeichnen();
     await projekteLaden(true);
     steuerungAktualisieren();
   }
@@ -354,11 +385,57 @@
       positioniereZeitstempel();
     });
     beobachter.observe(el.leinwandRahmen);
+    panBinden();
+  }
+
+  function panAnwenden() {
+    if (!el.leinwandHuelle) return;
+    el.leinwandHuelle.style.transform = Z.panX || Z.panY
+      ? 'translate(' + Z.panX + 'px, ' + Z.panY + 'px)' : '';
+  }
+
+  function panZuruecksetzen() {
+    Z.panX = 0;
+    Z.panY = 0;
+    panAnwenden();
+  }
+
+  function panBinden() {
+    if (!el.leinwandRahmen) return;
+    el.leinwandRahmen.addEventListener('pointerdown', function (ereignis) {
+      if (!(Z.leertaste || ereignis.button === 1)) return;
+      ereignis.preventDefault();
+      ereignis.stopPropagation();
+      Z.panAktiv = true;
+      Z.panStart = {x: ereignis.clientX, y: ereignis.clientY, panX: Z.panX, panY: Z.panY};
+      el.leinwandRahmen.classList.add('pannen');
+      try { el.leinwandRahmen.setPointerCapture(ereignis.pointerId); } catch (fehler) { /* optional */ }
+    }, true);
+    window.addEventListener('pointermove', function (ereignis) {
+      if (!Z.panAktiv || !Z.panStart) return;
+      ereignis.preventDefault();
+      Z.panX = Z.panStart.panX + (ereignis.clientX - Z.panStart.x);
+      Z.panY = Z.panStart.panY + (ereignis.clientY - Z.panStart.y);
+      panAnwenden();
+    }, true);
+    window.addEventListener('pointerup', function () {
+      if (!Z.panAktiv) return;
+      Z.panAktiv = false;
+      Z.panStart = null;
+      el.leinwandRahmen.classList.remove('pannen');
+    }, true);
+    el.leinwandRahmen.addEventListener('wheel', function (ereignis) {
+      if (!ereignis.ctrlKey) return;
+      ereignis.preventDefault();
+      const faktor = ereignis.deltaY < 0 ? 1.12 : 1 / 1.12;
+      setzeZoom(Z.zoom * faktor);
+    }, {passive: false, capture: true});
   }
 
   function auswahlGeaendert() {
     eigenschaftenAktualisieren();
     zeichneEbenen();
+    kiAuswahlAktualisieren();
   }
 
   function formatGroesse() {
@@ -385,6 +462,7 @@
     setzeText(el.zoomAnzeige, Math.round(Z.zoom * 100) + ' %');
     setzeText(el.leinwandGroesse, groesse.breite + ' × ' + groesse.hoehe + ' px');
     positioniereZeitstempel();
+    panAnwenden();
   }
 
   function setzeZoom(zahl) {
@@ -568,6 +646,7 @@
       el.hintergrundFarbe.value = farbeFuerInput(daten.hintergrund, '#ffffff');
       setzeText(el.hintergrundWert, el.hintergrundFarbe.value);
       Z.zoomEinpassen = true;
+      panZuruecksetzen();
       leinwandAnpassen();
       Z.canvas.requestRenderAll();
       eigenschaftenAktualisieren();
@@ -620,6 +699,7 @@
       obj.atelierArt = o.atelierArt || artVon(obj);
       obj.atelierName = o.atelierName || nameVon(obj);
       obj.quelle = o.quelle && typeof o.quelle === 'object' ? o.quelle : null;
+      obj.fiboDaten = o.fiboDaten && typeof o.fiboDaten === 'object' ? o.fiboDaten : null;
       obj.atelierGesperrt = !!o.atelierGesperrt;
       sperreAnwenden(obj);
     });
@@ -662,6 +742,7 @@
     verlaufMerken(!!opt.sofort);
     if (opt.liste !== false) zeichneEbenen();
     if (opt.eigenschaften) eigenschaftenAktualisieren();
+    kiAuswahlAktualisieren();
   }
 
   async function speichern(leise) {
@@ -751,6 +832,7 @@
     }
     planeSpeichern();
     verlaufKnoepfe();
+    kiAuswahlAktualisieren();
   }
 
   async function rueckgaengig() {
@@ -779,6 +861,7 @@
     if (el.hintergrundFarbe) el.hintergrundFarbe.disabled = !hat;
     if (el.projektWahl) el.projektWahl.disabled = !Z.projekte.length;
     verlaufKnoepfe();
+    kiAuswahlAktualisieren();
   }
 
   // ------------------------------------------------------------ Ebenenliste
@@ -994,6 +1077,7 @@
     Z.canvas.requestRenderAll();
     eigenschaftenAktualisieren();
     zeichneEbenen();
+    kiAuswahlAktualisieren();
   }
 
   function sperreAnwenden(obj) {
@@ -1097,10 +1181,11 @@
     ebeneHinzufuegen(form, 'form', art === 'kreis' ? 'Kreis' : 'Rechteck', null);
   }
 
-  function ebeneHinzufuegen(obj, art, name, quelle) {
+  function ebeneHinzufuegen(obj, art, name, quelle, fiboDaten) {
     obj.atelierArt = art;
     obj.atelierName = name;
     obj.quelle = quelle || null;
+    obj.fiboDaten = fiboDaten || null;
     obj.atelierGesperrt = false;
     sperreAnwenden(obj);
     Z.canvas.add(obj);
@@ -1719,22 +1804,833 @@
     }
   }
 
+  // ------------------------------------------------------------ KI-Aktionen
+
+  function aktivesBild() {
+    const obj = aktivesObjekt();
+    return obj && artVon(obj) === 'bild' ? obj : null;
+  }
+
+  function fiboCaption(obj) {
+    if (!obj || !istFibo(obj) || !obj.fiboDaten || !obj.fiboDaten.caption) return null;
+    let caption = obj.fiboDaten.caption;
+    if (typeof caption === 'string') {
+      try { caption = JSON.parse(caption); } catch (fehler) { caption = {short_description: caption}; }
+    }
+    return caption && typeof caption === 'object' ? caption : null;
+  }
+
+  function kiAktualisieren() {
+    if (!el.kiStatus) return;
+    let text;
+    if (Z.fiboBereit) text = 'Fibo bereit' + (Z.fiboStatus && Z.fiboStatus.aktiv ? ' · ' + Z.fiboStatus.aktiv : '');
+    else if (Z.fiboStatus && Z.fiboStatus.status === 'loading') text = 'Fibo startet – Modell lädt';
+    else if (Z.fiboStatus && Z.fiboStatus.status === 'error') text = 'Fibo meldet einen Fehler';
+    else text = 'Fibo ist aus';
+    setzeText(el.kiStatus, text);
+    if (el.kiAus) {
+      el.kiAus.hidden = Z.fiboBereit;
+      if (!Z.fiboBereit) setzeText(el.kiAus, 'Fibo ist aus – in der Modellzentrale starten.');
+    }
+    kiAuswahlAktualisieren();
+  }
+
+  function kiAuswahlAktualisieren() {
+    if (!el.kiEditStarten) return;
+    const obj = aktivesBild();
+    const text = obj ? 'Ausgewählt: ' + nameVon(obj) : 'Bitte eine Bild-Ebene auswählen.';
+    setzeText(el.kiEditHinweis, text);
+    setzeText(el.kiMaskeHinweis, text);
+    const freiOben = !Z.freistellenBereit ? (Z.freistellenText || FREI_AUS) : text;
+    setzeText(el.kiFreiHinweis, freiOben);
+    el.kiBildStarten.disabled = !Z.fiboBereit;
+    el.kiEditStarten.disabled = !(Z.fiboBereit && obj);
+    el.kiMaskeStarten.disabled = !(Z.fiboBereit && obj);
+    el.kiFreiStarten.disabled = !(Z.fiboBereit && obj && Z.freistellenBereit);
+    el.kiMergeStarten.disabled = !(Z.fiboBereit && !!Z.projekt);
+    const caption = fiboCaption(obj);
+    el.kiBeschreibungStarten.disabled = !(Z.fiboBereit && caption);
+    setzeText(el.kiBeschreibungHinweis, caption ? 'Beschreibung von „' + nameVon(obj) + '“ ändern.'
+      : 'Nur für Fibo-Ebenen mit Beschreibung.');
+  }
+
+  async function freistellenAktualisieren() {
+    try {
+      const daten = await ruf('/api/freistellen/status');
+      Z.freistellenBereit = !!daten.bereit;
+      Z.freistellenText = daten.text || '';
+    } catch (fehler) {
+      Z.freistellenBereit = false;
+      Z.freistellenText = fehler.message || FREI_AUS;
+    }
+    kiAuswahlAktualisieren();
+  }
+
+  function objektBildElement(obj) {
+    if (!obj) return null;
+    try { return obj.getElement ? obj.getElement() : obj._element; } catch (fehler) { return null; }
+  }
+
+  function objektAlsDataUrl(obj) {
+    const element = objektBildElement(obj);
+    if (!element) return null;
+    const breite = Math.max(1, element.naturalWidth || obj.width || 1);
+    const hoehe = Math.max(1, element.naturalHeight || obj.height || 1);
+    const flaeche = document.createElement('canvas');
+    flaeche.width = breite;
+    flaeche.height = hoehe;
+    flaeche.getContext('2d').drawImage(element, 0, 0, breite, hoehe);
+    return flaeche.toDataURL('image/png');
+  }
+
+  function bildGroesseFuer(ziel) {
+    const groesse = formatGroesse();
+    if (ziel === 'objekt') return {breite: 1024, hoehe: 1024};
+    const faktor = Math.sqrt(1000000 / Math.max(1, groesse.breite * groesse.hoehe));
+    const runden = function (wert) { return Math.max(16, Math.round(wert * faktor / 16) * 16); };
+    return {breite: runden(groesse.breite), hoehe: runden(groesse.hoehe)};
+  }
+
+  function seedAusFeld() {
+    const text = String(el.kiBildSeed.value || '').trim();
+    if (!text) return null;
+    const zahl = Math.trunc(alsZahl(text, 0));
+    return zahl >= 0 ? zahl : null;
+  }
+
+  async function starteFiboAuftrag(koerper, angaben) {
+    if (!Z.projekt) {
+      toast('Bitte zuerst ein Projekt anlegen.', 'fehler');
+      return null;
+    }
+    if (!Z.fiboBereit) {
+      toast('Fibo ist aus – in der Modellzentrale starten.', 'fehler');
+      return null;
+    }
+    try {
+      const antwort = await ruf('/api/fibo/api/auftrag', {methode: 'POST', koerper: koerper});
+      const job = Object.assign({
+        id: antwort.id, weg: 'fibo', status: 'wartet', schritt: 0, schritte: 0, platz: 0,
+        fehler: '', meldung: '', projekt: Z.projekt.name, fertig: false, busy: false
+      }, angaben || {});
+      Z.auftraege.push(job);
+      auftraegeZeichnen();
+      setzeStatus('KI: ' + job.titel + ' in der Warteschlange.');
+      auftraegePruefen();
+      return job;
+    } catch (fehler) {
+      toast('KI-Auftrag nicht angenommen: ' + fehler.message, 'fehler');
+      setzeStatus('KI-Auftrag nicht angenommen: ' + fehler.message, 'fehler');
+      return null;
+    }
+  }
+
+  function auftragText(job) {
+    if (job.fertig) return job.status === 'fehler' ? (job.fehler || 'Fehler') : job.status || 'fertig';
+    if (job.status === 'wartet') return 'wartet' + (job.platz ? ' · Platz ' + job.platz : '');
+    if (job.status === 'beschreibt') return 'Beschreibung läuft';
+    if (job.status === 'laedt_modell') return 'Modell wird geladen';
+    if (job.status === 'rechnet') {
+      return 'rechnet' + (job.schritte ? ' · Schritt ' + job.schritt + '/' + job.schritte : '');
+    }
+    if (job.status === 'laeuft') return 'rechnet' + (job.meldung ? ' · ' + job.meldung : '');
+    if (job.status === 'abgebrochen') return 'abgebrochen';
+    if (job.status === 'fehler') return job.fehler || 'Fehler';
+    return job.status || 'wartet';
+  }
+
+  function auftraegeZeichnen() {
+    if (!el.kiAuftraege || !el.kiAuftraegeListe) return;
+    el.kiAuftraege.hidden = Z.auftraege.length === 0;
+    el.kiAuftraegeListe.textContent = '';
+    Z.auftraege.forEach(function (job) {
+      const li = document.createElement('li');
+      li.className = 'ki-auftrag' + (job.status === 'fehler' ? ' fehler' : '') +
+        (job.fertig ? ' fertig' : '');
+      const mitte = document.createElement('div');
+      mitte.className = 'ki-auftrag-mitte';
+      const titel = document.createElement('span');
+      titel.className = 'ki-auftrag-titel';
+      titel.textContent = job.titel || 'KI-Auftrag';
+      const stand = document.createElement('span');
+      stand.className = 'ki-auftrag-stand';
+      stand.textContent = auftragText(job);
+      mitte.appendChild(titel);
+      mitte.appendChild(stand);
+      li.appendChild(mitte);
+      if (!job.fertig) {
+        const abbrechen = document.createElement('button');
+        abbrechen.type = 'button';
+        abbrechen.className = 'knopf knopf-klein';
+        abbrechen.textContent = 'Abbrechen';
+        abbrechen.addEventListener('click', function () { auftragAbbrechen(job); });
+        li.appendChild(abbrechen);
+      }
+      el.kiAuftraegeListe.appendChild(li);
+    });
+  }
+
+  async function auftraegePruefen() {
+    if (Z.auftragPruefung) return;
+    Z.auftragPruefung = true;
+    clearTimeout(Z.auftragTimer);
+    const offen = Z.auftraege.filter(function (job) { return !job.fertig && !job.busy; });
+    for (let i = 0; i < offen.length; i += 1) {
+      const job = offen[i];
+      job.busy = true;
+      try {
+        if (job.weg === 'werkstatt') {
+          const info = await ruf('/api/freistellen?id=' + encodeURIComponent(job.id) +
+            '&projekt=' + encodeURIComponent(job.projekt));
+          job.status = info.zustand || 'wartet';
+          job.meldung = info.meldung || '';
+          if (info.zustand === 'fertig') await freistellenFertig(job, info);
+          else if (info.zustand === 'fehler') {
+            job.status = 'fehler';
+            job.fehler = info.fehler || 'Das Freistellen ist fehlgeschlagen.';
+            job.fertig = true;
+          } else if (info.zustand === 'abgebrochen') {
+            job.fertig = true;
+          }
+        } else {
+          const info = await ruf('/api/fibo/api/auftrag/' + encodeURIComponent(job.id));
+          job.status = info.zustand || 'wartet';
+          job.schritt = info.schritt || 0;
+          job.schritte = info.schritte || 0;
+          job.platz = info.platz || 0;
+          job.fehler = info.fehler || '';
+          if (info.zustand === 'fertig') await fiboAuftragFertig(job);
+          else if (info.zustand === 'fehler' || info.zustand === 'abgebrochen') job.fertig = true;
+        }
+      } catch (fehler) {
+        job.status = 'fehler';
+        job.fehler = fehler.message || 'Der Auftrag ließ sich nicht abfragen.';
+        job.fertig = true;
+      } finally {
+        job.busy = false;
+      }
+    }
+    auftraegeZeichnen();
+    Z.auftragPruefung = false;
+    if (Z.auftraege.some(function (job) { return !job.fertig; })) {
+      Z.auftragTimer = setTimeout(auftraegePruefen, 1400);
+    }
+  }
+
+  async function auftragAbbrechen(job) {
+    if (!job || job.fertig) return;
+    try {
+      if (job.weg === 'werkstatt') {
+        await ruf('/api/freistellen/abbrechen', {methode: 'POST', koerper: {id: job.id}});
+      } else {
+        await ruf('/api/fibo/api/auftrag/' + encodeURIComponent(job.id) + '/abbrechen',
+          {methode: 'POST', koerper: {}});
+      }
+      toast('Abbruch angefordert. Der Dienst beendet den Auftrag.', 'ok');
+      auftraegePruefen();
+    } catch (fehler) {
+      toast('Abbrechen fehlgeschlagen: ' + fehler.message, 'fehler');
+    }
+  }
+
+  function auftragBeenden(job, status, text) {
+    job.status = status;
+    job.fehler = text || job.fehler || '';
+    job.fertig = true;
+    auftraegeZeichnen();
+  }
+
+  async function fiboAuftragFertig(job) {
+    let antwort;
+    try {
+      antwort = await ruf('/api/fibo/uebernehmen', {
+        methode: 'POST',
+        koerper: {projekt: job.projekt, id: job.id}
+      });
+    } catch (fehler) {
+      auftragBeenden(job, 'fehler', 'Ergebnis nicht übernommen: ' + fehler.message);
+      toast('Ergebnis nicht übernommen: ' + fehler.message, 'fehler');
+      return;
+    }
+    if (!Z.projekt || Z.projekt.name !== job.projekt) {
+      job.status = 'fertig';
+      job.fertig = true;
+      auftraegeZeichnen();
+      toast('Ergebnis in Projekt „' + job.projekt + '“ gespeichert. Zum Einfügen das Projekt öffnen.', 'ok');
+      return;
+    }
+    try {
+      if (job.art === 'merge') {
+        await mergeErgebnis(job, antwort);
+      } else if (job.ziel && Z.canvas.getObjects().indexOf(job.ziel) >= 0) {
+        await ersetzeBild(job.ziel, antwort, {});
+      } else {
+        await ergebnisAlsEbene(antwort, job);
+      }
+      job.status = 'fertig';
+      job.fertig = true;
+      aenderung({eigenschaften: true, sofort: true});
+      toast(job.titel + ': Ergebnis übernommen.', 'ok');
+      setzeStatus(job.titel + ': Ergebnis übernommen.', 'ok');
+    } catch (fehler) {
+      auftragBeenden(job, 'fehler', 'Ergebnis nicht eingesetzt: ' + fehler.message);
+    }
+    auftraegeZeichnen();
+  }
+
+  async function freistellenFertig(job, info) {
+    if (!Z.projekt || Z.projekt.name !== job.projekt) {
+      job.fertig = true;
+      auftraegeZeichnen();
+      return;
+    }
+    const antwort = {datei: info.datei, name: info.name, typ: info.typ};
+    try {
+      if (job.ziel && Z.canvas.getObjects().indexOf(job.ziel) >= 0) {
+        const alt = job.ziel.quelle && job.ziel.quelle.art === 'fibo'
+          ? Object.assign({}, job.ziel.quelle, {datei: info.datei}) : null;
+        await ersetzeBild(job.ziel, antwort, {
+          quelle: alt || {art: 'studio', datei: info.datei, name: info.name || 'Freigestellt'},
+          fiboDaten: job.ziel.fiboDaten || null
+        });
+      } else {
+        const ursprung = job.ursprung && job.ursprung.art === 'fibo'
+          ? Object.assign({}, job.ursprung, {datei: info.datei}) : null;
+        await ergebnisAlsEbene(antwort, {
+          art: 'freistellen', zielName: job.zielName || 'Freigestellt', quelle: ursprung ||
+            {art: 'studio', datei: info.datei, name: info.name || 'Freigestellt'}
+        });
+      }
+      job.status = 'fertig';
+      job.fertig = true;
+      aenderung({eigenschaften: true, sofort: true});
+      toast('Freistellen: Ergebnis übernommen.', 'ok');
+      setzeStatus('Freistellen: Ergebnis übernommen.', 'ok');
+    } catch (fehler) {
+      auftragBeenden(job, 'fehler', 'Ergebnis nicht eingesetzt: ' + fehler.message);
+    }
+    auftraegeZeichnen();
+  }
+
+  async function ersetzeBild(obj, antwort, optionen) {
+    const opt = optionen || {};
+    const neu = await fabric.FabricImage.fromURL(bildUrl(antwort.datei));
+    const breite = obj.getScaledWidth();
+    const hoehe = obj.getScaledHeight();
+    const index = Z.canvas.getObjects().indexOf(obj);
+    const alteQuelle = opt.quelle || antwort.quelle || obj.quelle || null;
+    const quelle = alteQuelle ? Object.assign({}, alteQuelle,
+      {datei: alteQuelle.datei || antwort.datei}) : null;
+    neu.set({
+      left: obj.left, top: obj.top, originX: obj.originX, originY: obj.originY,
+      angle: obj.angle || 0, flipX: !!obj.flipX, flipY: !!obj.flipY,
+      visible: obj.visible !== false, opacity: obj.opacity,
+      atelierArt: 'bild', atelierName: obj.atelierName || 'Bild',
+      atelierGesperrt: !!obj.atelierGesperrt,
+      quelle: quelle,
+      fiboDaten: opt.fiboDaten !== undefined ? opt.fiboDaten : (antwort.daten || obj.fiboDaten || null),
+      scaleX: breite / Math.max(1, alsZahl(neu.width, 1)),
+      scaleY: hoehe / Math.max(1, alsZahl(neu.height, 1))
+    });
+    Z.stumm = true;
+    try {
+      Z.canvas.remove(obj);
+      if (index >= 0) Z.canvas.insertAt(index, neu);
+      else Z.canvas.add(neu);
+      sperreAnwenden(neu);
+    } finally {
+      Z.stumm = false;
+    }
+    Z.canvas.requestRenderAll();
+    eigenschaftenAktualisieren();
+    zeichneEbenen();
+    return neu;
+  }
+
+  async function ergebnisAlsEbene(antwort, job) {
+    const bild = await fabric.FabricImage.fromURL(bildUrl(antwort.datei));
+    const groesse = formatGroesse();
+    const breite = Math.max(1, alsZahl(bild.width, 1));
+    const hoehe = Math.max(1, alsZahl(bild.height, 1));
+    let faktor;
+    let links;
+    let oben;
+    const vollbild = job.vollbild || job.art === 'merge' || job.art === 'bild' && job.vollbild;
+    if (vollbild) {
+      faktor = Math.max(groesse.breite / breite, groesse.hoehe / hoehe);
+      links = (groesse.breite - breite * faktor) / 2;
+      oben = (groesse.hoehe - hoehe * faktor) / 2;
+    } else {
+      faktor = Math.min((groesse.breite * 0.82) / breite, (groesse.hoehe * 0.82) / hoehe, 1);
+      links = (groesse.breite - breite * faktor) / 2;
+      oben = (groesse.hoehe - hoehe * faktor) / 2;
+    }
+    bild.set({
+      left: links, top: oben, scaleX: faktor, scaleY: faktor,
+      atelierArt: 'bild', atelierName: job.zielName || (job.art === 'merge' ? 'Zusammengeführt' : 'Fibo-Bild'),
+      quelle: job.quelle || (antwort.quelle
+        ? Object.assign({}, antwort.quelle, {datei: antwort.datei}) : null),
+      fiboDaten: antwort.daten || null,
+      atelierGesperrt: false
+    });
+    sperreAnwenden(bild);
+    Z.stumm = true;
+    try {
+      if (job.art === 'merge' || job.vollbild) Z.canvas.insertAt(0, bild);
+      else Z.canvas.add(bild);
+      Z.canvas.setActiveObject(bild);
+    } finally {
+      Z.stumm = false;
+    }
+    Z.canvas.requestRenderAll();
+    eigenschaftenAktualisieren();
+    zeichneEbenen();
+    return bild;
+  }
+
+  async function mergeErgebnis(job, antwort) {
+    (job.quellen || []).forEach(function (obj) {
+      if (Z.canvas.getObjects().indexOf(obj) >= 0) {
+        obj.visible = false;
+        sperreAnwenden(obj);
+      }
+    });
+    job.vollbild = true;
+    job.zielName = 'Zusammengeführt';
+    await ergebnisAlsEbene(antwort, job);
+  }
+
+  async function bildErzeugen() {
+    if (!mitProjektOderDialog()) return;
+    if (!Z.fiboBereit) {
+      toast('Fibo ist aus – in der Modellzentrale starten.', 'fehler');
+      return;
+    }
+    const prompt = String(el.kiBildPrompt.value || '').trim();
+    if (!prompt) {
+      toast('Bitte einen Prompt eingeben.', 'fehler');
+      el.kiBildPrompt.focus();
+      return;
+    }
+    const ziel = el.kiBildZiel.value === 'objekt' ? 'objekt' : 'hintergrund';
+    const groesse = bildGroesseFuer(ziel);
+    const koerper = {
+      art: 'bild', prompt: prompt, beschreiber: el.kiBildBeschreiber.value,
+      modell: 'dev', schritte: Math.trunc(alsZahl(el.kiBildQualitaet.value, 30)),
+      breite: groesse.breite, hoehe: groesse.hoehe
+    };
+    const seed = seedAusFeld();
+    if (seed !== null) koerper.seed = seed;
+    await starteFiboAuftrag(koerper, {
+      art: 'bild', titel: 'Bild erzeugen', vollbild: ziel === 'hintergrund',
+      zielName: ziel === 'hintergrund' ? 'Fibo-Hintergrund' : 'Fibo-Objekt'
+    });
+  }
+
+  async function ebeneBearbeiten() {
+    const obj = aktivesBild();
+    if (!obj) {
+      toast('Bitte eine Bild-Ebene auswählen.', 'fehler');
+      return;
+    }
+    const anweisung = String(el.kiEditAnweisung.value || '').trim();
+    if (!anweisung) {
+      toast('Bitte eine Anweisung eingeben.', 'fehler');
+      el.kiEditAnweisung.focus();
+      return;
+    }
+    const daten = objektAlsDataUrl(obj);
+    if (!daten) {
+      toast('Das Bild der Ebene ließ sich nicht lesen.', 'fehler');
+      return;
+    }
+    const dev = !!el.kiEditDev.checked;
+    const koerper = {
+      art: 'bearbeiten', prompt: anweisung, beschreiber: 'keiner', bilder: [daten],
+      modell: dev ? 'dev' : 'turbo', schritte: dev ? 30 : 4
+    };
+    if (dev) koerper.guidance = 5;
+    await starteFiboAuftrag(koerper, {
+      art: 'bearbeiten', titel: 'Ebene bearbeiten', ziel: obj, zielName: obj.atelierName
+    });
+  }
+
+  async function freistellenStarten() {
+    const obj = aktivesBild();
+    if (!obj || !obj.quelle || !obj.quelle.datei) {
+      toast('Bitte eine Bild-Ebene mit gespeicherter Datei auswählen.', 'fehler');
+      return;
+    }
+    if (!Z.freistellenBereit) {
+      toast(Z.freistellenText || FREI_AUS, 'fehler');
+      return;
+    }
+    const mitMotiv = el.kiFreiArt.value === 'motiv';
+    const motiv = mitMotiv ? String(el.kiFreiMotiv.value || '').trim() : '';
+    if (mitMotiv && !motiv) {
+      toast('Bitte das Motiv beschreiben (z. B. „den Hund“).', 'fehler');
+      el.kiFreiMotiv.focus();
+      return;
+    }
+    try {
+      const antwort = await ruf('/api/freistellen', {
+        methode: 'POST',
+        koerper: {projekt: Z.projekt.name, datei: obj.quelle.datei, motiv: motiv}
+      });
+      const job = {
+        id: antwort.id, weg: 'werkstatt', art: 'freistellen', titel: 'Freistellen',
+        projekt: Z.projekt.name, ziel: obj, zielName: obj.atelierName,
+        ursprung: obj.quelle && obj.quelle.art === 'fibo' ? Object.assign({}, obj.quelle) : null,
+        status: 'wartet', schritt: 0, schritte: 0, platz: 0, fehler: '', meldung: '',
+        fertig: false, busy: false
+      };
+      Z.auftraege.push(job);
+      auftraegeZeichnen();
+      setzeStatus('Freistellen: Auftrag in der Werkstatt.');
+      auftraegePruefen();
+    } catch (fehler) {
+      toast('Freistellen nicht gestartet: ' + fehler.message, 'fehler');
+      setzeStatus('Freistellen nicht gestartet: ' + fehler.message, 'fehler');
+    }
+  }
+
+  async function zusammenfuehrenDaten() {
+    const groesse = formatGroesse();
+    const objekte = Z.canvas.getObjects();
+    const texte = objekte.filter(function (obj) {
+      return artVon(obj) === 'text' && obj.visible !== false;
+    });
+    const sichtbar = texte.map(function (obj) { return obj.visible; });
+    const alterZoom = Z.canvas.getZoom();
+    const alteBreite = Z.canvas.getWidth();
+    const alteHoehe = Z.canvas.getHeight();
+    let roh;
+    texte.forEach(function (obj) { obj.visible = false; });
+    try {
+      Z.canvas.setDimensions({width: groesse.breite, height: groesse.hoehe});
+      Z.canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      roh = Z.canvas.toDataURL({format: 'png', multiplier: 1});
+    } finally {
+      texte.forEach(function (obj, i) { obj.visible = sichtbar[i]; });
+      Z.canvas.setDimensions({width: alteBreite, height: alteHoehe});
+      Z.canvas.setViewportTransform([alterZoom, 0, 0, alterZoom, 0, 0]);
+      Z.canvas.requestRenderAll();
+      positioniereZeitstempel();
+    }
+    return wartenAufBild(roh, 1000000);
+  }
+
+  function wartenAufBild(daten, maxFlaeche) {
+    return new Promise(function (aufloesen, ablehnen) {
+      const bild = new Image();
+      bild.onload = function () {
+        const breite = Math.max(1, bild.naturalWidth || bild.width);
+        const hoehe = Math.max(1, bild.naturalHeight || bild.height);
+        const faktor = Math.min(1, Math.sqrt(maxFlaeche / (breite * hoehe)));
+        if (faktor >= 0.999) {
+          aufloesen(daten);
+          return;
+        }
+        const flaeche = document.createElement('canvas');
+        flaeche.width = Math.max(16, Math.round(breite * faktor / 16) * 16);
+        flaeche.height = Math.max(16, Math.round(hoehe * faktor / 16) * 16);
+        flaeche.getContext('2d').drawImage(bild, 0, 0, flaeche.width, flaeche.height);
+        aufloesen(flaeche.toDataURL('image/png'));
+      };
+      bild.onerror = function () { ablehnen(new Error('Das Bild ließ sich nicht lesen.')); };
+      bild.src = daten;
+    });
+  }
+
+  async function zusammenfuehren() {
+    if (!mitProjektOderDialog()) return;
+    if (!Z.fiboBereit) {
+      toast('Fibo ist aus – in der Modellzentrale starten.', 'fehler');
+      return;
+    }
+    const quellen = Z.canvas.getObjects().filter(function (obj) {
+      const art = artVon(obj);
+      return obj.visible !== false && (art === 'bild' || art === 'form');
+    });
+    if (!quellen.length) {
+      toast('Keine sichtbaren Bild- oder Form-Ebenen zum Zusammenführen.', 'fehler');
+      return;
+    }
+    let daten;
+    try {
+      daten = await zusammenfuehrenDaten();
+    } catch (fehler) {
+      toast('Zusammenführen fehlgeschlagen: ' + fehler.message, 'fehler');
+      return;
+    }
+    const anweisung = String(el.kiMergeAnweisung.value || '').trim() || MERGE_PROMPT;
+    await starteFiboAuftrag({
+      art: 'bearbeiten', prompt: anweisung, beschreiber: 'keiner', bilder: [daten],
+      modell: 'turbo', schritte: 4
+    }, {art: 'merge', titel: 'Zusammenführen', quellen: quellen, zielName: 'Zusammengeführt'});
+  }
+
+  // ------------------------------------------------------------ Maske malen
+
+  function maskeOeffnen() {
+    const obj = aktivesBild();
+    if (!obj) {
+      toast('Bitte eine Bild-Ebene auswählen.', 'fehler');
+      return;
+    }
+    if (!Z.fiboBereit) {
+      toast('Fibo ist aus – in der Modellzentrale starten.', 'fehler');
+      return;
+    }
+    const element = objektBildElement(obj);
+    if (!element) {
+      toast('Das Bild der Ebene ließ sich nicht lesen.', 'fehler');
+      return;
+    }
+    const breite = Math.max(1, element.naturalWidth || obj.width || 1);
+    const hoehe = Math.max(1, element.naturalHeight || obj.height || 1);
+    const vorschau = el.maskenVorschau;
+    vorschau.width = breite;
+    vorschau.height = hoehe;
+    const maske = document.createElement('canvas');
+    maske.width = breite;
+    maske.height = hoehe;
+    const tinte = document.createElement('canvas');
+    tinte.width = breite;
+    tinte.height = hoehe;
+    Z.maske = {
+      ziel: obj, bild: element, breite: breite, hoehe: hoehe, maske: maske, tinte: tinte,
+      zeichnet: false, letzter: null,
+      radierer: false, pinsel: 40
+    };
+    el.maskenFehler.hidden = true;
+    el.maskenAnweisung.value = '';
+    setzeText(el.maskenStatus, 'Mit dem Pinsel markieren, was neu gerechnet wird. Weiß heißt neu.');
+    maskeWerkzeugAktualisieren();
+    maskeZeichnen();
+    el.dialogMaske.showModal();
+  }
+
+  function maskeWerkzeugAktualisieren() {
+    if (!Z.maske) return;
+    Z.maske.radierer = !!(el.maskeRadierer && el.maskeRadierer.classList.contains('aktiv'));
+    el.maskePinsel.classList.toggle('aktiv', !Z.maske.radierer);
+    el.maskeRadierer.classList.toggle('aktiv', Z.maske.radierer);
+    setzeText(el.maskeGroesseWert, el.maskeGroesse.value + ' px');
+  }
+
+  function maskeZeichnen() {
+    const m = Z.maske;
+    if (!m) return;
+    const stift = el.maskenVorschau.getContext('2d');
+    stift.clearRect(0, 0, m.breite, m.hoehe);
+    stift.drawImage(m.bild, 0, 0, m.breite, m.hoehe);
+    const tintenStift = m.tinte.getContext('2d');
+    tintenStift.clearRect(0, 0, m.breite, m.hoehe);
+    tintenStift.globalCompositeOperation = 'source-over';
+    tintenStift.drawImage(m.maske, 0, 0);
+    tintenStift.globalCompositeOperation = 'source-in';
+    tintenStift.fillStyle = 'rgba(255, 60, 60, .95)';
+    tintenStift.fillRect(0, 0, m.breite, m.hoehe);
+    tintenStift.globalCompositeOperation = 'source-over';
+    stift.save();
+    stift.globalAlpha = 0.62;
+    stift.drawImage(m.tinte, 0, 0);
+    stift.restore();
+  }
+
+  function maskePosition(ereignis) {
+    const m = Z.maske;
+    const rahmen = el.maskenVorschau.getBoundingClientRect();
+    if (!m || !rahmen.width || !rahmen.height) return null;
+    return {
+      x: (ereignis.clientX - rahmen.left) * (m.breite / rahmen.width),
+      y: (ereignis.clientY - rahmen.top) * (m.hoehe / rahmen.height),
+      faktor: m.breite / rahmen.width
+    };
+  }
+
+  function maskeStrich(von, nach, faktor) {
+    const m = Z.maske;
+    const stift = m.maske.getContext('2d');
+    stift.save();
+    stift.lineCap = 'round';
+    stift.lineJoin = 'round';
+    stift.lineWidth = Math.max(1, Number(el.maskeGroesse.value || 40) * faktor);
+    stift.strokeStyle = '#ffffff';
+    stift.fillStyle = '#ffffff';
+    if (m.radierer) stift.globalCompositeOperation = 'destination-out';
+    else stift.globalCompositeOperation = 'source-over';
+    if (nach) {
+      stift.beginPath();
+      stift.moveTo(von.x, von.y);
+      stift.lineTo(nach.x, nach.y);
+      stift.stroke();
+      stift.beginPath();
+      stift.arc(nach.x, nach.y, stift.lineWidth / 2, 0, Math.PI * 2);
+      stift.fill();
+    } else {
+      stift.beginPath();
+      stift.arc(von.x, von.y, stift.lineWidth / 2, 0, Math.PI * 2);
+      stift.fill();
+    }
+    stift.restore();
+    maskeZeichnen();
+  }
+
+  function maskeLeeren() {
+    if (!Z.maske) return;
+    Z.maske.maske.getContext('2d').clearRect(0, 0, Z.maske.breite, Z.maske.hoehe);
+    maskeZeichnen();
+  }
+
+  function maskeIstLeer() {
+    const m = Z.maske;
+    if (!m) return true;
+    const daten = m.maske.getContext('2d').getImageData(0, 0, m.breite, m.hoehe).data;
+    for (let i = 3; i < daten.length; i += 4) {
+      if (daten[i] > 8) return false;
+    }
+    return true;
+  }
+
+  function maskeAlsDataUrl() {
+    const m = Z.maske;
+    const flaeche = document.createElement('canvas');
+    flaeche.width = m.breite;
+    flaeche.height = m.hoehe;
+    const stift = flaeche.getContext('2d');
+    stift.fillStyle = '#000000';
+    stift.fillRect(0, 0, m.breite, m.hoehe);
+    stift.drawImage(m.maske, 0, 0);
+    return flaeche.toDataURL('image/png');
+  }
+
+  async function maskeAusfuehren() {
+    const m = Z.maske;
+    if (!m) return;
+    const anweisung = String(el.maskenAnweisung.value || '').trim();
+    if (!anweisung) {
+      el.maskenFehler.hidden = false;
+      setzeText(el.maskenFehler, 'Bitte eine Anweisung eingeben.');
+      return;
+    }
+    if (maskeIstLeer()) {
+      el.maskenFehler.hidden = false;
+      setzeText(el.maskenFehler, 'Bitte zuerst einen Bereich markieren.');
+      return;
+    }
+    const bild = objektAlsDataUrl(m.ziel);
+    if (!bild) {
+      el.maskenFehler.hidden = false;
+      setzeText(el.maskenFehler, 'Das Bild der Ebene ließ sich nicht lesen.');
+      return;
+    }
+    const mask = maskeAlsDataUrl();
+    const ziel = m.ziel;
+    el.dialogMaske.close();
+    await starteFiboAuftrag({
+      art: 'bearbeiten', prompt: anweisung, beschreiber: 'keiner', bilder: [bild], maske: mask,
+      modell: 'turbo', schritte: 4
+    }, {art: 'maske', titel: 'Bereich ändern', ziel: ziel, zielName: ziel.atelierName});
+  }
+
+  // ------------------------------------------------------------ Beschreibung ändern
+
+  function vglFeldText(wert) {
+    if (wert === undefined || wert === null) return '';
+    if (typeof wert === 'string') return wert;
+    try { return JSON.stringify(wert, null, 1); } catch (fehler) { return ''; }
+  }
+
+  function beschreibungOeffnen() {
+    const obj = aktivesBild();
+    const caption = fiboCaption(obj);
+    if (!caption) {
+      toast('Nur Fibo-Ebenen mit Beschreibung lassen sich ändern.', 'fehler');
+      return;
+    }
+    Z.beschreibungZiel = {obj: obj, caption: JSON.parse(JSON.stringify(caption)),
+      breite: (obj.fiboDaten && obj.fiboDaten.breite) || obj.width,
+      hoehe: (obj.fiboDaten && obj.fiboDaten.hoehe) || obj.height};
+    el.beschreibungKurz.value = caption.short_description || caption.caption || '';
+    el.beschreibungLicht.value = vglFeldText(caption.lighting);
+    el.beschreibungAesthetik.value = vglFeldText(caption.aesthetics);
+    el.beschreibungKamera.value = vglFeldText(caption.photographic_characteristics);
+    el.beschreibungStil.value = caption.artistic_style || caption.style_medium || '';
+    el.beschreibungText.value = caption.context || '';
+    el.beschreibungFehler.hidden = true;
+    el.dialogBeschreibung.showModal();
+  }
+
+  function jsonFeldWert(feld, name) {
+    const text = String(feld.value || '').trim();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (fehler) {
+      throw new Error('Das Feld „' + name + '“ ist kein gültiges JSON.');
+    }
+  }
+
+  async function beschreibungRechnen() {
+    const ziel = Z.beschreibungZiel;
+    if (!ziel) return;
+    let caption;
+    try {
+      caption = JSON.parse(JSON.stringify(ziel.caption || {}));
+      caption.short_description = String(el.beschreibungKurz.value || '').trim();
+      caption.lighting = jsonFeldWert(el.beschreibungLicht, 'Licht');
+      caption.aesthetics = jsonFeldWert(el.beschreibungAesthetik, 'Ästhetik');
+      caption.photographic_characteristics = jsonFeldWert(el.beschreibungKamera, 'Kamera');
+      caption.artistic_style = String(el.beschreibungStil.value || '').trim();
+      caption.context = String(el.beschreibungText.value || '').trim();
+    } catch (fehler) {
+      el.beschreibungFehler.hidden = false;
+      setzeText(el.beschreibungFehler, fehler.message);
+      return;
+    }
+    const seed = ziel.obj && ziel.obj.fiboDaten ? ziel.obj.fiboDaten.seed : null;
+    const koerper = {
+      art: 'bild', prompt: caption, beschreiber: 'keiner', modell: 'dev', schritte: 30,
+      breite: Math.max(16, Math.round(alsZahl(ziel.breite, 1024))),
+      hoehe: Math.max(16, Math.round(alsZahl(ziel.hoehe, 1024)))
+    };
+    if (seed !== null && seed !== undefined) koerper.seed = seed;
+    const obj = ziel.obj;
+    el.dialogBeschreibung.close();
+    await starteFiboAuftrag(koerper, {
+      art: 'beschreibung', titel: 'Beschreibung ändern', ziel: obj, zielName: obj.atelierName
+    });
+  }
+
   // ------------------------------------------------------------ Fibo-Anzeige
 
   async function fiboAktualisieren() {
     try {
       const daten = await ruf('/api/fibo/health');
-      Z.fiboBereit = !!daten.bereit;
-      setzeText(el.fiboText, daten.bereit ? 'bereit' : (daten.text || FIBO_AUS));
-      el.fiboAnzeige.classList.toggle('bereit', !!daten.bereit);
+      Z.fiboStatus = daten;
+      Z.fiboBereit = daten.status === 'ok';
+      if (Z.fiboBereit) {
+        setzeText(el.fiboText, 'bereit' + (daten.aktiv ? ' (' + daten.aktiv + ')' : ''));
+      } else if (daten.status === 'loading') {
+        setzeText(el.fiboText, 'startet – Fibo lädt das Modell');
+      } else if (daten.status === 'error') {
+        setzeText(el.fiboText, 'Fehler – Details in der Modellzentrale');
+      } else {
+        setzeText(el.fiboText, FIBO_AUS);
+      }
+      el.fiboAnzeige.classList.toggle('bereit', Z.fiboBereit);
       el.fiboAnzeige.classList.toggle('startet', daten.status === 'loading');
-      el.fiboAnzeige.classList.toggle('aus', !daten.bereit && daten.status !== 'loading');
+      el.fiboAnzeige.classList.toggle('aus', !Z.fiboBereit && daten.status !== 'loading');
     } catch (fehler) {
+      Z.fiboStatus = null;
       Z.fiboBereit = false;
-      setzeText(el.fiboText, FIBO_AUS);
+      setzeText(el.fiboText, fehler.message || FIBO_AUS);
       el.fiboAnzeige.classList.remove('bereit', 'startet');
       el.fiboAnzeige.classList.add('aus');
     }
+    kiAktualisieren();
   }
 
   // ------------------------------------------------------------ Dialoge
@@ -1969,6 +2865,50 @@
     el.studioNeuLaden.addEventListener('click', studioLaden);
     el.testImport.addEventListener('click', testImport);
 
+    el.kiBildStarten.addEventListener('click', bildErzeugen);
+    el.kiEditStarten.addEventListener('click', ebeneBearbeiten);
+    el.kiMaskeStarten.addEventListener('click', maskeOeffnen);
+    el.kiFreiStarten.addEventListener('click', freistellenStarten);
+    el.kiMergeStarten.addEventListener('click', zusammenfuehren);
+    el.kiBeschreibungStarten.addEventListener('click', beschreibungOeffnen);
+    el.kiFreiArt.addEventListener('change', function () {
+      const mitMotiv = el.kiFreiArt.value === 'motiv';
+      el.kiFreiMotiv.disabled = !mitMotiv;
+      if (!mitMotiv) el.kiFreiMotiv.value = '';
+    });
+    [el.maskePinsel, el.maskeRadierer].forEach(function (knopf) {
+      knopf.addEventListener('click', function () {
+        const radierer = knopf === el.maskeRadierer;
+        el.maskePinsel.classList.toggle('aktiv', !radierer);
+        el.maskeRadierer.classList.toggle('aktiv', radierer);
+        if (Z.maske) Z.maske.radierer = radierer;
+      });
+    });
+    el.maskeGroesse.addEventListener('input', maskeWerkzeugAktualisieren);
+    el.maskeLeeren.addEventListener('click', maskeLeeren);
+    el.maskenOk.addEventListener('click', maskeAusfuehren);
+    el.maskenVorschau.addEventListener('pointerdown', function (ereignis) {
+      if (!Z.maske) return;
+      ereignis.preventDefault();
+      const position = maskePosition(ereignis);
+      if (!position) return;
+      Z.maske.zeichnet = true;
+      Z.maske.letzter = position;
+      try { el.maskenVorschau.setPointerCapture(ereignis.pointerId); } catch (fehler) { /* optional */ }
+      maskeStrich(position, null, position.faktor);
+    });
+    el.maskenVorschau.addEventListener('pointermove', function (ereignis) {
+      if (!Z.maske || !Z.maske.zeichnet) return;
+      const position = maskePosition(ereignis);
+      if (!position) return;
+      maskeStrich(Z.maske.letzter, position, position.faktor);
+      Z.maske.letzter = position;
+    });
+    window.addEventListener('pointerup', function () {
+      if (Z.maske) Z.maske.zeichnet = false;
+    });
+    el.beschreibungOk.addEventListener('click', beschreibungRechnen);
+
     el.hintergrundFarbe.addEventListener('input', function () {
       Z.canvas.backgroundColor = el.hintergrundFarbe.value;
       setzeText(el.hintergrundWert, el.hintergrundFarbe.value);
@@ -2026,6 +2966,12 @@
     document.addEventListener('keydown', function (ereignis) {
       const ziel = ereignis.target;
       if (ziel && ziel.closest && ziel.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (ereignis.key === ' ' || ereignis.code === 'Space') {
+        ereignis.preventDefault();
+        Z.leertaste = true;
+        document.body.classList.add('pan-bereit');
+        return;
+      }
       const strg = ereignis.ctrlKey || ereignis.metaKey;
       if (strg) {
         const taste = String(ereignis.key).toLowerCase();
@@ -2085,6 +3031,19 @@
 
     document.addEventListener('visibilitychange', function () {
       if (document.hidden && Z.schmutzig) speichern(true);
+    });
+    document.addEventListener('keyup', function (ereignis) {
+      if (ereignis.key === ' ' || ereignis.code === 'Space') {
+        Z.leertaste = false;
+        document.body.classList.remove('pan-bereit');
+      }
+    });
+    window.addEventListener('blur', function () {
+      Z.leertaste = false;
+      Z.panAktiv = false;
+      Z.panStart = null;
+      document.body.classList.remove('pan-bereit');
+      if (el.leinwandRahmen) el.leinwandRahmen.classList.remove('pannen');
     });
   }
 })();

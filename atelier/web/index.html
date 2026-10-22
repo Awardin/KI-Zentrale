@@ -254,8 +254,109 @@
     </section>
 
     <section class="ki-bereich">
-      <h2 class="abschnitt">KI</h2>
-      <p class="ki-platzhalter">Kommt im nächsten Schritt</p>
+      <div class="spalten-kopf">
+        <h2 class="abschnitt">KI</h2>
+        <span class="leise" id="ki-status">wird geprüft …</span>
+      </div>
+      <p class="ki-hinweis" id="ki-aus" hidden>Fibo ist aus – in der Modellzentrale starten.</p>
+      <div class="ki-aktionen" id="ki-aktionen">
+        <details class="ki-block" open>
+          <summary>Bild erzeugen</summary>
+          <div class="ki-formular">
+            <label class="eig-feld">Prompt
+              <textarea id="ki-bild-prompt" rows="3" placeholder="Was soll zu sehen sein?"></textarea>
+            </label>
+            <div class="eig-paar">
+              <label class="eig-feld">Beschreiber
+                <select id="ki-bild-beschreiber">
+                  <option value="deepseek">DeepSeek Flash (Standard)</option>
+                  <option value="keiner">direkt</option>
+                </select>
+              </label>
+              <label class="eig-feld">Ziel
+                <select id="ki-bild-ziel">
+                  <option value="hintergrund">Hintergrund</option>
+                  <option value="objekt">Objekt</option>
+                </select>
+              </label>
+            </div>
+            <div class="eig-paar">
+              <label class="eig-feld">Qualität
+                <select id="ki-bild-qualitaet">
+                  <option value="30">Standard (30 Schritte)</option>
+                  <option value="50">Höchste (50)</option>
+                </select>
+              </label>
+              <label class="eig-feld">Seed (optional)
+                <input id="ki-bild-seed" type="number" min="0" step="1" inputmode="numeric" placeholder="zufällig">
+              </label>
+            </div>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-bild-starten" type="button" data-ki-fibo>Bild erzeugen</button>
+          </div>
+        </details>
+
+        <details class="ki-block">
+          <summary>Ebene bearbeiten</summary>
+          <div class="ki-formular">
+            <p class="leise" id="ki-edit-hinweis">Bitte eine Bild-Ebene auswählen.</p>
+            <label class="eig-feld">Anweisung
+              <textarea id="ki-edit-anweisung" rows="3" placeholder="Was soll sich ändern?"></textarea>
+            </label>
+            <label class="haken"><input id="ki-edit-dev" type="checkbox"> Höchste Qualität (Dev, ≈6 min)</label>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-edit-starten" type="button" data-ki-fibo>Ebene bearbeiten</button>
+          </div>
+        </details>
+
+        <details class="ki-block">
+          <summary>Bereich ändern</summary>
+          <div class="ki-formular">
+            <p class="leise" id="ki-maske-hinweis">Bitte eine Bild-Ebene auswählen.</p>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-maske-starten" type="button" data-ki-fibo>Bereich markieren …</button>
+          </div>
+        </details>
+
+        <details class="ki-block">
+          <summary>Freistellen</summary>
+          <div class="ki-formular">
+            <p class="leise" id="ki-frei-hinweis">Bitte eine Bild-Ebene auswählen.</p>
+            <div class="eig-paar">
+              <label class="eig-feld">Verfahren
+                <select id="ki-frei-art">
+                  <option value="schnell">Schnell (Hauptmotiv)</option>
+                  <option value="motiv">Mit Motivbeschreibung</option>
+                </select>
+              </label>
+              <label class="eig-feld">Motiv
+                <input id="ki-frei-motiv" type="text" maxlength="300" placeholder="z. B. den Hund" disabled>
+              </label>
+            </div>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-frei-starten" type="button" disabled>Freistellen</button>
+          </div>
+        </details>
+
+        <details class="ki-block">
+          <summary>Zusammenführen</summary>
+          <div class="ki-formular">
+            <p class="leise">Alle sichtbaren Bild- und Form-Ebenen (ohne Text) werden zu einem Foto zusammengeführt.</p>
+            <label class="eig-feld">Anweisung
+              <textarea id="ki-merge-anweisung" rows="3"></textarea>
+            </label>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-merge-starten" type="button" data-ki-fibo>Zusammenführen</button>
+          </div>
+        </details>
+
+        <details class="ki-block">
+          <summary>Beschreibung ändern</summary>
+          <div class="ki-formular">
+            <p class="leise" id="ki-beschreibung-hinweis">Nur für Fibo-Ebenen mit Beschreibung.</p>
+            <button class="knopf knopf-haupt ki-knopf" id="ki-beschreibung-starten" type="button" disabled>Beschreibung öffnen …</button>
+          </div>
+        </details>
+      </div>
+      <div class="ki-auftraege" id="ki-auftraege" hidden>
+        <h3 class="abschnitt">Aufträge</h3>
+        <ul class="ki-auftraege-liste" id="ki-auftraege-liste"></ul>
+      </div>
     </section>
   </aside>
 </main>
@@ -331,6 +432,61 @@
   <div class="dialog-knoepfe">
     <button class="knopf" type="button" id="studio-neu-laden">Neu einlesen</button>
     <button class="knopf" type="button" data-schliessen>Schließen</button>
+  </div>
+</dialog>
+
+<dialog id="dialog-maske" class="dialog dialog-breit">
+  <h2>Bereich ändern</h2>
+  <p class="leise" id="masken-status">Mit dem Pinsel markieren, was neu gerechnet wird. Weiß heißt neu.</p>
+  <div class="masken-buehne" id="masken-buehne">
+    <canvas id="masken-vorschau" aria-label="Maske malen"></canvas>
+  </div>
+  <div class="masken-werkzeuge">
+    <button class="knopf knopf-klein aktiv" id="maske-pinsel" type="button">Pinsel</button>
+    <button class="knopf knopf-klein" id="maske-radierer" type="button">Radierer</button>
+    <label class="eig-feld masken-groesse">Größe
+      <span class="range-zeile">
+        <input id="maske-groesse" type="range" min="4" max="160" step="1" value="40">
+        <output id="maske-groesse-wert">40 px</output>
+      </span>
+    </label>
+    <button class="knopf knopf-klein" id="maske-leeren" type="button">Maske leeren</button>
+  </div>
+  <label class="dialog-feld">Anweisung
+    <textarea id="masken-anweisung" rows="2" placeholder="Was soll an dieser Stelle entstehen?"></textarea>
+  </label>
+  <p class="dialog-fehler" id="masken-fehler" hidden></p>
+  <div class="dialog-knoepfe">
+    <button class="knopf" type="button" data-schliessen>Abbrechen</button>
+    <button class="knopf knopf-haupt" id="masken-ok" type="button">Bereich ändern</button>
+  </div>
+</dialog>
+
+<dialog id="dialog-beschreibung" class="dialog">
+  <h2>Beschreibung ändern</h2>
+  <p class="leise">Die Felder beschreiben das Bild. „Neu rechnen“ verwendet denselben Seed.</p>
+  <label class="dialog-feld">Kurzbeschreibung
+    <textarea id="beschreibung-kurz" rows="2"></textarea>
+  </label>
+  <label class="dialog-feld">Licht (JSON)
+    <textarea id="beschreibung-licht" rows="2"></textarea>
+  </label>
+  <label class="dialog-feld">Ästhetik (JSON)
+    <textarea id="beschreibung-aesthetik" rows="2"></textarea>
+  </label>
+  <label class="dialog-feld">Kamera (JSON)
+    <textarea id="beschreibung-kamera" rows="2"></textarea>
+  </label>
+  <label class="dialog-feld">Stil
+    <input id="beschreibung-stil" type="text" maxlength="300">
+  </label>
+  <label class="dialog-feld">Text
+    <input id="beschreibung-text" type="text" maxlength="300">
+  </label>
+  <p class="dialog-fehler" id="beschreibung-fehler" hidden></p>
+  <div class="dialog-knoepfe">
+    <button class="knopf" type="button" data-schliessen>Abbrechen</button>
+    <button class="knopf knopf-haupt" id="beschreibung-ok" type="button">Neu rechnen</button>
   </div>
 </dialog>
 
