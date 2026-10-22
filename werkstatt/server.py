@@ -43,7 +43,8 @@ class Werkstatt:
         self.historisch_datei = os.path.join(DATEN_ORDNER, 'messungen-historisch.json')
         bv = next(e for e in zc['eintraege'] if e['art'] == 'comfy')
         # Aus 2Wild (stillgelegt) wird nur noch die Auftragsliste gelesen: Prompts alter Dateien, Messungen.
-        self.bv = {'comfy_port': bv['comfy_port'], 'comfy_port_2': bv.get('comfy_port_2'), 'jobs_datei': os.path.join(bv['studio_ordner'], 'data', 'jobs.json')}
+        self.bv = {'comfy_port': bv['comfy_port'], 'weitere': bv.get('comfy_weitere') or [],
+                   'jobs_datei': os.path.join(bv['studio_ordner'], 'data', 'jobs.json')}
         self.studio = studio.Studio(cfg, zc, DATEN_ORDNER, self.log, self.zentrale)
         self.texterkennung = texterkennung.Texterkennung(cfg, zc, DATEN_ORDNER, self.log, self.zentrale)
         self._messungen = (0, None)
@@ -207,12 +208,19 @@ class Werkstatt:
                     pass
             return an, laufend, wartend
         comfy, laufend, wartend = warteschlange(self.bv['comfy_port'])
-        # Zweiter ComfyUI-Prozess (Stufe 8): rechnet einen weiteren Auftrag gleichzeitig.
-        comfy2, laufend2, wartend2 = warteschlange(self.bv['comfy_port_2'])
+        # Weitere ComfyUI-Prozesse (Stufe 8; seit 22.10.2026 eine Liste): jeder rechnet einen Auftrag gleichzeitig.
+        weitere = []
+        for w in (self.bv.get('weitere') or self.bv.get('comfy_weitere') or []):
+            an, laufend_w, wartend_w = warteschlange(w['port'])
+            weitere.append({'nr': w['nr'], 'name': w.get('name') or f"ComfyUI {w['nr']}",
+                            'an': an, 'laufend': laufend_w, 'wartend': wartend_w})
+        # Alte Felder bleiben für die bisherige Oberfläche: sie meinen Prozess 2, falls es ihn gibt.
+        zwei = next((w for w in weitere if w['nr'] == 2), None)
         return {'comfy': comfy, 'laufend': laufend, 'wartend': wartend,
                 'comfy_url': f"http://127.0.0.1:{self.bv['comfy_port']}/",
-                'comfy2_eingerichtet': bool(self.bv['comfy_port_2']), 'comfy2': comfy2,
-                'laufend2': laufend2, 'wartend2': wartend2}
+                'weitere': weitere,
+                'comfy2_eingerichtet': zwei is not None, 'comfy2': bool(zwei and zwei['an']),
+                'laufend2': zwei['laufend'] if zwei else 0, 'wartend2': zwei['wartend'] if zwei else 0}
 
     # ------------------------------------------------------------ Messungen
 

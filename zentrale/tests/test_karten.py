@@ -1,12 +1,15 @@
-"""Zwei RTX 3090 (seit 14.10.2026): Kartenwahl für NInfer und ComfyUI, Gesamtbedarf für Ollama, Kartennamen."""
+"""Drei Karten (RTX 3090 FE, RTX 3090 Suprim, RTX 3080 als Nebenkarte): Kartenwahl und Gesamtbedarf."""
 import copy
 import json
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from gemeinsam import gpu  # noqa: E402
+from zentrale import planung  # noqa: E402
 from zentrale.aktionen import Aktionen, Fehler  # noqa: E402
 from zentrale.erfassung import Erfassung  # noqa: E402
 from zentrale.server import Zentrale  # noqa: E402
@@ -15,8 +18,14 @@ with open(os.path.join(os.path.dirname(__file__), '..', 'config.json'), encoding
     KONFIG = json.load(f)
 
 
-def karte(idx, belegt, bus):
-    return {'index': idx, 'name': 'NVIDIA GeForce RTX 3090', 'bus': bus, 'gesamt': 24576, 'belegt': belegt}
+def karte(idx, belegt, bus, name='NVIDIA GeForce RTX 3090', gesamt=24576, nebenkarte=False):
+    return {'index': idx, 'name': name, 'bus': bus, 'gesamt': gesamt, 'belegt': belegt, 'last': 0,
+            'monitor': False, 'nebenkarte': nebenkarte}
+
+
+def drei_karten():
+    return [karte(0, 0, 2), karte(1, 884, 4),
+            karte(2, 0, 7, name='NVIDIA GeForce RTX 3080', gesamt=20480, nebenkarte=True)]
 
 
 class Eintraege(unittest.TestCase):
@@ -24,19 +33,30 @@ class Eintraege(unittest.TestCase):
         self.e = {e['id']: e for e in KONFIG['eintraege']}
 
     def test_keine_karte_fest_reserviert(self):
-        for eid in ('ninfer', 'lightonocr', 'bild-video'):
+        for eid in ('ninfer', 'bild-video'):
             with self.subTest(eid=eid):
                 self.assertEqual(self.e[eid]['karten'], ['RTX 3090'])
                 self.assertNotIn('bedarf_mib', self.e[eid])
-        for eid in ('ornith-q5', 'ornith-q4'):
+        self.assertEqual(self.e['lightonocr']['karten'], ['RTX 3080', 'RTX 3090'])
+        self.assertEqual(self.e['lightonocr']['untertitel'], '4B · Q4_K_M · RTX 3080, sonst eine RTX 3090')
+        for eid in ('ornith-q5', 'ornith-q6', 'ornith-q4'):
             with self.subTest(eid=eid):
                 self.assertIn('bedarf_gesamt_mib', self.e[eid])
                 self.assertNotIn('bedarf_mib', self.e[eid])
+                self.assertEqual(self.e[eid]['gesamt_karten'], ['RTX 3090'])
+        # Varianten erben die Kartenliste des Eintrags.
+        self.assertEqual(planung.variante(self.e['ornith-q4'], '32k')['gesamt_karten'], ['RTX 3090'])
         self.assertEqual(set(self.e['flash-next-strata']['bedarf_mib']), {'0', '1'})  # Strata braucht beide Karten
 
     def test_kartennamen_nach_steckplatz(self):
         namen = {c['bus']: c['kurz'] for c in KONFIG['karten'].values()}
-        self.assertEqual(namen, {2: 'RTX 3090 FE', 4: 'RTX 3090 Suprim'})
+        self.assertEqual(namen, {2: 'RTX 3090 FE', 4: 'RTX 3090 Suprim', 7: 'RTX 3080'})
+
+    def test_kurznamen_und_nebenkarte_aus_der_messung(self):
+        k = drei_karten()
+        self.assertEqual(gpu.kurznamen(k, KONFIG['karten']),
+                         {0: 'RTX 3090 FE', 1: 'RTX 3090 Suprim', 2: 'RTX 3080'})
+        self.assertEqual(gpu.nebenkarten(k, KONFIG['karten']), {2})
 
 
 class Server(unittest.TestCase):
@@ -93,6 +113,83 @@ class Server(unittest.TestCase):
         z.cfg, z.laufend = dict(KONFIG, eintraege=[self.z.eintraege['ninfer']]), {}
         s = z._zustaende(roh)['ninfer']
         self.assertEqual((s['karte'], s['detail']), ('RTX 3090 Suprim', 'Auf der RTX 3090 Suprim'))
+
+
+class Dreikarten(unittest.TestCase):
+    """Mit der RTX 3080 als Nebenkarte (Bus 7): LightOnOCR darf dorthin, NInfer und Ollama nur auf die 3090."""
+
+    def setUp(self):
+        self.z = Zentrale.__new__(Zentrale)
+        self.z.cfg = KONFIG
+        self.z.eintraege = {e['id']: e for e in KONFIG['eintraege']}
+        self.z.laufend = {}
+        self.z.aktion = None
+        self.z.anmeldungen = {}
+        self.z.verlauf = []
+        self.z._lock, self.z._platz_lock = threading.Lock(), threading.Lock()
+        self.z.melden, self.z._uebernehmen = Mock(), Mock()
+        self.roh = {'karten': drei_karten(), 'verbraucher': [], 'dienste': {}}
+        self.z.roh = self.roh
+        self.z._aktuell = Mock(return_value=self.roh)
+        self.z._anmeldung_rest = Mock(return_value=({}, 'Werkstatt', '#000'))
+        self.z.akt = Mock()
+        self.z._schritte_ausfuehren = Mock()
+        self.z._im_hintergrund = Mock(side_effect=lambda text, fn: (fn(), True)[1])
+
+    def test_lightonocr_nimmt_die_nebenkarte_auch_wenn_die_3090_enger_waere(self):
+        # Auf der FE liegt ein Modell, sie wäre damit die „engste“ passende Karte; die 3080 hat trotzdem Vorrang.
+        self.roh['karten'][0]['belegt'] = 18000
+        self.roh['verbraucher'] = [{'eintrag': 'ninfer', 'name': 'NInfer', 'mib_je_karte': {0: 18000},
+                                   'blockiert': None, 'schritt': {'id': 'beenden:ninfer', 'text': 'NInfer beenden'}}]
+        p = self.z.plan('lightonocr', 'starten')
+        self.assertEqual((p['karte'], p['schritte'], p['genug_platz']), (2, [], True))
+
+    def test_lightonocr_nimmt_bei_voller_3080_eine_3090_ohne_freigabe(self):
+        self.roh['karten'][2]['belegt'] = 19456  # 19 GiB belegt: LightOnOCR passt dort nicht mehr
+        p = self.z.plan('lightonocr', 'starten')
+        self.assertIn(p['karte'], (0, 1))
+        self.assertEqual((p['schritte'], p['genug_platz']), ([], True))
+
+    def test_ninfer_kommt_nie_auf_die_nebenkarte(self):
+        self.roh['karten'][0]['belegt'] = 22300
+        self.roh['karten'][1]['belegt'] = 23000
+        self.roh['verbraucher'] = [{'eintrag': 'ornith-q5', 'name': 'Ornith', 'mib_je_karte': {0: 22300},
+                                   'blockiert': None, 'schritt': {'id': 'beenden:ornith-q5', 'text': 'Ornith beenden'}}]
+        p = self.z.plan('ninfer', 'starten')
+        self.assertIn(p['karte'], (0, 1))
+        self.assertEqual([s['id'] for s in p['schritte']], ['beenden:ornith-q5'])
+        self.assertTrue(p['genug_platz'])
+
+    def test_ornith_zaehlt_die_nebenkarte_nicht_mit(self):
+        # Beide 3090 fast voll, die 3080 leer: Ollama zählt nur die 3090, also fehlt Platz.
+        self.roh['karten'][0]['belegt'] = 22300
+        self.roh['karten'][1]['belegt'] = 23000
+        self.roh['verbraucher'] = [{'eintrag': 'ninfer', 'name': 'NInfer', 'mib_je_karte': {0: 22300},
+                                   'blockiert': None, 'schritt': {'id': 'beenden:ninfer', 'text': 'NInfer beenden'}}]
+        p = self.z.plan('ornith-q4', 'starten')
+        self.assertFalse(p['genug_platz'])
+        self.assertNotIn('2', p['bedarf_mib'])
+        self.assertTrue(set(p['bedarf_mib']) <= {'0', '1'})
+        self.assertEqual([s['id'] for s in p['schritte']], ['beenden:ninfer'])
+
+    def test_platz_antwort_nennt_nebenkarte_je_karte(self):
+        code, antwort = self.z.platz({})
+        self.assertEqual(code, 200)
+        self.assertEqual({k['index']: k['nebenkarte'] for k in antwort['karten']},
+                         {0: False, 1: False, 2: True})
+
+
+class WartenAufGesamt(unittest.TestCase):
+    def test_gesamt_karten_zaehlt_die_nebenkarte_nicht(self):
+        erf = Mock()
+        erf.messen.return_value = {'karten': drei_karten()}
+        akt = Aktionen(KONFIG, erf, 'logs', Mock())
+        e = {'gesamt_karten': ['RTX 3090']}
+        # Nur 3090: 24.576 + (24.576 - 884) MiB. Die leere 3080 (20.480 MiB) zählt nicht mit.
+        self.assertTrue(akt.warten_auf_platz(e, 0, gesamt=24576 + 24576 - 884, sekunden=0))
+        self.assertFalse(akt.warten_auf_platz(e, 0, gesamt=24576 + 24576 - 884 + 1, sekunden=0))
+        # Ohne gesamt_karten zählen wie bisher alle Karten.
+        self.assertTrue(akt.warten_auf_platz({}, 0, gesamt=24576 + 24576 - 884 + 20480, sekunden=0))
 
 
 class NinferStart(unittest.TestCase):

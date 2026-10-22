@@ -50,7 +50,8 @@ def karte_waehlen(karten, verbraucher, ziel, reserve_mib, monitor_puffer_mib=0):
     """Karte für einen Eintrag, der auf jede passende Karte darf (`karten`: Namen wie „RTX 3090“).
 
     Passt er ohne Freigabe auf mehrere Karten, nimmt er die engste: Kleine Modelle teilen sich eine Karte, und auf der
-    anderen bleibt Platz für große. Die Karte mit dem Monitor füllt er nur, wenn dort danach noch `monitor_puffer_mib`
+    anderen bleibt Platz für große. Eine Nebenkarte (langsam angebunden, `nebenkarte`) bekommt dabei den Vorzug vor
+    allen anderen. Die Karte mit dem Monitor füllt er nur, wenn dort danach noch `monitor_puffer_mib`
     frei bleiben (Windows braucht dort schwankend Speicher) oder keine andere Karte passt.
     Passt er nirgends, nimmt er die Karte, auf der am wenigsten weichen muss.
     Bei Gleichstand zählt die Reihenfolge der Namen, dann die Kartennummer.
@@ -61,9 +62,10 @@ def karte_waehlen(karten, verbraucher, ziel, reserve_mib, monitor_puffer_mib=0):
     frei = {k['index']: k['gesamt'] - k['belegt'] for k in karten}
     bedarf = ziel['bedarf_je_karte_mib'] + reserve_mib
     monitor = {k['index'] for k in karten if k.get('monitor')}
+    neben = {k['index']: bool(k.get('nebenkarte')) for k in karten}
     passend = [i for i in indizes if frei[i] >= bedarf]
     if passend:
-        return min(passend, key=lambda i: (i in monitor and frei[i] - bedarf < monitor_puffer_mib,
+        return min(passend, key=lambda i: (not neben.get(i), i in monitor and frei[i] - bedarf < monitor_puffer_mib,
                                            frei[i], indizes.index(i))), None
 
     def aufwand(i):
@@ -82,15 +84,21 @@ def _summe(v, karten=None):
 def _plan_gesamt(karten, verbraucher, ziel, reserve_mib):
     """Ollama verteilt ein Modell selbst auf die Karten: Es zählt der freie Platz aller Karten zusammen.
 
-    Reicht es, ein einziges Modell freizugeben, wird das kleinste passende genommen, sonst die größten zuerst.
-    `bedarf_mib` ist die geschätzte Verteilung (nach freiem Platz) für die Vorschau.
+    Bei `gesamt_karten` zählen nur Karten, deren gemessener Name einen dieser Namen enthält (wie `wunschkarten`);
+    ohne das Feld alle Karten. Reicht es, ein einziges Modell freizugeben, wird das kleinste passende genommen,
+    sonst die größten zuerst. `bedarf_mib` ist die geschätzte Verteilung (nach freiem Platz) für die Vorschau.
     """
     gesamt = ziel['bedarf_gesamt_mib']
-    frei = {k['index']: k['gesamt'] - k['belegt'] - reserve_mib for k in karten}
+    zaehlend = set(wunschkarten(karten, ziel['gesamt_karten'])) if ziel.get('gesamt_karten') else None
+    frei = {k['index']: k['gesamt'] - k['belegt'] - reserve_mib for k in karten
+            if zaehlend is None or k['index'] in zaehlend}
+
+    def summe(v):
+        return _summe(v, zaehlend)
 
     def fehlt(frei):
         return gesamt - sum(max(0, m) for m in frei.values())
-    kandidaten = [v for v in verbraucher if v.get('eintrag') != ziel['id'] and v.get('schritt') and _summe(v) > 0]
+    kandidaten = [v for v in verbraucher if v.get('eintrag') != ziel['id'] and v.get('schritt') and summe(v) > 0]
     gruende = [v['blockiert'] for v in kandidaten if v.get('blockiert')]
     kandidaten = [v for v in kandidaten if not v.get('blockiert')]
 
@@ -98,8 +106,8 @@ def _plan_gesamt(karten, verbraucher, ziel, reserve_mib):
         return {i: m + v['mib_je_karte'].get(i, 0) for i, m in frei.items()}
     schritte = []
     if fehlt(frei) > 0:
-        einzeln = sorted((v for v in kandidaten if fehlt(ohne(frei, v)) <= 0), key=_summe)
-        for v in einzeln[:1] or sorted(kandidaten, key=lambda v: -_summe(v)):
+        einzeln = sorted((v for v in kandidaten if fehlt(ohne(frei, v)) <= 0), key=summe)
+        for v in einzeln[:1] or sorted(kandidaten, key=lambda v: -summe(v)):
             if fehlt(frei) <= 0:
                 break
             schritte.append(v['schritt'])
@@ -109,7 +117,7 @@ def _plan_gesamt(karten, verbraucher, ziel, reserve_mib):
     bedarf = {i: round(gesamt * m / platz) for i, m in frei.items() if m > 0}
     hinweise = []
     if rest > 0:
-        belegt_von = [v['name'] for v in verbraucher if _summe(v) >= 256 and (not v.get('schritt') or v.get('blockiert'))]
+        belegt_von = [v['name'] for v in verbraucher if summe(v) >= 256 and (not v.get('schritt') or v.get('blockiert'))]
         hinweise.append({'karte': None, 'fehlend_mib': round(rest), 'belegt_von': belegt_von})
     return {'schritte': schritte, 'genug_platz': rest <= 0, 'hinweise': hinweise,
             'gruende': gruende if rest > 0 else [], 'bedarf_mib': bedarf}
@@ -176,7 +184,7 @@ def angemeldet_rest(reservierungen, verbraucher):
     Je Verbraucher gilt die Basis der ältesten Anmeldung (fehlt eine Karte in ihr, zählt 0); der Zuwachs seitdem wird
     den Anmeldungen der Reihe nach (nach `seit`) angerechnet, damit zwei gleichzeitige Anmeldungen desselben
     Verbrauchers nichts doppelt abziehen (Astra, 16.10.2026). Seit Stufe 8 hat jeder ComfyUI-Prozess einen eigenen
-    Schlüssel („bild-video“, „bild-video-2“) und je Prozess läuft höchstens ein Auftrag.
+    Schlüssel („bild-video“, „bild-video-<nr>“) und je Prozess läuft höchstens ein Auftrag.
     """
     gemessen = {}
     for v in verbraucher:

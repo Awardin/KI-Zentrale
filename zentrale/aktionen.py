@@ -98,20 +98,24 @@ class Aktionen:
         if art == 'entladen':
             e = self.erf.ollama_tags.get(ziel)
             return self._ollama_entladen(ziel, e['name'] if e else ziel)
-        if art == 'freigeben' and ziel in ('bild-video', 'bild-video-2'):
+        if art == 'freigeben' and (ziel == 'bild-video' or ziel.startswith('bild-video-')):
             return self._comfy_freigeben(ziel)
         raise Fehler(f'Unbekannter Schritt: {schritt_id}')
 
     def warten_auf_platz(self, e, reserve_mib, bedarf=None, sekunden=25, gesamt=None):
         """Nach dem Freigeben dauert es kurz, bis der Treiber den Speicher zurückmeldet.
 
-        `gesamt`: MiB auf allen Karten zusammen (Ollama verteilt selbst), sonst `bedarf` je Karte."""
+        `gesamt`: MiB auf allen Karten zusammen (Ollama verteilt selbst), sonst `bedarf` je Karte. Bei `gesamt`
+        zählen mit `gesamt_karten` nur Karten, deren Name einen dieser Namen enthält."""
         bedarf = {int(i): m for i, m in (bedarf if bedarf is not None else e.get('bedarf_mib', {})).items()}
 
         def genug():
             karten = {k['index']: k for k in self.erf.messen()['karten']}
             if gesamt is not None:
-                return sum(max(0, k['gesamt'] - k['belegt'] - reserve_mib) for k in karten.values()) >= gesamt
+                zaehlend = set(planung.wunschkarten(list(karten.values()), e['gesamt_karten'])) \
+                    if e.get('gesamt_karten') else set(karten)
+                return sum(max(0, k['gesamt'] - k['belegt'] - reserve_mib)
+                           for i, k in karten.items() if i in zaehlend) >= gesamt
             return all(i in karten and karten[i]['gesamt'] - karten[i]['belegt'] >= m + reserve_mib
                        for i, m in bedarf.items())
         return _warten(genug, sekunden)
@@ -535,8 +539,10 @@ class Aktionen:
         d = self.erf.messen()['dienste']
         if d['comfy']['fremd']:
             raise Fehler(f"Port {e['comfy_port']} ist von {d['comfy']['fremd']} belegt.")
-        if e.get('comfy_port_2') and d['comfy2']['fremd']:
-            raise Fehler(f"Port {e['comfy_port_2']} ist von {d['comfy2']['fremd']} belegt.")
+        for w in e.get('comfy_weitere') or []:
+            dienst = d.get(f"comfy{w['nr']}") or {}
+            if dienst.get('fremd'):
+                raise Fehler(f"Port {w['port']} ist von {dienst['fremd']} belegt.")
         env = dict(os.environ, CUDA_DEVICE_ORDER='PCI_BUS_ID')
         beginn = time.time()
         comfy_url = f"http://127.0.0.1:{e['comfy_port']}/system_stats"
@@ -546,7 +552,8 @@ class Aktionen:
             os.makedirs(e['ausgabe_ordner'], exist_ok=True)
             p = winapi.starte_losgeloest(
                 [python, 'main.py', '--listen', '127.0.0.1', '--port', str(e['comfy_port']),
-                 '--cuda-device', '0,1', '--default-device', '0', '--output-directory', e['ausgabe_ordner']],
+                 '--cuda-device', ','.join(map(str, e.get('comfy_karten', [0, 1]))),
+                 '--default-device', '0', '--output-directory', e['ausgabe_ordner']],
                 e['comfy_ordner'], env, log_basis=os.path.join(self.logs, 'comfyui'))
             self.log(f'ComfyUI gestartet, PID {p.pid}')
             frist = time.time() + e.get('startzeit_max_s', 300)
@@ -557,32 +564,34 @@ class Aktionen:
                 if time.time() > frist:
                     raise Fehler('ComfyUI antwortet nach dem Start nicht.')
                 time.sleep(1)
-        if e.get('comfy_port_2') and not d['comfy2']['pid']:
-            self._comfy2_starten(e, python, env)
+        for w in e.get('comfy_weitere') or []:
+            if not (d.get(f"comfy{w['nr']}") or {}).get('pid'):
+                self._comfy_weiterer_starten(e, w, python, env)
         return f"Bild & Video ist bereit ({round(time.time() - beginn)} s)."
 
-    def _comfy2_starten(self, e, python, env):
-        """Zweiter ComfyUI-Prozess (Stufe 8, 16.10.2026): dieselbe Installation und Ausgabe, eigener Port, eigene
-        temp-/user-Ordner, sieht nur die Karte `comfy_karte_2` (darin heißt sie gpu:0). So rechnen zwei Studio-Aufträge
+    def _comfy_weiterer_starten(self, e, w, python, env):
+        """Ein weiterer ComfyUI-Prozess (Stufe 8): dieselbe Installation und Ausgabe, eigener Port, eigene
+        temp-/user-Ordner, sieht nur die Karte `karte` (darin heißt sie gpu:0). So rechnen mehrere Studio-Aufträge
         gleichzeitig; Aufträge über zwei Karten bleiben beim ersten Prozess."""
-        temp = os.path.join(e['comfy_ordner'], 'temp-2')
-        user = os.path.join(e['comfy_ordner'], 'user-2')
+        nr = w['nr']
+        temp = os.path.join(e['comfy_ordner'], f'temp-{nr}')
+        user = os.path.join(e['comfy_ordner'], f'user-{nr}')
         os.makedirs(temp, exist_ok=True)
         os.makedirs(user, exist_ok=True)
         p = winapi.starte_losgeloest(
-            [python, 'main.py', '--listen', '127.0.0.1', '--port', str(e['comfy_port_2']),
-             '--cuda-device', str(e.get('comfy_karte_2', 1)), '--output-directory', e['ausgabe_ordner'],
+            [python, 'main.py', '--listen', '127.0.0.1', '--port', str(w['port']),
+             '--cuda-device', str(w['karte']), '--output-directory', e['ausgabe_ordner'],
              '--temp-directory', temp, '--user-directory', user],
-            e['comfy_ordner'], env, log_basis=os.path.join(self.logs, 'comfyui-2'))
-        self.log(f'ComfyUI 2 gestartet, PID {p.pid}')
-        url = f"http://127.0.0.1:{e['comfy_port_2']}/system_stats"
+            e['comfy_ordner'], env, log_basis=os.path.join(self.logs, f'comfyui-{nr}'))
+        self.log(f'ComfyUI {nr} gestartet, PID {p.pid}')
+        url = f"http://127.0.0.1:{w['port']}/system_stats"
         frist = time.time() + e.get('startzeit_max_s', 300)
         while not http_erreichbar(url):
             if p.poll() is not None:
-                raise Fehler('Der zweite ComfyUI-Prozess hat sich beim Start beendet. '
-                             + _letzte_meldung(os.path.join(self.logs, 'comfyui-2.err.log')))
+                raise Fehler(f'Der ComfyUI-Prozess {nr} hat sich beim Start beendet. '
+                             + _letzte_meldung(os.path.join(self.logs, f'comfyui-{nr}.err.log')))
             if time.time() > frist:
-                raise Fehler('Der zweite ComfyUI-Prozess antwortet nach dem Start nicht.')
+                raise Fehler(f'Der ComfyUI-Prozess {nr} antwortet nach dem Start nicht.')
             time.sleep(1)
 
     def _comfy_beenden(self, pid, procs):
@@ -600,24 +609,36 @@ class Aktionen:
     def _comfy_stoppen(self, e, erzwingen):
         roh = self.erf.messen()
         c, s, procs = roh['dienste']['comfy'], roh['dienste']['studio'], roh['procs']
-        c2 = roh['dienste'].get('comfy2') or {'pid': None, 'auftraege_laufend': 0}
-        if (c['auftraege_laufend'] or c2['auftraege_laufend']) and not erzwingen:
+        weitere = [roh['dienste'].get(f"comfy{w['nr']}") or {'pid': None, 'auftraege_laufend': 0}
+                   for w in e.get('comfy_weitere') or []]
+        if (c['auftraege_laufend'] or any(w['auftraege_laufend'] for w in weitere)) and not erzwingen:
             raise Fehler('In ComfyUI läuft gerade ein Auftrag. Bild & Video wurde nicht beendet.')
-        if not c['pid'] and not s['pid'] and not c2['pid']:
+        if not c['pid'] and not s['pid'] and not any(w['pid'] for w in weitere):
             return 'Bild & Video lief nicht.'
-        for pid in (s['pid'], c['pid'], c2['pid']):
+        for pid in [s['pid'], c['pid']] + [w['pid'] for w in weitere]:
             if pid:
                 self._comfy_beenden(pid, procs)
-        ports = tuple(p for p in (e['comfy_port'], e['studio_port'], e.get('comfy_port_2')) if p)
+        ports = tuple(p for p in (e['comfy_port'], e['studio_port'],
+                                  *(w['port'] for w in e.get('comfy_weitere') or [])) if p)
         if not _warten(lambda: not any(p in ports for _, p, _ in winapi.lauschende_ports()), 10, 0.5):
             raise Fehler('Ein Port von Bild & Video ist nach dem Beenden noch belegt.')
         return 'Bild & Video beendet.'
 
     def _comfy_freigeben(self, ziel='bild-video'):
-        zweiter = ziel == 'bild-video-2'
-        c = self.erf.messen()['dienste']['comfy2' if zweiter else 'comfy']
-        name = self.erf.comfy2_name if zweiter else 'ComfyUI'
-        port = self.erf.comfy2_port if zweiter else self.erf.comfy['comfy_port']
+        e = self.eintraege.get('bild-video') or {}
+        if ziel == 'bild-video':
+            dienst, name, port = 'comfy', e.get('name') or 'ComfyUI', e['comfy_port']
+        else:
+            try:
+                nr = int(ziel.rsplit('-', 1)[1])
+            except (IndexError, ValueError):
+                raise Fehler(f'Unbekannter Schritt: freigeben:{ziel}')
+            w = next((w for w in self._comfy_weitere() if w['nr'] == nr), None)
+            if w is None:
+                raise Fehler(f'Unbekannter Schritt: freigeben:{ziel}')
+            dienst, port = f'comfy{nr}', w['port']
+            name = w.get('name') or f'ComfyUI {nr}'
+        c = self.erf.messen()['dienste'][dienst]
         if not c['laeuft']:
             return f'{name} lief nicht.'
         if c['auftraege_laufend']:
@@ -625,6 +646,13 @@ class Aktionen:
         http_json(f'http://127.0.0.1:{port}/free', {'unload_models': True, 'free_memory': True}, timeout=10)
         self.log(f'{name}: Modelle entladen')
         return f'Modelle aus {name} entladen.'
+
+    def _comfy_weitere(self):
+        """Die weiteren ComfyUI-Prozesse aus der Erfassung (oder der Konfiguration)."""
+        liste = getattr(self.erf, 'comfy_weitere', None)
+        if isinstance(liste, (list, tuple)):
+            return liste
+        return (self.eintraege.get('bild-video') or {}).get('comfy_weitere') or []
 
     # ------------------------------------------------------------ Programme
 

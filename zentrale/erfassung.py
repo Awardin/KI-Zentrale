@@ -80,9 +80,13 @@ class Erfassung:
         self.ninfer_exe = norm(self.ninfer['programm'])
         self.ninfer_port_arg = f"--port {self.ninfer['port']}"
         self.comfy_ordner = norm(self.comfy['comfy_ordner'])
-        # Zweiter ComfyUI-Prozess (Stufe 8, 16.10.2026): sieht nur eine Karte, rechnet neben dem ersten.
-        self.comfy2_port = self.comfy.get('comfy_port_2')
-        self.comfy2_name = self.comfy.get('comfy_name_2') or 'ComfyUI 2'
+        # Weitere ComfyUI-Prozesse (Stufe 8, 16.10.2026; seit der RTX 3080 eine Liste): jeder sieht nur seine Karte
+        # und rechnet neben dem ersten.
+        self.comfy_weitere = []
+        for w in self.comfy.get('comfy_weitere') or []:
+            w = dict(w)
+            w['name'] = w.get('name') or f"ComfyUI {w['nr']}"
+            self.comfy_weitere.append(w)
         trans = cfg['nur_anzeigen']['transkription']
         self.watch_ordner = norm(trans['ordner'])
         self.watch_skript = trans['skript'].lower()
@@ -196,12 +200,19 @@ class Erfassung:
         skripte = [skript] if skript else ['main.py', 'server.py']
         return any(s in selbst['cmd'] for s in skripte)
 
-    def ist_comfy2(self, pid, procs):
-        """Der zweite ComfyUI-Prozess: sein Port steht in der eigenen oder der Kommandozeile des Starters."""
-        if not self.comfy2_port:
-            return False
-        arg = f'--port {self.comfy2_port}'
-        return any(arg in k['cmd'].replace('"', '') for k in self._vorfahren(pid, procs, tiefe=1))
+    def ist_comfy_weiterer(self, pid, procs):
+        """Ein weiterer ComfyUI-Prozess: sein Port steht in der eigenen oder der Kommandozeile des Starters.
+
+        -> `nr` des Eintrags, sonst None.
+        """
+        if pid not in procs or not self.comfy_weitere:
+            return None
+        ketten = [k['cmd'].replace('"', '') for k in self._vorfahren(pid, procs, tiefe=1)]
+        for w in self.comfy_weitere:
+            arg = f"--port {w['port']}"
+            if any(arg in cmd for cmd in ketten):
+                return w['nr']
+        return None
 
     def ist_ollama(self, pid, procs):
         """Ollama selbst oder sein Modellprozess (lib\\ollama\\llama-server.exe als Kind von ollama.exe)."""
@@ -235,8 +246,10 @@ class Erfassung:
         if self.ist_ollama(pid, procs):
             return 'ollama', 'Ollama'
         if self.gehoert_zu_comfy(pid, procs):
-            if self.ist_comfy2(pid, procs):
-                return 'bild-video-2', self.comfy2_name
+            nr = self.ist_comfy_weiterer(pid, procs)
+            if nr is not None:
+                w = next(w for w in self.comfy_weitere if w['nr'] == nr)
+                return f'bild-video-{nr}', w['name']
             return 'bild-video', self.comfy['name']
         if self.ist_transkription(pid, procs):
             return 'transkription', self.cfg['nur_anzeigen']['transkription']['name']
@@ -255,6 +268,9 @@ class Erfassung:
             for adresse, port, pid in winapi.lauschende_ports():
                 lausch.setdefault(port, pid)
             karten = gpu.karten_lesen()
+            neben = gpu.nebenkarten(karten, self.cfg.get('karten'))
+            for k in karten:
+                k['nebenkarte'] = k['index'] in neben
             bus_index = {k['bus']: k['index'] for k in karten}
             vram = {}
             for pid, luid, wert in self.vram.lesen():
@@ -386,7 +402,7 @@ class Erfassung:
             elif s['pids']:
                 s['zustand'] = 'startet'
             d[eid] = s
-        # ComfyUI (zwei Prozesse seit Stufe 8) und 2Wild
+        # ComfyUI (mehrere Prozesse seit Stufe 8) und 2Wild
         c = self.comfy
 
         def comfy_dienst(port):
@@ -406,7 +422,8 @@ class Erfassung:
             return z
 
         comfy = comfy_dienst(c['comfy_port'])
-        d['comfy2'] = comfy_dienst(self.comfy2_port)
+        for w in self.comfy_weitere:
+            d[f"comfy{w['nr']}"] = comfy_dienst(w['port'])
         studio = {'pid': None, 'laeuft': False, 'fremd': None}
         pid = lausch.get(c['studio_port'])
         if pid is not None:
@@ -491,11 +508,12 @@ class Erfassung:
                             'farbe': e['farbe'] if e else self.cfg['ollama']['farbe_fremd'],
                             'mib_je_karte': {i: v * anteil for i, v in gruppen['ollama']['mib'].items()},
                             'blockiert': None, 'schritt': {'id': 'entladen:' + m['tag'], 'text': f'{name} entladen'}})
-        for schluessel, dienst, name in (('bild-video', 'comfy', self.comfy['name']),
-                                         ('bild-video-2', 'comfy2', self.comfy2_name)):
+        comfy_prozesse = [('bild-video', 'comfy', self.comfy['name'])] + [
+            (f"bild-video-{w['nr']}", f"comfy{w['nr']}", w['name']) for w in self.comfy_weitere]
+        for schluessel, dienst, name in comfy_prozesse:
             if schluessel not in gruppen:
                 continue
-            c = dienste[dienst]
+            c = dienste.get(dienst) or {'laeuft': False, 'auftraege_laufend': 0}
             # Unter 1 GiB hält ComfyUI nur seine Grundbelegung; dann gibt es nichts zu entladen.
             modelle_geladen = sum(gruppen[schluessel]['mib'].values()) >= 1024
             out.append({'eintrag': 'bild-video', 'schluessel': schluessel, 'name': name,

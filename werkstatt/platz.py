@@ -26,12 +26,20 @@ def verteilen(karten, bedarf_je_worker, worker, last_grenze=60):
     derselben Karte wie der noch laufende.
     Eine stark ausgelastete Karte (rechnet gerade, z. B. ein Sprachmodell) kommt nur zum Zug,
     wenn die ruhigen Karten nicht reichen.
+    Eine Nebenkarte (`nebenkarte`, langsam angebunden) bekommt den Vorzug: Trägt sie alle
+    Worker, rechnet die Transkription dort, sonst wie bisher nach freiem Speicher.
     -> {'gpu', 'gpus', 'worker', 'bedarf_mib', 'text'} oder None, wenn nichts passt.
     """
     ruhig = [k for k in karten if (k.get('last') or 0) < last_grenze]
     if ruhig and len(ruhig) < len(karten):
         wahl = verteilen(ruhig, bedarf_je_worker, worker, last_grenze)
         if wahl:
+            return wahl
+    neben = [k for k in karten if k.get('nebenkarte')]
+    andere = [k for k in karten if not k.get('nebenkarte')]
+    if neben and andere:
+        wahl = verteilen(neben, bedarf_je_worker, worker, last_grenze)
+        if wahl and wahl['worker'] >= worker:
             return wahl
     w = bedarf_je_worker
     reihenfolge = sorted(karten, key=lambda k: -k['frei'])

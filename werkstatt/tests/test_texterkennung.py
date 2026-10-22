@@ -215,7 +215,7 @@ class Ablauf(unittest.TestCase):
         self.assertEqual((s['auftraege'][0]['fertig'], s['auftraege'][0]['seiten']), (3, 3))
         self.assertTrue(s['modell']['bereit'])
         self.assertEqual(s['modell']['karte'], 'RTX 3090')
-        self.assertEqual(s['modell']['karten'], 'auf einer RTX 3090')
+        self.assertEqual(s['modell']['karten'], 'auf einer RTX 3080 oder RTX 3090')
         self.assertEqual(self.t.aufraeumen()[0], 200)
         self.assertEqual(self.t.stand()['auftraege'], [])
         self.assertTrue(os.path.isdir(os.path.join(self.cfg['texterkennung']['ausgabe_ordner'], 'Befund Knie')))
@@ -225,7 +225,7 @@ class Ablauf(unittest.TestCase):
         m = self.t.stand()['modell']
         self.assertFalse(m['bereit'])
         self.assertIsNone(m['karte'])
-        self.assertEqual(m['karten'], 'auf einer RTX 3090')
+        self.assertEqual(m['karten'], 'auf einer RTX 3080 oder RTX 3090')
         self.zentrale.status.assert_not_called()
 
     def test_karte_hoechstens_alle_fuenf_sekunden_und_fehler(self):

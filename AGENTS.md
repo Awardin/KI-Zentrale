@@ -2,9 +2,11 @@
 
 Lokale Apps für Saschas zwei Grafikkarten: seit 14.10.2026 zwei RTX 3090 mit je 24 GiB – „RTX 3090 FE“ = Karte 0
 (gpu:0, Steckplatz 02; Monitor 16.–20.10.2026) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; seit 20.10.2026
-wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) hängt seit 22.10.2026 zum Test über USB4/Thunderbolt
-als Karte 2 (Bus 07, ~3,1 GB/s): für Strata ungeeignet (Schreiben halbiert, PLAN.md 22.10.2026); Zentrale und Studio sind
-nicht auf drei Karten abgestimmt (Kartenwahl und Ollama können sie mitbenutzen).
+wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) hängt seit 22.10.2026 über USB4/Thunderbolt als
+Karte 2 (Bus 07, ~3,1 GB/s) und ist **Nebenkarte** (`nebenkarte` in `zentrale\config.json`): Vorrang nur für LightOnOCR und
+Whisper, wenn sie ganz darauf passen; für Strata und verteilte Modelle ungeeignet. Ollama sieht sie nicht (Benutzervariablen
+`CUDA_VISIBLE_DEVICES` = UUIDs der 3090 und `OLLAMA_VULKAN=0`; Rückweg in PLAN.md 22.10.2026) – Programme, die eine Karte
+brauchen, setzen `CUDA_VISIBLE_DEVICES` mit `CUDA_DEVICE_ORDER=PCI_BUS_ID` selbst.
 Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen nach freiem Platz (README.md, „Kartenwahl“).
 Bedienung und Aufbau: [README.md](README.md). Entscheidungen, Stufen, Abnahme: [PLAN.md](PLAN.md).
 Studio (Bild & Video) im Detail – Arten, LoRAs, Rezepte, Prompt-Regeln, Grenzen, Schnittstelle: [STUDIO.md](STUDIO.md).
@@ -90,14 +92,17 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   je ein Arbeiter im Studio; Dateien aus Prozess 2 mit `-2`; Anmeldung je Prozess (`bild-video`, `bild-video-2`).
   MiniMax-H3 passt auf eine 3090 (gemessen, nicht langsamer): Videos rechnet Prozess 2 auf der Suprim, Bilder daneben
   Prozess 1 auf der FE (Video + Bild gleichzeitig; nie ein Video allein auf der Monitorkarte).
+  Seit 22.10.2026 **Prozess 3** (8190, nur RTX 3080, `bild-video-3`, Dateien `-3`, `comfy_weitere` in `zentrale\config.json`):
+  nur Bilder und Hilfsabläufe, die auf die 3080 passen, keine Videos; Bilder gehen zuerst an ihn (3090 bleiben frei, auch
+  neben Strata). Passt ein Auftrag gerade nirgends, wartet er in der Schlange auf einen rechnenden Prozess (PLAN.md 22.10.2026).
   Werkstatt-Design seit 16.10.2026 „Bernstein-Kommandozentrale“ (Saschas Wahl; Farben vorher mit ihm abstimmen). PLAN.md, Stufe 8.
 - **Eigene Edit-LoRAs** (Stufe 5, 12.10.2026, Auftrag Sascha nach dem Video „QWEN IMAGE 2.1 EDIT LORA TRAINING“):
   AI Toolkit (Ostris, MIT) auf Auftrag in `C:\LLM\runtimes\ai-toolkit` (eigenes venv), Training damals auf der RTX 3080, künftig auf einer freien 3090, nur über
   das Platz-Tor. Erstes LoRA „Garten-OS-Stil“ v1 (20 Paare) geprüft und **nicht übernommen**: Die Anweisung allein trifft
   den Stil schon. Stattdessen Vorschlag „Als Garten-Illustration“ (Skill `garten`). Lehre und nächste Ideen: PLAN.md, Stufe 5.
 - **Texterkennung** (Stufe 4, 11.10.2026): Zentrale-Eintrag „LightOnOCR-3 · Texterkennung“ (Art `llamacpp`,
-  `llama-server` b10754, Port 8096, eine RTX 3090 (die Zentrale wählt die engste mit
-  genug freiem Speicher), ~4,4 GiB; muss für Strata weichen). Werkstatt-Reiter „Texterkennung“
+  `llama-server` b10754, Port 8096, seit 22.10.2026 bevorzugt die RTX 3080 (Nebenkarte), sonst die engste RTX 3090 mit
+  genug freiem Speicher, ~4,4 GiB; auf einer 3090 muss es für Strata weichen). Werkstatt-Reiter „Texterkennung“
   („PDF/Scan lesen“): Seitenbilder über `werkstatt\pdf_seiten.py` im PDF-venv (PyMuPDF, externer Aufruf), Anfragen nur,
   wenn die Zentrale LightOnOCR gestartet hat, nach `/api/platz` (seit 16.10.2026 auch neben Bildern und Whisper); Ablage
   `Arbeitsmaterial\Texterkennung\<Name>\` (Markdown je Seite, `Volltext.md`, `lauf.json`). Echt aussehende Fehlwörter

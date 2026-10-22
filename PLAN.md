@@ -2355,7 +2355,97 @@ beendet). `strata-iq3_s-2gpu-128k.json` hat dafür die Reserven 700 / 1.800 beko
   Die 3080 käme höchstens als Nebenkarte für Whisper oder Bilder in Frage (eigener Umbau, ungetestet).
 - **Achtung, solange die 3080 dranhängt:** Zentrale und Studio kennen keine Regel „langsame Karte zuletzt“ – die Kartenwahl
   („engste passende Karte“) kann LightOnOCR, NInfer oder Bilder auf die 3080 legen, und Ollama verteilt Modelle selbst auch
-  auf sie. Strata und PolyStrata nutzen sie nicht (feste Kartenliste bzw. `--gpu`).
+  auf sie. Strata und PolyStrata nutzen sie nicht (feste Kartenliste bzw. `--gpu`). → Erledigt mit dem nächsten Abschnitt.
+
+## RTX 3080 als Nebenkarte für Whisper und LightOnOCR (22.10.2026)
+
+Auftrag Sascha: Die 3080 (USB4, AG02) dient als Nebenkarte für Arbeiten, die ganz auf sie passen; Ornith und die großen
+Modelle bleiben auf den 3090. Bau: DeepSeek V4.1 Flash (DSH, 4 min, 0,06 USD), Abnahme und Nacharbeit Claude.
+
+- **Zentrale:** `karten."2"` = „RTX 3080“, Bus 7, `nebenkarte: true` (gilt nur bei passendem Steckplatz und Modell,
+  `gpu.nebenkarten`); die Erfassung markiert sie, `/api/platz` meldet `nebenkarte` je Karte. Kartenwahl: Unter den Karten,
+  die ohne Freigabe passen, hat die Nebenkarte Vorrang; passt nichts, gilt die bisherige Logik. Nur Einträge, die „RTX 3080“
+  in `karten` nennen, kommen dorthin: **LightOnOCR** (`["RTX 3080", "RTX 3090"]`). NInfer, PolyStrata, Fibo und Bild & Video
+  bleiben bei „RTX 3090“, Strata bei den festen Karten 0/1.
+- **Ollama:** `gesamt_karten: ["RTX 3090"]` bei Ornith Q4/Q5/Q6 – Planung und Warten zählen nur den Platz der 3090.
+  Gemessen vorher: Ollama (`OLLAMA_SCHED_SPREAD=1`) legte Ornith Q4 32K auf alle drei Karten (6,9 / 9,8 / 6,7 GiB), **37 Token/s**.
+  Saschas Ja („ja dann auf 2 karten beschränken“): Benutzervariable `CUDA_VISIBLE_DEVICES` =
+  `GPU-70c82ca0-8776-0b32-5800-59c65fde88d3,GPU-dee760fc-3741-1029-39ad-e562aada83f5` (FE, Suprim; UUIDs aus `nvidia-smi -L`)
+  und Ollama über die App neu gestartet. Danach sah Ollama die 3080 noch über **Vulkan** (in Ollama 0.40.8 ab Werk an) und lud
+  Ornith ganz dorthin (18,7 GiB) – deshalb zusätzlich Benutzervariable `OLLAMA_VULKAN=0`, erneut neu gestartet. Ergebnis:
+  Ollama meldet nur die zwei 3090 (CUDA), Ornith Q4 32K 11,9 + 11,6 GiB, **154–156 Token/s**, 3080 0 MiB.
+  **Rückweg:** beide Benutzervariablen löschen (Systemsteuerung → Umgebungsvariablen oder
+  `[Environment]::SetEnvironmentVariable('CUDA_VISIBLE_DEVICES',$null,'User')`, ebenso `OLLAMA_VULKAN`), Ollama über die App
+  beenden und neu starten. Nach einem Kartentausch die UUIDs neu eintragen.
+- **Wirkung der Variable auf alles andere:** Programme, die keine Karte vorgeben, sehen nur die 3090. Die Zentrale setzt für
+  NInfer, LightOnOCR (llama.cpp) und Fibo `CUDA_VISIBLE_DEVICES=<karte>` mit `CUDA_DEVICE_ORDER=PCI_BUS_ID` selbst (überschreibt
+  die Variable); ComfyUI setzt sie über `--cuda-device` selbst; Strata/PolyStrata sehen die zwei 3090 in derselben Reihenfolge
+  (FE = 0, Suprim = 1). Die Werkstatt gibt watch jetzt `CUDA_VISIBLE_DEVICES=0,…,höchste gewählte Karte` mit, damit `--gpu 2` stimmt.
+  Andere Agenten, die watch direkt aufrufen, sehen nur die 3090 (`--gpu 0/1`).
+- **Whisper (Werkstatt):** `platz.verteilen` nimmt die Nebenkarte, wenn sie alle Worker trägt (zwei Worker = 5,6 GiB),
+  sonst wie bisher nach freiem Speicher. `watch.py` unverändert.
+- **Studio:** ComfyUI 1 sieht nur `comfy_karten` (`[0, 1]`, auch für `--cuda-device`); `Instanz.sichtbar` begrenzt die
+  Kartenwahl darauf. Vorher hätte das Studio bei leerer 3080 ein Bild als „engste Karte“ auf `gpu:2` gelegt, das ComfyUI 1 gar
+  nicht kennt (mit dem echten `/api/platz`-Stand nachgestellt). Dritter ComfyUI-Prozess: nächster Abschnitt.
+- **Tests:** Zentrale 161, Werkstatt 220, alle grün (neu: drei Karten, Nebenkarte, Ollama nur 3090, `/api/platz`, Whisper-Vorrang,
+  watch-Umgebung, Studio nur sichtbare Karten).
+
+**Am echten System (22.10.2026, Zentrale und Werkstatt mit gesetzter Benutzervariable neu gestartet):**
+- Zentrale zeigt drei Karten („RTX 3080 · 20 GiB · Steckplatz 7“); Plan LightOnOCR → Karte 2 „RTX 3080“.
+- LightOnOCR über `ocr.py lesen` (Skill texterkennung): llama-server auf Bus 07; `ruecken-s05.png` in 4,3 s (13.10. auf der 3090
+  3,8 s), **byte-gleich** mit dem Ergebnis vom 13.10.; Sehnen-`druck-lernen.pdf` Seiten 2–4 und 8 in 29 s (11.10. mit der 3080
+  im PCIe-Steckplatz 28 s). Danach wieder beendet.
+- Whisper über die Werkstatt (Studio-Testclip, 5 s Ton): „RTX 3080, ein Worker“, `run.json` gpu 2, 4 s.
+- Whisper-Vergleich direkt (watch, angemeldet über `/api/platz`), 984 s Ton, zwei Worker: **3080 78–79 s, 3090 FE 53 s**;
+  3080 zweimal byte-gleich, gegenüber der 3090 wenige Wortunterschiede (z. B. „19%“ statt „19 Prozent“).
+- Testordner: `Arbeitsmaterial\watch\Video-2-EineKarte_00003_ [datei-b662d1204b51]`, `Arbeitsmaterial\Texterkennung\ruecken-s05 (2)`
+  und `…\druck-lernen` (können in den Papierkorb, wenn Sascha will).
+
+## Stufe 8b – dritter ComfyUI-Prozess auf der RTX 3080 (22.10.2026)
+
+Auftrag Sascha („ja auf jeden fall“, nach der Frage, was ein dritter Prozess bringt): erst messen, dann bauen.
+
+**Messung vorab** (eigener ComfyUI-Testprozess auf Port 8190 mit `--cuda-device 2` bzw. `0`, Platz angemeldet, Ablauf
+`bild_graph` mit den Einstellungen von `Nachbau Osteokinetics\Bild_00006_` – Turbo, INT8, schnell, 1584×1056):
+
+| | RTX 3080 (USB4) | RTX 3090 FE |
+|---|---|---|
+| erstes Bild (mit Laden) | 13,6 s | 8,9 s |
+| weitere Bilder | 7,6–7,7 s | 6,6–6,7 s |
+| Spitze Grafikspeicher | 17,4 GiB | 17,3 GiB |
+| 2048×1152 (2,4 MP) | 11,7 s, 17,9 GiB | – |
+
+Neben laufendem Strata (beide 3090 voll, 2,4 GiB RAM frei): 3080 gleich schnell (7,8 s), RAM blieb stabil; Strata dabei
+118 und 100 statt 131 und 87 Token/s (je eine Probe, Einlesen eingerechnet – kein messbarer Verlust). Bildqualität angesehen: sauber.
+
+**Bau** (DeepSeek V4.1 Flash, 9 min, 0,11 USD; Abnahme und Nacharbeit Claude):
+- `comfy_weitere` im Eintrag `bild-video` ersetzt `comfy_port_2`/`comfy_karte_2`/`comfy_name_2`: Prozess 2 (8189, Suprim) wie bisher,
+  **Prozess 3 „ComfyUI 3 (RTX 3080)“** (8190, `--cuda-device 2`, `temp-3`/`user-3`, Log `comfyui-3`, Schlüssel `bild-video-3`,
+  Dateien `-3`, `videos: false`). Zentrale erfasst, startet, beendet und entlädt alle Prozesse aus der Liste; Zustand „Drei
+  Prozesse bereit …“. Werkstatt-Status liefert `weitere` (alte Felder `comfy2…` bleiben).
+- Studio: `Instanz.kann` lehnt für Prozess 3 Videos ab und alles, dessen Ein-Karten-Bedarf nicht in die Karte passt
+  (`kapazitaet` = Gesamt − Reserve laut `/api/platz`, 19.712 MiB): Bild 18.432 ja, groß 22.016 und „Ausformulieren“ 20.480 nein,
+  Hilfsabläufe (`fest` 4–14 GiB) ja. `_wer_zuerst` fragt Nebenkarten zuerst – ein Bild, das jetzt auf die 3080 passt, rechnet
+  Prozess 3; rechnet er schon, der nächste freie.
+- **Nacharbeit nach dem Echttest:** Mit belegten 3090 nahm Prozess 3 das erste Bild, die beiden anderen griffen sich Prozess 1
+  und 2 und warteten dort 10 min auf Platz („wer zuerst kommt“). Neu `_darf_nehmen`: Passt ein Auftrag gerade nirgends, bleibt er
+  in der Schlange, solange ein anderer geeigneter Prozess nur rechnet; rechnet keiner, gilt wie bisher „wer zuerst kommt“
+  (mit Begründung im Auftrag).
+- Tests: Zentrale 168, Werkstatt 225, grün.
+
+**Echttest (22.10.2026):** Zentrale startet drei Prozesse („Drei Prozesse bereit“), ComfyUI 3 meldet nur die RTX 3080.
+Vier Bilder über den Skill (`studio.py bild … --anzahl 4`): erstes an Prozess 3 (3080), die nächsten parallel an Prozess 1 (FE) und
+2 (Suprim) – drei Bilder gleichzeitig. Beide 3090 über `/api/platz` belegt (ComfyUI 1/2 entladen, 21,5 + 20,5 GiB angemeldet),
+drei Bilder bestellt: alle drei nacheinander auf der 3080, je 7,5–7,7 s, keiner blieb hängen. „GPU freigeben“ bietet „Modelle aus
+ComfyUI 3 (RTX 3080) entladen“ an; die Belegungsleiste zeigt „ComfyUI 3 (RTX 3080) 15,9 GiB“.
+
+**Grenze Arbeitsspeicher:** Drei leere ComfyUI-Prozesse halten zusammen ~6 GiB (≈ 2 GiB je Prozess; gemessen 35,8 → 42,1 GiB
+verfügbar nach „Beenden“). Strata prüft beim Start 42 GiB verfügbar; an diesem Tag reichte es auch ohne ComfyUI knapp nicht
+(41,8 GiB – ein fremder Dienst `praxis_kb`, Port 3897, hielt 8,5 GiB). Reihenfolge deshalb: erst Strata, dann Bild & Video (so
+gemessen: Bilder auf der 3080 neben Strata ohne Auslagern). Den Strata-Start mit laufenden drei Prozessen nicht mehr
+nachgeprüft.
+Testbilder: `Studio\Werkstatt-Abnahme\Test3080-k*` (ohne Begleitdatei, aus dem Messskript), `Bild-3_0000*`, `Bild_0013*`,
+`Bild-2_0000*` (können in den Papierkorb, wenn Sascha will).
 
 ## Regel „nur Standardbibliothek, keine Pakete/Downloads“ gestrichen (21.10.2026)
 

@@ -23,9 +23,15 @@
       "kurz": "RTX 3090 Suprim",
       "bus": 4,
       "name": "RTX 3090"
+    },
+    "2": {
+      "kurz": "RTX 3080",
+      "bus": 7,
+      "name": "RTX 3080",
+      "nebenkarte": true
     }
   },
-  "karten_grund": "Seit 14.10.2026 zwei RTX 3090 mit je 24 GiB, die RTX 3080 ist ausgebaut. Steckplatz 02 = Founders Edition (Teilenummer 900-1G136-2510-000, 350 W, ohne Monitor), Steckplatz 04 = MSI Suprim (420 W, Monitor). Der Name gilt nur, wenn Steckplatz und gemessenes Kartenmodell passen. Keine Karte ist mehr für bestimmte Modelle reserviert: NInfer, LightOnOCR und Bilder nehmen die Karte, auf der sie passen; mehrere Modelle teilen sich eine Karte, wenn Platz ist.",
+  "karten_grund": "Seit 22.10.2026 hängt die RTX 3080 (20 GiB) über USB4 am eGPU-Dock AG02 (Bus 07, x4, ~3,1 GB/s) als Nebenkarte: nur für Arbeiten, die ganz auf sie passen (LightOnOCR, Whisper); sie hat dort Vorrang, damit die 3090 frei bleiben. Ollama sieht sie nicht (Benutzervariablen CUDA_VISIBLE_DEVICES = UUIDs der 3090, OLLAMA_VULKAN=0), Strata, NInfer, PolyStrata, Fibo und ComfyUI nutzen sie nicht. Seit 14.10.2026 zwei RTX 3090 mit je 24 GiB. Steckplatz 02 = Founders Edition (Teilenummer 900-1G136-2510-000, 350 W, ohne Monitor), Steckplatz 04 = MSI Suprim (420 W, Monitor). Der Name gilt nur, wenn Steckplatz und gemessenes Kartenmodell passen. Keine Karte ist mehr für bestimmte Modelle reserviert: NInfer, LightOnOCR und Bilder nehmen die Karte, auf der sie passen; mehrere Modelle teilen sich eine Karte, wenn Platz ist.",
   "ollama": {
     "url": "http://127.0.0.1:11434",
     "programm": "C:\\Users\\sasch\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
@@ -102,6 +108,7 @@
       "farbe": "#0E8A86",
       "tag": "ornith-q5-128k:latest",
       "bedarf_gesamt_mib": 27500,
+      "gesamt_karten": ["RTX 3090"],
       "bedarf_grund": "Ollama verteilt das Modell selbst. Gemessen 14.10.2026 auf zwei RTX 3090: 14.633 + 12.787 MiB (Kontext 131.072 fest im Modelfile), danach 95–158 Token/s; vorher auf RTX 3090 + 3080: 16.700 + 12.500 MiB.",
       "startzeit_max_s": 600,
       "ollama_optionen": {
@@ -119,6 +126,7 @@
       "farbe": "#1B6F9A",
       "tag": "ornith-q6-256k:latest",
       "bedarf_gesamt_mib": 33500,
+      "gesamt_karten": ["RTX 3090"],
       "bedarf_grund": "19.10.2026, Auftrag Sascha („Q6 auf beiden Karten, Kontext 256K“). Ollama-Fassung ornith-q6-256k aus den vorhandenen Q6_K-Gewichten (hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q6_K, 30,1 GB, nichts kopiert) mit num_ctx 262144 und num_batch 256 im Modelfile, damit DSH und Hermes über /v1 nicht mit anderem Kontext neu laden. 30 GB passen auf keine Karte allein, Ollama verteilt auf beide. Gemessen 19.10.2026 über die Zentrale: bereit nach 9 s, Kontext 262.144, 31,2 GiB ganz im Grafikspeicher (18.742 MiB FE inkl. ~1,1 GiB Windows + 15.644 MiB Suprim), 121 Token/s; eine /v1-Anfrage (Weg von DSH) lädt nicht neu. Mit 128K waren es 28,9 GiB.",
       "startzeit_max_s": 600,
       "ollama_optionen": {
@@ -136,6 +144,7 @@
       "farbe": "#3F9E5A",
       "tag": "ornith-1.5:35b",
       "bedarf_gesamt_mib": 26500,
+      "gesamt_karten": ["RTX 3090"],
       "varianten": [
         {"id": "256k", "name": "256K Kontext", "standard": true, "bedarf_gesamt_mib": 26500,
          "ollama_optionen": {"num_batch": 256, "num_ctx": 262144}},
@@ -215,7 +224,7 @@
       "art": "llamacpp",
       "gruppe": "Texterkennung",
       "name": "LightOnOCR-3 · Texterkennung",
-      "untertitel": "4B · Q4_K_M · eine RTX 3090",
+      "untertitel": "4B · Q4_K_M · RTX 3080, sonst eine RTX 3090",
       "wofuer": "Liest PDF-Seiten, Scans und Bildschirmfotos als Markdown (Überschriften, Tabellen). In der Werkstatt im Reiter „Texterkennung“; OpenAI-API auf Port 8096.",
       "farbe": "#2B7BB9",
       "programm": "C:\\LLM\\runtimes\\llama-b10754-cuda\\llama-server.exe",
@@ -223,7 +232,7 @@
       "mmproj": "C:\\LLM\\models\\LightOnOCR-3-4B\\LightOnOCR-3-4B.mmproj-f16.gguf",
       "modell_id": "lightonocr-3-4b",
       "port": 8096,
-      "karten": ["RTX 3090"],
+      "karten": ["RTX 3080", "RTX 3090"],
       "argumente": [
         "-ngl",
         "99",
@@ -254,10 +263,13 @@
       "studio_grund": "2Wild ist seit 24.09.2026 stillgelegt (PLAN.md, Stufe 3c): Die Zentrale startet es nicht mehr, erkennt und beendet aber ein noch laufendes 2Wild (Port studio_port) mit. Die Werkstatt liest aus dem Ordner nur noch data\\jobs.json (Prompts alter Dateien, Messungen). 2Wild selbst bleibt unverändert.",
       "ausgabe_ordner": "C:\\Workstation\\Arbeitsmaterial\\Studio",
       "comfy_port": 8188,
-      "comfy_port_2": 8189,
-      "comfy_karte_2": 1,
-      "comfy_name_2": "ComfyUI 2 (Suprim)",
+      "comfy_karten": [0, 1],
+      "comfy_weitere": [
+        {"nr": 2, "port": 8189, "karte": 1, "name": "ComfyUI 2 (Suprim)"},
+        {"nr": 3, "port": 8190, "karte": 2, "name": "ComfyUI 3 (RTX 3080)", "videos": false}
+      ],
       "comfy_2_grund": "Stufe 8 (16.10.2026, Auftrag Sascha: zwei Studio-Aufträge gleichzeitig). ComfyUI rechnet je Prozess einen Auftrag; der zweite Prozess sieht nur die Suprim (--cuda-device 1), eigene temp-/user-Ordner, gleiche Ausgabe. Aufträge über zwei Karten (Videos geteilt) bleiben beim ersten Prozess. Gutachten Astra: SPEC-studio-parallel-ASTRA-antwort.md.",
+      "comfy_3_grund": "22.10.2026 (Auftrag Sascha): dritter Prozess nur auf der RTX 3080 (Nebenkarte, USB4), Port 8190, temp-3/user-3, Dateien mit -3. Nur Bilder und Hilfsabläufe, deren Bedarf auf die Karte passt (Gesamt minus Reserve), keine Videos. Bilder gehen zuerst an ihn, damit die 3090 frei bleiben. Gemessen: Turbo-INT8-Bild 1584×1056 7,6 s (FE 6,6 s), erstes mit Laden 13,6 s (8,9 s), Spitze 17,4 GiB; 2048×1152 11,7 s, 17,9 GiB; neben Strata (beide 3090 belegt) gleich schnell.",
       "studio_port": 3998,
       "pflichtdateien": [
         "models\\diffusion_models\\qwen_image_2.1_bf16.safetensors",

@@ -121,6 +121,22 @@ class Zentrale:
         return (planung.kurznamen(roh.get('karten', []), self.cfg.get('karten') or {}).get(idx)
                 or (self.cfg.get('karten') or {}).get(str(idx), {}).get('kurz'))
 
+    def _comfy_weitere(self):
+        """Die weiteren ComfyUI-Prozesse aus der Erfassung (oder der Konfiguration)."""
+        liste = getattr(getattr(self, 'erf', None), 'comfy_weitere', None)
+        if isinstance(liste, (list, tuple)):
+            return liste
+        e = next((e for e in self.cfg.get('eintraege', []) if e.get('art') == 'comfy'), {})
+        return e.get('comfy_weitere') or []
+
+    @staticmethod
+    def _zahlwort(n, gross=False):
+        """2 „zwei“, 3 „drei“, sonst die Ziffer; `gross` beginnt mit Großbuchstaben."""
+        w = {1: 'ein', 2: 'zwei', 3: 'drei'}.get(n)
+        if w is None:
+            return str(n)
+        return w.capitalize() if gross else w
+
     def _zustaende(self, roh):
         d = roh['dienste']
         z = {}
@@ -213,20 +229,28 @@ class Zentrale:
                     zustand = 'aus'
                 if s['pid']:
                     detail = 'Das alte 2Wild Studio läuft noch; „Beenden“ beendet es mit.'
-                c2 = d.get('comfy2') or {}
-                if e.get('comfy_port_2') and c['laeuft'] and not s['pid']:
-                    detail = ('Zwei Prozesse bereit (je ein Auftrag gleichzeitig).' if c2.get('laeuft') else
-                              'Zweiter Prozess startet …' if c2.get('pid') else
-                              'Nur ein Prozess läuft; „Starten“ startet den zweiten nach.')
-                laufend = c['auftraege_laufend'] + c2.get('auftraege_laufend', 0)
+                weitere = [d.get(f"comfy{w['nr']}") or {} for w in self._comfy_weitere()]
+                if weitere and c['laeuft'] and not s['pid']:
+                    laufen = sum(1 for w in weitere if w.get('laeuft'))
+                    if laufen == len(weitere):
+                        detail = (f'{self._zahlwort(len(weitere) + 1, True)} Prozesse bereit '
+                                  '(je ein Auftrag gleichzeitig).')
+                    elif any(w.get('pid') and not w.get('laeuft') for w in weitere):
+                        detail = 'Weitere Prozesse starten …'
+                    else:
+                        an, alle = laufen + 1, len(weitere) + 1
+                        detail = ('Nur ein Prozess läuft; „Starten“ startet die fehlenden nach.' if an == 1 else
+                                  f'Nur {self._zahlwort(an)} von {self._zahlwort(alle)} Prozessen laufen; '
+                                  '„Starten“ startet die fehlenden nach.')
+                laufend = c['auftraege_laufend'] + sum(w.get('auftraege_laufend', 0) for w in weitere)
                 if laufend:
-                    wartend = c['auftraege_wartend'] + c2.get('auftraege_wartend', 0)
+                    wartend = c['auftraege_wartend'] + sum(w.get('auftraege_wartend', 0) for w in weitere)
                     detail = (f'{laufend} Aufträge laufen' if laufend > 1 else 'Ein Auftrag läuft') + (
                         f', {wartend} warten.' if wartend else '.')
             else:
                 zustand = 'laeuft' if d[e['id']]['pids'] else 'aus'
-            auftrag = e['art'] == 'comfy' and (d['comfy']['auftraege_laufend']
-                                               + (d.get('comfy2') or {}).get('auftraege_laufend', 0)) > 0
+            auftrag = e['art'] == 'comfy' and (d['comfy']['auftraege_laufend'] + sum(
+                (d.get(f"comfy{w['nr']}") or {}).get('auftraege_laufend', 0) for w in self._comfy_weitere())) > 0
             if e['art'] == 'python_dienst':
                 auftrag = bool((d.get(e['id']) or {}).get('laufend'))
             z[e['id']] = {'zustand': self.laufend.get(e['id'], zustand), 'detail': detail, 'auftrag': auftrag}
@@ -361,11 +385,17 @@ class Zentrale:
             # Einen Studio-Auftrag deckt seine Anmeldung ab (keine GPU-Sperre mehr, 16.10.2026); nur ein fremder
             # ComfyUI-Auftrag ohne Anmeldung ist ein Grund zu warten, weil sein Bedarf unbekannt ist.
             # Je ComfyUI-Prozess (Stufe 8): ein laufender Auftrag ohne Studio-Anmeldung für genau diesen Prozess.
-            for dienst, sl in (('comfy', 'bild-video'), ('comfy2', 'bild-video-2')):
+            weitere = self._comfy_weitere()
+            for dienst, sl in ([('comfy', 'bild-video')] + [
+                    (f"comfy{w['nr']}", f"bild-video-{w['nr']}") for w in weitere]):
                 if (roh['dienste'].get(dienst) or {}).get('auftraege_laufend') and not any(
                         r.get('schluessel') == sl for r in self._anmeldungen_aktiv()):
-                    gruende.append('In ComfyUI läuft gerade ein Auftrag.' if dienst == 'comfy' else
-                                   'Im zweiten ComfyUI-Prozess läuft gerade ein Auftrag.')
+                    if dienst == 'comfy':
+                        gruende.append('In ComfyUI läuft gerade ein Auftrag.')
+                    else:
+                        w = next(w for w in weitere if f"comfy{w['nr']}" == dienst)
+                        name = w.get('name') or f"ComfyUI {w['nr']}"
+                        gruende.append(f'In {name} läuft gerade ein Auftrag.')
             # Im Leerlauf hält Ollama wenige KiB; erst ein echter Lade- oder Entladevorgang zählt.
             if any(v['schluessel'] == 'ollama' and sum(v['mib_je_karte'].values()) >= 256 for v in roh['verbraucher']):
                 gruende.append('Ollama lädt gerade ein Modell oder gibt Speicher frei.')
@@ -376,7 +406,8 @@ class Zentrale:
             antwort = {'karten': [{'index': k['index'], 'kurz': self._kurzname(k['index']), 'gesamt': k['gesamt'],
                                    'belegt': k['belegt'], 'frei': max(0, pruefung['frei_mib'][k['index']]),
                                    'last': k['last'], 'belegt_von': belegt_von(k['index']),
-                                   'monitor': bool(k.get('monitor'))} for k in karten],
+                                   'monitor': bool(k.get('monitor')), 'nebenkarte': bool(k.get('nebenkarte'))}
+                              for k in karten],
                        'monitor_puffer_mib': self.cfg.get('monitor_puffer_mib', 0),
                        # Wer wie viel belegt, damit andere Apps den eigenen Anteil herausrechnen können (z. B. ComfyUI).
                        'verbraucher': [{'schluessel': v['schluessel'], 'name': v['name'], 'farbe': v.get('farbe'),
@@ -386,7 +417,7 @@ class Zentrale:
                        'hinweise': pruefung['hinweise'], 'gruende': gruende, 'anmeldung': None}
             if not daten.get('reservieren'):
                 return 200, antwort
-            if not bedarf and schluessel not in ('bild-video', 'bild-video-2'):
+            if not bedarf and not (schluessel == 'bild-video' or schluessel.startswith('bild-video-')):
                 # Ein Studio-Auftrag darf ohne Zusatzbedarf anmelden (ComfyUI hält schon alles): nur als Kennzeichen.
                 return 400, {'fehler': 'Für eine Anmeldung fehlt der Bedarf.'}
             if not antwort['genug']:
@@ -455,8 +486,9 @@ class Zentrale:
     def _schritte_ausfuehren(self, schritt_ids):
         for sid in schritt_ids:
             ziel = sid.partition(':')[2]
-            eintrag = 'ninfer' if ziel == 'ninfer' else ('bild-video' if ziel in ('bild-video', 'bild-video-2') else
-                                                         (self.erf.ollama_tags.get(ziel) or {}).get('id'))
+            eintrag = 'ninfer' if ziel == 'ninfer' else (
+                'bild-video' if ziel == 'bild-video' or ziel.startswith('bild-video-') else
+                (self.erf.ollama_tags.get(ziel) or {}).get('id'))
             if ziel == 'strata':
                 eintrag = self.erf.strata['id'] if self.erf.strata else None
             elif ziel in self.erf.llamacpp or ziel in self.erf.polystrata or ziel in self.erf.python_dienst:

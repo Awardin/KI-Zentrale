@@ -68,3 +68,19 @@ def kurznamen(karten, cfg_karten=None):
         namen[idx] = name
     return {i: f'{name} · Nr. {i}' if list(namen.values()).count(name) > 1 else name
             for i, name in namen.items()}
+
+
+def nebenkarten(karten, cfg_karten=None):
+    """Menge der Indizes gemessener Nebenkarten (`nebenkarte`: true in der Konfiguration).
+
+    Gleiche Regel wie in `kurznamen`: Steckplatz (`bus`) und Kartenmodell (`name`) müssen passen, ohne Groß/Klein.
+    """
+    cfg_karten = cfg_karten or {}
+    gefunden = set()
+    for k in karten:
+        name = (k.get('name') or '').strip()
+        if name and any(c.get('nebenkarte') and c.get('bus') is not None and c.get('bus') == k.get('bus')
+                        and (c.get('name') or '').casefold() in name.casefold()
+                        for c in cfg_karten.values()):
+            gefunden.add(k['index'])
+    return gefunden

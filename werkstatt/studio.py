@@ -1815,14 +1815,16 @@ def karten_waehlen(antwort, bedarf, inst=None):
     dessen Karte bei Videos fast ganz, gemessen 14.10.2026); Karten, auf denen ComfyUI schon Speicher hält (sonst lädt
     es die Modelle ein zweites Mal); die engste Karte (die andere bleibt für große Modelle frei); dann die
     Kartennummern. Passt nichts, gilt die Verteilung, der am wenigsten fehlt.
-    `inst` (Stufe 8): der ComfyUI-Prozess – er sieht nur seine Karten, rechnet seinen eigenen Cache an und nimmt für
-    Ein-Karten-Aufträge die Karte des anderen Prozesses nicht, solange der läuft (sonst müsste der warten, gemessen
-    16.10.2026: Prozess 1 legte ein Bild auf die Suprim, Prozess 2 stand); dann wartet er auf seine eigene Karte.
+    `inst` (Stufe 8): der ComfyUI-Prozess – er sieht nur seine Karten (`karten`, lokal umbenannt, oder `sichtbar`),
+    rechnet seinen eigenen Cache an und nimmt für Ein-Karten-Aufträge die Karte des anderen Prozesses nicht, solange
+    der läuft (sonst müsste der warten, gemessen 16.10.2026: Prozess 1 legte ein Bild auf die Suprim, Prozess 2
+    stand); dann wartet er auf seine eigene Karte.
     Ein Video auf einer Karte („eine_ohne_monitor“) kommt nie auf die Monitorkarte.
     -> (verteilung oder None, fehlend {Karte: MiB}, zusatz {Karte: MiB})
     """
+    sichtbar = inst.karten if inst is not None and inst.karten is not None else (inst.sichtbar if inst else None)
     karten = sorted(k['index'] for k in antwort.get('karten', [])
-                    if inst is None or inst.karten is None or k['index'] in inst.karten)
+                    if sichtbar is None or k['index'] in sichtbar)
     standard = inst.standard if inst else STANDARD_KARTE
     schluessel = inst.schluessel if inst else 'bild-video'
     meiden = inst.meiden() if inst else set()
@@ -1880,21 +1882,26 @@ def platz_text(antwort, fehlend, comfy_name):
 # ---------------------------------------------------------------- ComfyUI-Prozesse (Stufe 8)
 
 class Instanz:
-    """Ein ComfyUI-Prozess mit seinem Arbeiter im Studio (Stufe 8, 16.10.2026).
+    """Ein ComfyUI-Prozess mit seinem Arbeiter im Studio (Stufe 8, 16.10.2026; seit 22.10.2026 mehrere).
 
-    Prozess 1 sieht beide Karten (auch Aufträge über zwei Karten), Prozess 2 nur `karten` (dort heißt die Karte
-    „gpu:0“). Zustand, Startoptionen und Rechenzeit gehören dem Prozess; seine Ausgaben tragen `zusatz` im Namen,
-    damit zwei Prozesse nie dieselbe Dateinummer wählen."""
+    Prozess 1 sieht die Karten aus `sichtbar` (auch Aufträge über zwei Karten), die weiteren nur `karten` (dort heißt
+    ihre Karte „gpu:0“). Zustand, Startoptionen und Rechenzeit gehören dem Prozess; seine Ausgaben tragen `zusatz` im
+    Namen, damit mehrere Prozesse nie dieselbe Dateinummer wählen."""
 
-    def __init__(self, nr, port, schluessel, name, karten=None, standard=STANDARD_KARTE, zusatz=''):
+    def __init__(self, nr, port, schluessel, name, karten=None, standard=STANDARD_KARTE, zusatz='', sichtbar=None,
+                 videos=True):
         self.nr, self.port, self.url = nr, port, f'http://127.0.0.1:{port}'
         self.schluessel, self.name, self.karten, self.standard, self.zusatz = schluessel, name, karten, standard, zusatz
+        self.videos = videos  # darf dieser Prozess Videos rechnen? (RTX 3080: nein, 22 GiB passen nicht)
+        self.sichtbar = sichtbar  # Karten, die der Prozess sieht, ohne lokale Umbenennung (Prozess 1)
         self.lokal = {f'gpu:{k}': f'gpu:{i}' for i, k in enumerate(karten)} if karten else None
         self.zustand = (0, None)
         self.argv = (None, [])  # (Prozess-ID, Startoptionen)
         self.letzte_rechenzeit = None
         self.andere = []  # die übrigen Prozesse (für `meiden`)
         self.auf_monitor = False  # hängt der Monitor an seiner Karte? (letzter Stand der Zentrale)
+        self.nebenkarte = False  # liegt seine Karte laut /api/platz auf einer Nebenkarte?
+        self.kapazitaet = None  # Gesamt minus Reserve seiner Karte in MiB (letzter Stand der Zentrale)
 
     def laeuft(self):
         return bool((self.zustand[1] or {}).get('laeuft'))
@@ -1905,12 +1912,25 @@ class Instanz:
 
     def kann(self, bedarf):
         """Kann dieser Prozess den Bedarf überhaupt rechnen? Wer nur eine Karte sieht, braucht eine Ein-Karten-Möglichkeit
-        („eine“ oder „fest“, ein Video „eine_ohne_monitor“ nur, wenn der Monitor nicht an dieser Karte hängt)."""
-        return self.karten is None or bool(bedarf.get('eine') or bedarf.get('fest')
-                                           or (bedarf.get('eine_ohne_monitor') and not self.auf_monitor))
+        („eine“ oder „fest“, ein Video „eine_ohne_monitor“ nur, wenn der Monitor nicht an dieser Karte hängt).
+
+        Seit der RTX 3080 (22.10.2026): Prozesse ohne Videos nehmen nur Bilder und Hilfsabläufe; ihre Kapazität (Gesamt
+        minus Reserve) muss der Ein-Karten-Bedarf samt Standardzusatz fassen. Ohne bekannte Kapazität rechnen sie nichts."""
+        if self.karten is None:
+            return True
+        if not self.videos and bedarf.get('eine_ohne_monitor') and not bedarf.get('eine'):
+            return False
+        if not (bedarf.get('eine') or bedarf.get('fest')
+                or (bedarf.get('eine_ohne_monitor') and not self.auf_monitor)):
+            return False
+        if self.kapazitaet is None:
+            return self.videos
+        noetig = bedarf.get('eine') or bedarf.get('eine_ohne_monitor') or bedarf.get('fest') or 0
+        noetig = max(noetig, bedarf.get('standard_zusatz') or 0)
+        return noetig <= self.kapazitaet
 
     def bevorzugt(self, bedarf):
-        """Videos auf einer Karte gehören dem Ein-Karten-Prozess (Stufe 8: Video auf der Suprim, Bild daneben auf der
+        """Videos auf einer Karte gehören dem video-fähigen Prozess (Stufe 8: Video auf der Suprim, Bild daneben auf der
         FE); er nimmt sie vor allem anderen, der erste Prozess lässt sie ihm, solange er läuft."""
         return bool(self.karten and bedarf.get('eine_ohne_monitor') and self.kann(bedarf))
 
@@ -1941,17 +1961,19 @@ class Studio:
         self.log = log
         self.zentrale = zentrale
         self.client_id = 'werkstatt-' + secrets.token_hex(4)
-        # ComfyUI-Prozesse (Stufe 8): Prozess 1 wie bisher, Prozess 2 (falls eingerichtet) nur auf seiner Karte.
-        self.instanzen = [Instanz(1, c['comfy_port'], 'bild-video', c['name'])]
-        if c.get('comfy_port_2'):
-            karte = int(c.get('comfy_karte_2', 1))
-            self.instanzen.append(Instanz(2, c['comfy_port_2'], 'bild-video-2', c.get('comfy_name_2') or 'ComfyUI 2',
-                                          karten=[karte], standard=karte, zusatz='-2'))
+        # ComfyUI-Prozesse (Stufe 8): Prozess 1 wie bisher, die weiteren aus `comfy_weitere` je auf ihrer Karte.
+        self.instanzen = [Instanz(1, c['comfy_port'], 'bild-video', c['name'],
+                                  sichtbar=c.get('comfy_karten') or [0, 1])]
+        for w in c.get('comfy_weitere') or []:
+            self.instanzen.append(Instanz(w['nr'], w['port'], f"bild-video-{w['nr']}",
+                                          w.get('name') or f"ComfyUI {w['nr']}", karten=[w['karte']],
+                                          standard=w['karte'], zusatz=f"-{w['nr']}",
+                                          videos=w.get('videos', True)))
         for i in self.instanzen:
             i.andere = [x for x in self.instanzen if x is not i]
         self._ort = threading.local()  # welcher Prozess gerade in diesem Faden rechnet
         self._stand_zentrale = (0, None)  # (Zeit, letzter Stand der Zentrale) für `_wer_zuerst`
-        self._hochladen_lock = threading.Lock()  # ein gemeinsamer Eingangsordner für beide Prozesse
+        self._hochladen_lock = threading.Lock()  # ein gemeinsamer Eingangsordner für alle Prozesse
         self.speicher = os.path.join(daten_ordner, 'studio.json')
         self._lock = threading.RLock()
         self._bib_lock = threading.Lock()
@@ -3475,28 +3497,49 @@ class Studio:
     # ------------------------------------------------------------ Ablauf
 
     def _naechster(self, inst):
-        """Erster wartender Auftrag, den dieser Prozess rechnen kann (unter `self._lock`). Prozess 2 nimmt nur, wenn er
-        läuft, und nichts über zwei Karten; Videos auf einer Karte nimmt er zuerst, und Prozess 1 lässt sie ihm, solange
-        er läuft (sonst legte Prozess 1 das Video über beide Karten, und ein Bild daneben müsste warten)."""
+        """Erster wartender Auftrag, den dieser Prozess rechnen kann (unter `self._lock`). Weitere Prozesse nehmen nur,
+        wenn sie laufen, und nichts über zwei Karten; Videos auf einer Karte nimmt der Video-Prozess zuerst, und
+        Prozess 1 lässt sie ihm, solange er läuft (sonst legte Prozess 1 das Video über beide Karten, und ein Bild
+        daneben müsste warten)."""
         if inst.nr > 1 and not self.comfy_zustand(inst=inst).get('laeuft'):
             return None
         wartend = [(x, self._bedarf(x)) for x in self.auftraege if x['zustand'] == 'wartet']
-        wartend = [(x, b) for x, b in wartend if inst.kann(b) and self._wer_zuerst(b) in (None, inst)]
+        wartend = [(x, b) for x, b in wartend if inst.kann(b) and self._darf_nehmen(inst, b)]
         return next((x for x, b in wartend if inst.bevorzugt(b)), wartend[0][0] if wartend else None)
+
+    def _darf_nehmen(self, inst, b):
+        """Darf `inst` einen Auftrag mit Bedarf `b` jetzt nehmen? Ist ein Prozess bestimmt (`_wer_zuerst`), nur der.
+        Passt er gerade nirgends, wartet er in der Schlange, solange ein anderer geeigneter Prozess nur rechnet – der
+        ist bald frei. Sonst hielte ein Prozess, dessen Karte ein Sprachmodell belegt, den Auftrag fest (gemessen
+        22.10.2026: beide 3090 belegt, zwei Bilder warteten in Prozess 1 und 2, während die 3080 nach Sekunden frei war)."""
+        wer = self._wer_zuerst(b)
+        if wer is not None:
+            return wer is inst
+        zeit, stand = self._stand_zentrale
+        if not stand or time.time() - zeit > 15:
+            return True
+        rechnet = {x.get('prozess') for x in self.auftraege if x['zustand'] == 'laeuft'}
+        return not any(i is not inst and i.nr in rechnet and (i.nr == 1 or i.laeuft()) and i.kann(b)
+                       for i in self.instanzen)
 
     def _wer_zuerst(self, b):
         """Welcher Prozess soll einen Auftrag mit Bedarf `b` nehmen (unter `self._lock`)? None = wer zuerst kommt.
 
-        Videos auf einer Karte der Ein-Karten-Prozess, solange er läuft. Sonst der erste freie Prozess, der den Auftrag
-        jetzt ganz auf eine eigene Karte legen kann – Prozess 1 zuerst, damit die Suprim für ein Video daneben frei bleibt
-        (gemessen 16.10.2026: Bild zuerst bestellt → Prozess 2 nahm es, das Video wartete). Grundlage ist der letzte
-        Stand der Zentrale (`_lage_auffrischen`, höchstens 15 s alt); ohne ihn oder wenn nichts allein passt: None."""
+        Videos auf einer Karte der Video-Prozess, solange er läuft. Sonst der erste freie Prozess, der den Auftrag
+        jetzt ganz auf eine eigene Karte legen kann – Nebenkarten zuerst (die RTX 3080, damit die 3090 frei bleiben),
+        danach Prozess 1 vor den weiteren, damit die Suprim für ein Video daneben frei bleibt (gemessen 16.10.2026:
+        Bild zuerst bestellt → Prozess 2 nahm es, das Video wartete). Grundlage ist der letzte Stand der Zentrale
+        (`_lage_auffrischen`, höchstens 15 s alt); ohne ihn oder wenn nichts allein passt: None."""
+        zeit, stand = self._stand_zentrale
+        frisch = bool(stand) and time.time() - zeit <= 15
+        if frisch:
+            self._monitor_merken(stand)
         verfuegbar = [i for i in self.instanzen if i.nr == 1 or i.laeuft()]
+        verfuegbar.sort(key=lambda i: (not i.nebenkarte, i.nr))
         for i in verfuegbar:
             if i.bevorzugt(b):
                 return i
-        zeit, stand = self._stand_zentrale
-        if len(verfuegbar) < 2 or not stand or time.time() - zeit > 15:
+        if len(verfuegbar) < 2 or not frisch:
             return None
         rechnet = {x.get('prozess') for x in self.auftraege if x['zustand'] == 'laeuft'}
         for i in verfuegbar:
@@ -3507,8 +3550,8 @@ class Studio:
         return None
 
     def _lage_auffrischen(self):
-        """Vor dem Nehmen eines Auftrags (nur mit zwei Prozessen, außerhalb der Sperre): Zustand beider ComfyUI-Prozesse
-        und Stand der Zentrale, höchstens alle 3 s; die Zentrale wird dafür nicht gestartet."""
+        """Vor dem Nehmen eines Auftrags (nur mit mehreren Prozessen, außerhalb der Sperre): Zustand aller
+        ComfyUI-Prozesse und Stand der Zentrale, höchstens alle 3 s; die Zentrale wird dafür nicht gestartet."""
         if len(self.instanzen) < 2:
             return
         for i in self.instanzen:
@@ -3524,9 +3567,19 @@ class Studio:
             self._stand_zentrale = (time.time(), antwort)
 
     def _monitor_merken(self, antwort):
-        monitor = {k['index'] for k in antwort.get('karten', []) if k.get('monitor')}
+        """Monitor, Nebenkarte und Kapazität (Gesamt minus Reserve) je Prozess aus dem Stand der Zentrale merken."""
+        karten = {k['index']: k for k in antwort.get('karten', [])}
+        monitor = {i for i, k in karten.items() if k.get('monitor')}
+        reserve = antwort.get('reserve_mib') or 0
         for i in self.instanzen:
             i.auf_monitor = bool(i.karten and set(i.karten) & monitor)
+            if not i.karten:
+                i.nebenkarte, i.kapazitaet = False, None
+                continue
+            eigene = [karten[k] for k in i.karten if k in karten]
+            i.nebenkarte = any(k.get('nebenkarte') for k in eigene)
+            gesamt = eigene[0].get('gesamt') if eigene else None
+            i.kapazitaet = gesamt - reserve if gesamt is not None else None
 
     def _schleife(self, inst=None):
         inst = inst or self.instanzen[0]
@@ -3770,7 +3823,7 @@ class Studio:
         grundname = {'bearbeiten': 'Bearbeitet', 'bild': 'Bild', 'verbessern': 'Verbessert',
                      'freistellen': 'Freigestellt', 'pose': 'Pose', 'video_zeitlupe': 'Zeitlupe',
                      'video_freistellen': 'Freigestellt', 'modell3d': 'Modell'}.get(a['art'], 'Video')
-        # Prozess 2 schreibt mit Zusatz („Bild-2_00003_.png“): ComfyUI zählt die Nummern nicht prozessübergreifend.
+        # Weitere Prozesse schreiben mit Zusatz („Bild-2_00003_.png“): ComfyUI zählt die Nummern nicht prozessübergreifend.
         praefix = (a['projekt'] + '/' if a['projekt'] else '') + grundname + inst.zusatz
         if a['art'] == 'verbessern' and a.get('stelle') and not a.get('maske'):
             self._stelle_finden(a, namen['original'][0], anmeldung)

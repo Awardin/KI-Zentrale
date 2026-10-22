@@ -56,7 +56,7 @@ class LlamaCpp(unittest.TestCase):
         self.addCleanup(p.stop)
 
     def test_eintrag_kartenliste(self):
-        self.assertEqual(self.e['karten'], ['RTX 3090'])
+        self.assertEqual(self.e['karten'], ['RTX 3080', 'RTX 3090'])
         self.assertEqual(self.e['bedarf_je_karte_mib'], 4700)
         self.assertNotIn('karte', self.e)
         self.assertNotIn('bedarf_mib', self.e)
@@ -175,7 +175,7 @@ class LlamaCpp(unittest.TestCase):
         self.assertEqual(z._zustaende(roh)['lightonocr']['detail'], 'Port 8096 ist von Python belegt.')
         self.assertIsNone(z._zustaende(roh)['lightonocr']['karte'])
         self.assertNotIn('links', z.konfig()['eintraege'][0])
-        self.assertEqual(z.konfig()['eintraege'][0]['karten'], ['RTX 3090'])
+        self.assertEqual(z.konfig()['eintraege'][0]['karten'], ['RTX 3080', 'RTX 3090'])
         self.assertEqual(z.konfig()['eintraege'][0]['bedarf_je_karte_mib'], 4700)
         z.melden = Mock()
 
@@ -249,7 +249,7 @@ class KartenlisteServer(unittest.TestCase):
 
     def test_ohne_wunschkarte_plan_und_start_abgelehnt(self):
         self.roh['karten'][0]['name'] = 'NVIDIA GeForce RTX 4090'
-        grund = 'Keine der Karten RTX 3090 ist erkannt.'
+        grund = 'Keine der Karten RTX 3080, RTX 3090 ist erkannt.'
         self.assertEqual(self.z.plan('lightonocr', 'starten'),
                          {'schritte': [], 'genug_platz': False, 'hinweise': [], 'gruende': [grund],
                           'karte': None, 'karte_kurz': None, 'bedarf_mib': {}})

@@ -295,10 +295,15 @@ class Warteschlange:
             time.sleep(0.5)
         self._pruefe_abbruch(a)
 
-    def _ausfuehren(self, a, argumente, puls=None):
-        """Startet watch.py in einer eigenen Prozessgruppe. -> (Rückgabewert, Ausgabe, Fehlerausgabe)."""
+    def _ausfuehren(self, a, argumente, puls=None, karten=None):
+        """Startet watch.py in einer eigenen Prozessgruppe. -> (Rückgabewert, Ausgabe, Fehlerausgabe).
+
+        `karten`: Karten, die watch sieht. Dann werden alle Karten bis zur höchsten Nummer sichtbar gemacht, damit
+        `--gpu` auch stimmt, wenn Windows global eine engere `CUDA_VISIBLE_DEVICES` setzt."""
         self._pruefe_abbruch(a)
         env = dict(os.environ, CUDA_DEVICE_ORDER='PCI_BUS_ID', PYTHONIOENCODING='utf-8')
+        if karten:
+            env['CUDA_VISIBLE_DEVICES'] = ','.join(str(i) for i in range(max(karten) + 1))
         gruppe = winapi.Prozessgruppe([self.w['python'], self.w['skript'], *argumente],
                                       os.path.dirname(self.w['skript']), env)
         with self._lock:
@@ -456,7 +461,8 @@ class Warteschlange:
                 argumente += ['--language', sprache]
             beginn = time.time()
             self._schritt(a, 'transkription', f"Transkription auf {wahl['text']}", ziel=ziel, beginn=beginn)
-            code, aus, err = self._ausfuehren(a, argumente, puls=lambda: self.zentrale.halten(anmeldung['id']))
+            code, aus, err = self._ausfuehren(a, argumente, puls=lambda: self.zentrale.halten(anmeldung['id']),
+                                              karten=wahl['gpus'])
         finally:
             self.zentrale.abmelden(anmeldung['id'])
         fertig = watch_lauf.ergebnis_transkription(ziel)

@@ -4,6 +4,8 @@ Zwei lokale Apps rund um die beiden Grafikkarten: seit 14.10.2026 zwei RTX 3090 
 (Steckplatz 02, Karte 0) und „RTX 3090 Suprim“ (Steckplatz 04, Karte 1, Monitor). Im Task-Manager heißen sie
 GPU 1 und GPU 2 (GPU 0 ist die Intel-Grafik). Keine Karte ist für bestimmte Modelle reserviert: Was auf eine Karte
 passt, startet dort, wo Platz ist, und mehrere Modelle teilen sich eine Karte (Abschnitt „Kartenwahl“).
+Seit 22.10.2026 hängt dazu die „RTX 3080“ (20 GiB, Karte 2, Bus 07) über USB4 am eGPU-Dock AG02 – als **Nebenkarte**
+für LightOnOCR und Whisper (Abschnitt „Kartenwahl“).
 
 - **Modellzentrale** (fertig): Wer belegt die Karten? Sprachmodelle starten, laden,
   entladen, wechseln; Bild & Video starten; GPU freigeben.
@@ -39,8 +41,8 @@ nur ein weiteres Fenster, keinen zweiten Dienst.
   24.09.2026 stillgelegt, ein noch laufendes 2Wild beendet „Beenden“ mit). „GPU freigeben“ entlädt
   nur die Modelle aus ComfyUI, der Dienst läuft weiter. Läuft gerade ein
   Auftrag, wird nichts entladen; Beenden verlangt dann eine eigene Bestätigung.
-- **Texterkennung:** „LightOnOCR-3 · Texterkennung“ startet einen llama.cpp-Server auf einer RTX 3090
-  (Port 8096, etwa 4,4 GiB, bereit nach wenigen Sekunden). Ihn nutzt die Werkstatt im Reiter „Texterkennung“.
+- **Texterkennung:** „LightOnOCR-3 · Texterkennung“ startet einen llama.cpp-Server auf der RTX 3080, wenn dort Platz
+  ist, sonst auf einer RTX 3090 (Port 8096, etwa 4,4 GiB, bereit nach wenigen Sekunden). Ihn nutzt die Werkstatt im Reiter „Texterkennung“.
   Die Karte wählt die Zentrale (Abschnitt „Kartenwahl“); die Anzeige nennt die gemessene Karte. Für Strata
   (braucht beide Karten) muss er weichen; der Startdialog bietet das an.
 - **Ornith über PolyStrata** (seit 18.10.2026): „Ornith 1.5 · PolyStrata“ startet PolyStratas Server
@@ -85,8 +87,17 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
   `monitor_puffer_mib` (2 GiB) für Windows frei bleiben, solange die andere Karte reicht. Passt es nirgends, schlägt
   sie die Karte vor, auf der am wenigsten weichen muss. NInfer startet mit `CUDA_VISIBLE_DEVICES` auf der gewählten
   Karte, LightOnOCR ebenso.
-- **Alle Karten zusammen** (`bedarf_gesamt_mib`): Ornith Q5 und Q4. Ollama verteilt selbst; gezählt wird der freie
-  Platz beider Karten. Reicht es, ein einzelnes Modell freizugeben, schlägt die Zentrale das kleinste passende vor.
+- **Nebenkarte RTX 3080** (seit 22.10.2026, `nebenkarte` in `karten`): langsam angebunden (USB4, ~3,1 GB/s), deshalb nur für
+  Einträge, die „RTX 3080“ in `karten` nennen (LightOnOCR), und für Whisper. Passt es ohne Freigabe auf sie, hat sie Vorrang
+  vor jeder 3090 – die 3090 bleiben für große Modelle frei. Whisper (Werkstatt) nimmt sie, wenn sie alle Worker trägt
+  (gemessen 984 s Ton mit zwei Workern: 78 s statt 53 s auf der FE). NInfer, PolyStrata, Fibo, Strata und ComfyUI nutzen sie
+  nicht (ComfyUI 1 sieht nur `comfy_karten` = 0, 1).
+- **Alle Karten zusammen** (`bedarf_gesamt_mib`): Ornith Q5, Q6 und Q4. Ollama verteilt selbst; gezählt wird der freie
+  Platz der Karten aus `gesamt_karten` (die zwei 3090). **Ollama sieht die 3080 nicht:** Benutzervariablen
+  `CUDA_VISIBLE_DEVICES` = UUIDs der beiden 3090 (`nvidia-smi -L`) und `OLLAMA_VULKAN=0` (sonst nimmt Ollama sie über
+  Vulkan); gemessen mit 3080 37 Token/s, ohne 154–156. Andere Programme, die keine Karte vorgeben, sehen damit auch nur die
+  3090; Zentrale und Werkstatt setzen die Karte selbst. Rückweg: beide Benutzervariablen löschen, Ollama über die App
+  beenden und neu starten (PLAN.md, 22.10.2026). Reicht es, ein einzelnes Modell freizugeben, schlägt die Zentrale das kleinste passende vor.
 - **Feste Karten** (`bedarf_mib`): Strata braucht beide Karten.
 - **Varianten** (`varianten`, seit 14.10.2026): Unter dem Eintrag steht eine Auswahl „Laden mit“ bzw. „Starten mit“,
   solange er aus ist; der Bedarf darunter wechselt mit. Ornith Q4: 256K Kontext (Standard, 26,5 GiB) oder 32K
@@ -102,7 +113,11 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
 - **Studio:** wählt je Auftrag (Werkstatt, `karten_waehlen`): ein Bild möglichst ganz auf einer Karte (dort, wo
   ComfyUI seine Modelle schon hält, sonst die engste), sonst geteilt; Videos seit 16.10.2026 ganz auf einer Karte, aber nie auf der
   Monitorkarte (sonst geteilt, das Videomodell nicht auf der Monitorkarte). Mit zwei ComfyUI-Prozessen (Stufe 8) rechnet
-  ComfyUI 2 die Videos auf der Suprim und ComfyUI 1 Bilder daneben auf der FE. Abläufe ohne Kartenwahl (Pose, schnelles Freistellen, Stelle per Wort, Zeitlupe, Video
+  ComfyUI 2 die Videos auf der Suprim und ComfyUI 1 Bilder daneben auf der FE. Seit 22.10.2026 rechnet **ComfyUI 3**
+  (Port 8190, nur die RTX 3080) Bilder und Hilfsabläufe, die auf die 3080 passen – sie gehen zuerst dorthin, auch wenn
+  Strata beide 3090 belegt; Videos, Bilder über 2 MP und „Ausformulieren“ bleiben bei den 3090. Passt ein Auftrag gerade
+  nirgends, wartet er in der Schlange, bis ein rechnender Prozess frei wird. Drei leere ComfyUI-Prozesse halten zusammen
+  etwa 6 GiB Arbeitsspeicher; Strata prüft beim Start 42 GiB – reicht es nicht, Bild & Video vorher beenden. Abläufe ohne Kartenwahl (Pose, schnelles Freistellen, Stelle per Wort, Zeitlupe, Video
   freistellen, 3D) rechnen auf ComfyUIs Standardkarte 0 (FE).
 
 Der Dienst misst nur, solange ein Fenster offen ist (danach Ruhe nach 90 s).

@@ -2,16 +2,19 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from werkstatt import platz, quellen, watch_lauf  # noqa: E402
+from werkstatt import auftraege, platz, quellen, watch_lauf  # noqa: E402
 
 W = 2800
 
 
-def karte(i, frei, last=0):
-    return {'index': i, 'kurz': ['RTX 3090', 'RTX 3080'][i], 'frei': frei, 'last': last}
+def karte(i, frei, last=0, nebenkarte=False):
+    return {'index': i, 'kurz': ['RTX 3090', 'RTX 3080'][i], 'frei': frei, 'last': last,
+            'nebenkarte': nebenkarte}
 
 
 class Verteilen(unittest.TestCase):
@@ -48,12 +51,49 @@ class Verteilen(unittest.TestCase):
         v = platz.verteilen([karte(0, 20000, last=95), karte(1, 9000)], W, 2)
         self.assertEqual(v['gpus'], [1])
 
+    def test_nebenkarte_reicht_fuer_zwei_worker(self):
+        v = platz.verteilen([karte(0, 22000), karte(1, 7000, nebenkarte=True)], W, 2)
+        self.assertEqual((v['gpus'], v['worker'], v['text']), ([1], 2, 'RTX 3080, zwei Worker'))
+
+    def test_nebenkarte_reicht_nur_fuer_einen_worker(self):
+        v = platz.verteilen([karte(0, 1000), karte(1, 3000, nebenkarte=True)], W, 2)
+        self.assertEqual((v['gpus'], v['worker'], v['text']), ([1], 1, 'RTX 3080, ein Worker'))
+        # Trägt eine 3090 beide Worker, geht die Transkription dorthin statt mit einem Worker auf die 3080.
+        v = platz.verteilen([karte(0, 22000), karte(1, 3000, nebenkarte=True)], W, 2)
+        self.assertEqual((v['gpus'], v['worker']), ([0], 2))
+
+    def test_volle_nebenkarte_bleibt_bei_der_3090(self):
+        v = platz.verteilen([karte(0, 22000), karte(1, 1000, nebenkarte=True)], W, 2)
+        self.assertEqual((v['gpus'], v['worker']), ([0], 2))
+
+    def test_ausgelastete_nebenkarte_geht_nicht_vor(self):
+        v = platz.verteilen([karte(0, 9000), karte(1, 20000, last=95, nebenkarte=True)], W, 2)
+        self.assertEqual(v['gpus'], [0])
+
     def test_begruendung(self):
         a = {'gruende': [], 'karten': [karte(0, 2000), karte(1, 1000)]}
         self.assertIn('es fehlen 0,8 GiB', platz.warum_nicht(a, W))
         a['karten'][0]['belegt_von'] = ['Ornith 1.5 · Q5', 'Windows & Programme']
         self.assertIn('belegt von Ornith 1.5 · Q5)', platz.warum_nicht(a, W))
         self.assertEqual(platz.warum_nicht({'gruende': ['ComfyUI arbeitet.'], 'karten': []}, W), 'ComfyUI arbeitet.')
+
+
+class AusfuehrenUmgebung(unittest.TestCase):
+    def test_karten_werden_fuer_watch_ausdruecklich_sichtbar(self):
+        w = auftraege.Warteschlange.__new__(auftraege.Warteschlange)
+        w.w = {'python': 'python.exe', 'skript': os.path.join('C:', 'Watch', 'watch.py')}
+        w._lock = threading.RLock()
+        w._gruppe = None
+        w._abbruch = set()
+        gruppe = Mock()
+        gruppe.prozess.returncode = 0
+        gruppe.prozess.communicate.return_value = (b'', b'')
+        with patch('werkstatt.auftraege.winapi.Prozessgruppe', return_value=gruppe) as pg:
+            code, aus, err = w._ausfuehren({'id': 'x'}, ['transcribe', 'datei'], karten=[2])
+        self.assertEqual((code, aus, err), (0, '', ''))
+        env = pg.call_args.args[2]
+        self.assertEqual(env['CUDA_VISIBLE_DEVICES'], '0,1,2')
+        self.assertEqual(env['CUDA_DEVICE_ORDER'], 'PCI_BUS_ID')
 
 
 class YouTube(unittest.TestCase):
