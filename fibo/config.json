@@ -15,7 +15,7 @@
   "turbo_im_speicher": false,
   "standard": {
     "dev": {
-      "schritte": 50,
+      "schritte": 30,
       "guidance": 5.0
     },
     "turbo": {
