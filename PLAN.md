@@ -2570,6 +2570,33 @@ Skill: Video aus Text „schnell“ (`Video-2_00003_`, Nummer 11) in Prozess 2 a
 hinter Knoten 28. Oberfläche: „Beste“ zeigt „etwa 3 min je Video“, das Formular schickt `schnell: true` und `dmad: true`
 (Anfrage abgefangen, nichts erzeugt). Abschalten: `studio.video.schnelle_aufmerksamkeit.aktiv` auf `false`.
 
+## Fibo 2.0 in der Zentrale und das Atelier (22.10.2026, fertig)
+
+Auftrag Sascha: Fibo 2.0 (Bria, 8B, Dev + Edit Turbo) testen, „nach erfolgreichem Test in die Modellzentrale einbauen
+oder standalone, was sinnvoller ist“, dazu ein Programm, in dem man Bilder und Objekte etwa auf einem YouTube-Thumbnail
+oder Flyer verschiebt; das Destillat (Edit Turbo) nutzen. Entscheidung: Modell als Dienst in der Zentrale (Art
+`python_dienst`), Editor als eigene App „Atelier“. Spec, Gegenprüfung (Codex nicht nutzbar: `gpt-6-astra` mit
+ChatGPT-Konto abgelehnt) und Messwerte: [SPEC-atelier.md](SPEC-atelier.md), [SPEC-atelier-REVIEW-LOG.md](SPEC-atelier-REVIEW-LOG.md).
+
+- **Tests (FE):** Dev 30 Schritte = 50 Schritte in der Qualität (98 statt 160 s); Guidance 3,5/5/7 gleichwertig. Gedruckte
+  Schrift korrekt („Backstube Müller“), Kreide-Handschrift 1 von 3 richtig. Beschreiber: Claude ≥ DeepSeek Flash > V4 Pro.
+  Edit Turbo 20–35 s, gleich gut oder besser als Dev (≈6 min); Zusammenführen einer Collage mit Turbo stimmig, mit Dev
+  kaum verändert. Mehrere Referenzen: gescheitert; Aquarell schwach.
+- **Bau:** DeepSeek V4.1 Flash über DSH in vier Läufen (Dienst + Zentrale-Art; Editor; KI-Aktionen; Platzreserve), je eigener
+  Worktree, Abnahme durch Claude gegen den Verifikationsplan.
+- **Korrekturen bei der Abnahme:** Transformer beim Wechsel Dev/Turbo wirklich freigeben (`gc.collect()`; vorher 78,9 GB
+  zugesagt, danach 36,4 GB stabil); Bedarf 19.500 MiB / 36 GiB RAM gemessen; Platzreserve für den im Leerlauf fast leeren
+  Dienst; Zusammenführen nur mit Bild-Ebenen (Fibo malte ein Rechteck weg); „Beschreibung ändern“ nur für echte
+  VGL-Beschreibungen; Freistellen ohne Fibo möglich.
+- **Abnahme 22.10.2026:** alle Tests grün (Zentrale 153, Werkstatt 214, Fibo 23, Atelier 24). Echt: Start über die Zentrale
+  (Kartenwahl Suprim, bereit nach ≈10 s, Reserve sichtbar, Ornith-Plan weicht auf die FE aus); API-Fälle Bild mit DeepSeek,
+  direkt, Turbo, Maske, Abbruch; im Atelier Projekt, Text mit Kontur, Verschieben, Export 1280×720 + Quellen-JSON,
+  Hintergrund erzeugen, Ebene bearbeiten, Zusammenführen, Objekt erzeugen + Freistellen (BiRefNet, saubere Kante),
+  Bereich ändern (Tasse → Saftglas), Beschreibung ändern (gleicher Seed, anderes Licht).
+- **Offen/später:** LoRA-Feintuning auf Fibo Dev (Hausstil), Bria-LoRAs „Multi-Turn Local Editing“/„Product Shot“, sobald
+  veröffentlicht; Scene Analyzer (`C:\LLM\models\fibo-scene-analyzer-gguf`, geladen, nicht eingebunden) für Ebenen-Zerlegung;
+  ein lokaler Beschreiber statt DeepSeek.
+
 ## Offen
 
 - **Zwei RTX 3090 seit 14.10.2026** (Stufe 6): Ein-Karten-Einstellung abgelöst, freie Kartenwahl, Strata gemessen. Offen:

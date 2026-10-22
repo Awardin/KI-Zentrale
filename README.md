@@ -12,6 +12,9 @@ passt, startet dort, wo Platz ist, und mehrere Modelle teilen sich eine Karte (A
   (auch einzelne Stellen verbessern, etwa Hände reparieren), PDFs und Scans mit LightOnOCR lesen
   (Texterkennung), Messungen.
   Siehe [PLAN.md](PLAN.md).
+- **Atelier** (seit 22.10.2026): Ebenen-Editor für YouTube-Thumbnails, Flyer und Social-Media-Bilder –
+  Bilder, Objekte, Text und Formen frei anordnen; mit Fibo 2.0 Bilder erzeugen und bearbeiten, freistellen über das
+  Studio. Spec: [SPEC-atelier.md](SPEC-atelier.md).
 
 ## Modellzentrale bedienen
 
@@ -107,6 +110,13 @@ Er belegt selbst keinen Grafikspeicher.
 
 Meldet die Werkstatt eine Transkription an, erscheint der noch nicht belegte Teil als
 „Transkription (angemeldet)“ in der Leiste und zählt beim Starten und Wechseln mit.
+
+**Fibo 2.0 · Bild & Bearbeiten** (seit 22.10.2026, Art `python_dienst`): startet `fibo\dienst.py` mit der eigenen
+Umgebung `C:\LLM\runtimes\Fibo2\.venv` auf einer RTX 3090 (Port 8098; Modelle unter `C:\LLM\models\Fibo-2.0-dev` und
+`…\Fibo-2.0-edit-turbo`). Mit CPU-Offload liegt das Modell im Arbeitsspeicher (≈36 GB zugesagt) und belegt beim Rechnen
+17,4 GiB (Dev) bzw. 18,8 GiB (Edit Turbo). Weil es im Leerlauf kaum Grafikspeicher braucht, hält die Zentrale auf seiner
+Karte 19.500 MiB als „Fibo 2.0 … (reserviert)“ frei. „Atelier öffnen“ öffnet den Editor. **Nur nicht-kommerziell**
+(CC BY-NC 4.0).
 
 ## Werkstatt bedienen
 
@@ -296,6 +306,27 @@ Alles entsteht automatisch aus echten Läufen:
 - **Historisch:** die 141 Läufe aus GPU-Lab (einmalig übernommen, GPU-Lab ist stillgelegt).
 
 Ablage ins Wissen, Auswertung mit Bildern und OCR bleiben bei den Agenten (Skill `watch`).
+
+## Atelier bedienen
+
+Start: Doppelklick auf **Atelier starten** in `C:\Workstation` (Dienst auf `http://127.0.0.1:3896/`, eigenes Fenster).
+Layout, Text und Export gehen ohne Grafikkarte; die KI-Aktionen brauchen Fibo (in der Zentrale starten), Freistellen
+braucht Werkstatt und ComfyUI. Projekte liegen in `C:\Workstation\Arbeitsmaterial\Atelier\<Projekt>\`
+(`projekt.json`, `ebenen\`, `export\`), Fibo-Rohergebnisse in `…\Atelier\_fibo\<Datum>\`.
+
+- **Formate:** YouTube-Thumbnail 1280×720, Instagram 1080×1080, Story 1080×1920, Flyer A5/A4 hoch, eigenes.
+- **Ebenen:** Bild (hineinziehen, Studio-Bibliothek, Fibo), Text (Windows-Schriften, Kontur, Schatten – Text immer als
+  echte Ebene, weil Fibo Schrift nicht verlässlich schreibt), Rechteck/Kreis. Verschieben, Skalieren, Drehen,
+  Hilfslinien, Rückgängig, automatisches Speichern; Leertaste + Ziehen verschiebt die Ansicht, Strg + Mausrad zoomt.
+- **KI:** *Bild erzeugen* (DeepSeek Flash schreibt die Bildbeschreibung – nur der Text geht in die Cloud, nie Bilder –
+  oder „direkt“; Dev, 30 Schritte ≈100 s); *Ebene bearbeiten* und *Bereich ändern* mit Maske (Edit Turbo, 4 Schritte
+  ≈20–35 s; Dev ≈6 min, selten besser); *Freistellen* (Studio, BiRefNet ≈1 s); *Zusammenführen* (nur Bild-Ebenen, Turbo;
+  Text und Formen bleiben obenauf); *Beschreibung ändern* (nur neu erzeugte Fibo-Bilder: Licht, Kamera … ändern, gleicher
+  Seed).
+- **Lizenz:** Fibo-Ebenen tragen „Fibo · nicht-kommerziell“; der Export warnt und legt eine JSON mit den Quellen daneben.
+  Für Praxis- und Werbematerial bleibt das Studio (Qwen-Image) der Weg.
+- Grenzen (Abnahme 22.10.2026): mehrere Referenzbilder in einem Auftrag scheitern; Stilwechsel (Aquarell) schwach;
+  Fibo liefert ≈1 MP, für A4-Druck vergrößert das Atelier mit Hinweis „unscharf beim Druck“.
 
 ## Verwaltete Einträge
 

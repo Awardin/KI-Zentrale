@@ -125,6 +125,12 @@ Agenten erzeugen Bilder und Videos über den gemeinsamen Skill `bild-video-studi
   `chat_app`), abgesichert (`STRATA_NO_ACQUIRE`, keine mitgelieferte Engine); Tunnel/Freigabe nicht benutzen.
   Modelle der Zentrale sind darin als Verbindungen eingetragen. README.md „Reiter Chat“, PLAN.md 21.10.2026.
   Reiter **„Monitor“** (21.10.2026) bettet Stratas eigene Monitor-Seite ein (8095 bzw. PolyStrata 8097, nur wenn laufend).
+- **Fibo 2.0 und Atelier** (22.10.2026, Auftrag Sascha): Zentrale-Eintrag `fibo2` (neue Art `python_dienst`: Erkennung
+  über Skript + `--port`, uv-Starter mit Kindprozess, Prozessbaum beim Stoppen, Platzreserve auf der von `/health`
+  gemeldeten Karte), Dienst `fibo\dienst.py` (Port 8098, Umgebung `C:\LLM\runtimes\Fibo2\.venv`, nur `X-Atelier: 1`),
+  App `atelier\` (Port 3896, Fabric.js 6.4.3 lokal in `atelier\web\vendor`, nie ändern). Fibo ist **CC BY-NC 4.0, nur
+  nicht-kommerziell**; an DeepSeek geht nur der Text-Prompt von „Bild erzeugen“, nie Bilder. Bau: DeepSeek V4.1 Flash in
+  Scheiben, Abnahme Claude. Spec und Messwerte: [SPEC-atelier.md](SPEC-atelier.md), README „Atelier bedienen“.
 - **2Wild ist stillgelegt** (Stufe 3c, 24.09.2026): wird nicht mehr gestartet oder eingebettet.
 - **Lizenz** (entschieden 24.09.2026, Einschätzung Sascha): Die Bilder aus Qwen-Image 2.1 und der Turbo-LoRA dürfen privat
   und gewerblich genutzt werden (z. B. YouTube); eine Lizenz braucht es erst bei Weitergabe des Systems (z. B. mit einem
