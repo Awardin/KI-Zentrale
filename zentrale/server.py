@@ -76,6 +76,7 @@ class Zentrale:
 
     def _uebernehmen(self, roh):
         rest, name, farbe = self._anmeldung_rest(roh)
+        reserven = self._reservierungen(roh)
         namen = planung.kurznamen(roh['karten'], self.cfg['karten'])
         karten = []
         for k in roh['karten']:
@@ -83,10 +84,15 @@ class Zentrale:
             belegung = [{'schluessel': v['schluessel'], 'name': v['name'], 'farbe': v['farbe'],
                          'mib': v['mib_je_karte'].get(idx, 0), 'details': v.get('details_je_karte', {}).get(idx, [])}
                         for v in roh['verbraucher'] if v['mib_je_karte'].get(idx, 0) >= 1]
+            for r in reserven:
+                if r['rest'].get(idx):
+                    belegung.append({'schluessel': 'reserviert:' + r['eintrag'], 'name': r['name'],
+                                     'farbe': r['farbe'], 'mib': r['rest'][idx], 'details': []})
             if rest.get(idx):
                 belegung.append({'schluessel': 'angemeldet', 'name': name, 'farbe': farbe, 'mib': rest[idx], 'details': []})
             kurz = namen[idx]
-            karten.append(dict(k, kurz=kurz, belegung=belegung, angemeldet=rest.get(idx, 0)))
+            angemeldet = rest.get(idx, 0) + sum(r['rest'].get(idx, 0) for r in reserven)
+            karten.append(dict(k, kurz=kurz, belegung=belegung, angemeldet=angemeldet))
         stand = {'zeit': roh['zeit'], 'dauer_ms': roh['dauer_ms'], 'karten': karten,
                  'eintraege': self._zustaende(roh), 'ollama_erreichbar': roh['ollama']['erreichbar'],
                  'fremde_ollama_modelle': [m['tag'] for m in roh['ollama']['geladen']
@@ -103,6 +109,17 @@ class Zentrale:
                    for i, m in v['mib_je_karte'].items() if m >= 256}
         idx = max(anteile, key=anteile.get, default=None)
         return planung.kurznamen(roh.get('karten', []), self.cfg['karten']).get(idx)
+
+    def _karte_aus_health(self, roh, karte):
+        """Kurzname zur Karte, die ein python_dienst über /health meldet (sonst None)."""
+        if karte is None:
+            return None
+        try:
+            idx = int(karte)
+        except (TypeError, ValueError):
+            return None
+        return (planung.kurznamen(roh.get('karten', []), self.cfg.get('karten') or {}).get(idx)
+                or (self.cfg.get('karten') or {}).get(str(idx), {}).get('kurz'))
 
     def _zustaende(self, roh):
         d = roh['dienste']
@@ -153,10 +170,12 @@ class Zentrale:
                 elif zustand == 'fremd':
                     detail = f"Port {e['port']} ist von {s['fremd']} belegt."
             elif e['art'] == 'python_dienst':
-                s = d.get(e['id']) or {'zustand': 'aus', 'fremd': None, 'laufend': None, 'aktiv': None}
+                s = d.get(e['id']) or {'zustand': 'aus', 'fremd': None, 'laufend': None, 'aktiv': None, 'karte': None}
                 zustand = s['zustand']
+                karte = self._karte_von(roh, 'python_dienst:' + e['id'])
+                if karte is None:
+                    karte = self._karte_aus_health(roh, s.get('karte'))
                 if zustand == 'bereit':
-                    karte = self._karte_von(roh, 'python_dienst:' + e['id'])
                     teile = [f"Port {e['port']}"]
                     if s.get('aktiv'):
                         teile.append('Dev' if s['aktiv'] == 'dev' else 'Turbo' if s['aktiv'] == 'turbo' else s['aktiv'])
@@ -234,7 +253,7 @@ class Zentrale:
         if aktion != 'freigeben':
             e = planung.variante(self.eintraege[eintrag_id], variante)
         roh = self._aktuell()
-        karten, verbraucher = planung.mit_anmeldungen(roh['karten'], roh['verbraucher'], *self._anmeldung_rest(roh))
+        karten, verbraucher = self._mit_reserven(roh)
         if aktion == 'freigeben':
             return planung.plan_freigeben(verbraucher)
         if 'karten' in e:
@@ -274,6 +293,46 @@ class Zentrale:
         farbe = self.cfg['nur_anzeigen']['transkription']['farbe'] + '80'
         return planung.angemeldet_rest(aktiv, roh['verbraucher']), name, farbe
 
+    def _reservierungen(self, roh):
+        """Reserven laufender python_dienste je Karte (Rest nach gemessener Belegung).
+
+        Ein Dienst im Zustand `startet` oder `bereit` mit bekannter Karte hält seinen Bedarf dort frei. Was er
+        schon wirklich belegt, wird über `angemeldet_rest` (Basis leer, Verbraucher-Schlüssel) abgezogen, damit
+        nichts doppelt zählt. Rückgabe je Eintrag: Rest, Anzeigename, Farbe, Eintrags-ID.
+        """
+        out = []
+        dienste = roh.get('dienste') or {}
+        verbraucher = roh.get('verbraucher') or []
+        for e in self.cfg['eintraege']:
+            if e.get('art') != 'python_dienst':
+                continue
+            s = dienste.get(e['id']) or {}
+            karte = s.get('karte')
+            if s.get('zustand') not in ('startet', 'bereit') or karte is None:
+                continue
+            try:
+                karte = int(karte)
+            except (TypeError, ValueError):
+                continue
+            bedarf = int(e.get('bedarf_je_karte_mib') or 0)
+            if bedarf <= 0:
+                continue
+            rest = planung.angemeldet_rest(
+                [{'bedarf_mib': {karte: bedarf}, 'schluessel': 'python_dienst:' + e['id'], 'basis': {}}],
+                verbraucher)
+            if rest:
+                out.append({'rest': rest, 'name': f"{e['name']} (reserviert)",
+                            'farbe': (e.get('farbe') or '#888888') + '80', 'eintrag': e['id']})
+        return out
+
+    def _mit_reserven(self, roh):
+        """Karten und Verbraucher mit Werkstatt-Anmeldungen und den Reserven laufender python_dienste."""
+        karten, verbraucher = planung.mit_anmeldungen(roh['karten'], roh['verbraucher'], *self._anmeldung_rest(roh))
+        for r in self._reservierungen(roh):
+            karten, verbraucher = planung.mit_anmeldungen(karten, verbraucher, r['rest'], r['name'], r['farbe'],
+                                                           eintrag=r['eintrag'])
+        return karten, verbraucher
+
     def _kurzname(self, idx):
         karten = (self.roh or {}).get('karten', [])
         return planung.kurznamen(karten, self.cfg['karten']).get(
@@ -294,7 +353,7 @@ class Zentrale:
             indizes = {k['index'] for k in roh['karten']}
             if any(i not in indizes or not 0 < m <= 49152 for i, m in bedarf.items()):
                 return 400, {'fehler': 'Ungültiger Bedarf.'}
-            karten, verbraucher = planung.mit_anmeldungen(roh['karten'], roh['verbraucher'], *self._anmeldung_rest(roh))
+            karten, verbraucher = self._mit_reserven(roh)
             pruefung = planung.platz_pruefen(karten, verbraucher, bedarf, self.cfg['reserve_mib'])
             gruende = []
             if self.aktion:

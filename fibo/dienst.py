@@ -66,6 +66,16 @@ def _fehlertext(fehler):
     return text[:400]
 
 
+def karte_aus_umgebung():
+    """Karte aus `CUDA_VISIBLE_DEVICES`, wenn dort genau eine ganze Zahl steht, sonst None.
+
+    Die Zentrale setzt die Variable beim Start (z. B. „1“); stehen dort mehrere Karten oder
+    etwas anderes, ist keine eindeutige Karte bekannt.
+    """
+    wert = (os.environ.get('CUDA_VISIBLE_DEVICES') or '').strip()
+    return int(wert) if re.fullmatch(r'\d+', wert) else None
+
+
 # ---------------------------------------------------------------- Größen und Bilder
 
 def vielfaches(wert):
@@ -333,12 +343,13 @@ class Dienst:
 
     def health(self):
         with self._lock:
+            karte = karte_aus_umgebung()
             if self.zustand == 'error':
-                return {'status': 'error', 'fehler': self.fehler}
+                return {'status': 'error', 'fehler': self.fehler, 'karte': karte}
             if self.zustand != 'ok':
-                return {'status': 'loading'}
+                return {'status': 'loading', 'karte': karte}
             return {'status': 'ok', 'modell': MODELL_KENNUNG, 'aktiv': self.aktiv,
-                    'warteschlange': len(self._warteliste), 'laufend': self._laufend}
+                    'warteschlange': len(self._warteliste), 'laufend': self._laufend, 'karte': karte}
 
     # ------------------------------------------------------------ Auftrag annehmen
 

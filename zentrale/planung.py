@@ -201,12 +201,16 @@ def angemeldet_rest(reservierungen, verbraucher):
     return rest
 
 
-def mit_anmeldungen(karten, verbraucher, rest, name, farbe):
-    """Karten und Verbraucher so, als wären die Anmeldungen schon belegt."""
+def mit_anmeldungen(karten, verbraucher, rest, name, farbe, eintrag=None):
+    """Karten und Verbraucher so, als wären die Anmeldungen schon belegt.
+
+    `eintrag` ordnet den Verbraucher einem Eintrag zu (z. B. die Reserve eines laufenden python_dienst); beim
+    Planen dieses Eintrags selbst wird er dann nicht als Hindernis behandelt.
+    """
     if not rest:
         return karten, verbraucher
     karten = [dict(k, belegt=k['belegt'] + rest.get(k['index'], 0)) for k in karten]
-    verbraucher = verbraucher + [{'eintrag': None, 'schluessel': 'angemeldet', 'name': name, 'farbe': farbe,
+    verbraucher = verbraucher + [{'eintrag': eintrag, 'schluessel': 'angemeldet', 'name': name, 'farbe': farbe,
                                   'mib_je_karte': dict(rest), 'blockiert': None, 'schritt': None}]
     return karten, verbraucher
 

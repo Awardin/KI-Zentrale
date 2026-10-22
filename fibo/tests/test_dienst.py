@@ -15,7 +15,7 @@ import threading
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from fibo import dienst as fd  # noqa: E402
@@ -230,20 +230,33 @@ class DeepSeek(unittest.TestCase):
 
 class DienstTests(Basis):
     def test_health_zustaende(self):
-        self.assertEqual(self.d.health()['status'], 'ok')
-        self.assertEqual(self.d.health()['modell'], 'fibo-2.0')
-        self.assertEqual(self.d.health()['aktiv'], 'dev')
-        self.assertEqual(self.d.health()['warteschlange'], 0)
-        self.assertIsNone(self.d.health()['laufend'])
+        with patch.dict(os.environ, {'CUDA_VISIBLE_DEVICES': ''}):
+            self.assertEqual(self.d.health()['status'], 'ok')
+            self.assertEqual(self.d.health()['modell'], 'fibo-2.0')
+            self.assertEqual(self.d.health()['aktiv'], 'dev')
+            self.assertEqual(self.d.health()['warteschlange'], 0)
+            self.assertIsNone(self.d.health()['laufend'])
+            self.assertIsNone(self.d.health()['karte'])
+            self.d.zustand = 'loading'
+            self.assertEqual(self.d.health(), {'status': 'loading', 'karte': None})
+            self.d.zustand = 'error'
+            self.d.fehler = 'Shader fehlt'
+            self.assertEqual(self.d.health(), {'status': 'error', 'fehler': 'Shader fehlt', 'karte': None})
+            self.d.zustand = 'ok'
+            self.d.fehler = None
+            self.d._laufend = 'abc'
+            self.assertEqual(self.d.health()['laufend'], 'abc')
+
+    def test_health_meldet_karte_aus_cuda_visible_devices(self):
+        for wert, erwartet in (('0', 0), ('1', 1), (' 1 ', 1), ('0,1', None), ('', None),
+                               ('GPU-abc', None), ('1.0', None)):
+            with self.subTest(wert=wert), patch.dict(os.environ, {'CUDA_VISIBLE_DEVICES': wert}):
+                self.assertEqual(self.d.health()['karte'], erwartet)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertIsNone(self.d.health()['karte'])
         self.d.zustand = 'loading'
-        self.assertEqual(self.d.health(), {'status': 'loading'})
-        self.d.zustand = 'error'
-        self.d.fehler = 'Shader fehlt'
-        self.assertEqual(self.d.health(), {'status': 'error', 'fehler': 'Shader fehlt'})
-        self.d.zustand = 'ok'
-        self.d.fehler = None
-        self.d._laufend = 'abc'
-        self.assertEqual(self.d.health()['laufend'], 'abc')
+        with patch.dict(os.environ, {'CUDA_VISIBLE_DEVICES': '1'}):
+            self.assertEqual(self.d.health(), {'status': 'loading', 'karte': 1})
 
     def test_ladefehler(self):
         def kaputt(cfg):
@@ -252,7 +265,8 @@ class DienstTests(Basis):
         with self.assertRaisesRegex(RuntimeError, 'CUDA'):
             d.laden()
         self.assertEqual(d.zustand, 'error')
-        self.assertEqual(d.health(), {'status': 'error', 'fehler': 'CUDA nicht verfügbar'})
+        with patch.dict(os.environ, {'CUDA_VISIBLE_DEVICES': ''}):
+            self.assertEqual(d.health(), {'status': 'error', 'fehler': 'CUDA nicht verfügbar', 'karte': None})
 
     def test_annahme_pruefungen(self):
         faelle = [
