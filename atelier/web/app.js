@@ -2297,8 +2297,11 @@
   async function zusammenfuehrenDaten() {
     const groesse = formatGroesse();
     const objekte = Z.canvas.getObjects();
+    // Text und Formen bleiben als echte Ebenen obenauf: Fibo behandelt flache Formen beim Zusammenführen als Störung
+    // und malt sie weg (Abnahme 22.10.2026). Nur Bild-Ebenen gehen ins Zusammenführen.
     const texte = objekte.filter(function (obj) {
-      return artVon(obj) === 'text' && obj.visible !== false;
+      const art = artVon(obj);
+      return (art === 'text' || art === 'form') && obj.visible !== false;
     });
     const sichtbar = texte.map(function (obj) { return obj.visible; });
     const alterZoom = Z.canvas.getZoom();
@@ -2350,10 +2353,10 @@
     }
     const quellen = Z.canvas.getObjects().filter(function (obj) {
       const art = artVon(obj);
-      return obj.visible !== false && (art === 'bild' || art === 'form');
+      return obj.visible !== false && art === 'bild';
     });
     if (!quellen.length) {
-      toast('Keine sichtbaren Bild- oder Form-Ebenen zum Zusammenführen.', 'fehler');
+      toast('Keine sichtbaren Bild-Ebenen zum Zusammenführen.', 'fehler');
       return;
     }
     let daten;

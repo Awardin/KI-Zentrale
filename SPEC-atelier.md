@@ -143,7 +143,7 @@ VGL-Format: `C:\LLM\models\Fibo-2.0-dev\vgl\README.md`.
   4. **Freistellen**: ausgewähltes Bild über das Studio der Werkstatt (`/api/studio`, Art `freistellen`, schnell =
      BiRefNet; mit Motivbeschreibung = Qwen). Schnittstelle in `STUDIO.md` Abschnitt 10 nachlesen. Läuft Werkstatt/ComfyUI
      nicht: klare Meldung.
-  5. **Zusammenführen**: alle sichtbaren Bild- und Form-Ebenen (ohne Text) zu einem Bild (≈1 MP) rendern → Bearbeiten mit
+  5. **Zusammenführen**: alle sichtbaren Bild-Ebenen (ohne Text und Formen – Abnahme: Fibo malt flache Formen weg) zu einem Bild (≈1 MP) rendern → Bearbeiten mit
      Anweisung (vorbelegt: „Make the image one coherent photograph with matching lighting, color and perspective; keep every
      element in its place.“, änderbar), Turbo Standard. Ergebnis wird neue unterste Ebene „Zusammengeführt“, die Quellen
      werden ausgeblendet (nicht gelöscht). Text bleibt als echte Ebene obenauf.
