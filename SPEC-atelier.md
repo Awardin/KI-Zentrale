@@ -153,6 +153,36 @@ VGL-Format: `C:\LLM\models\Fibo-2.0-dev\vgl\README.md`.
 - Tests `atelier/tests/test_atelier.py` (unittest): Projekte anlegen/speichern/laden, Namen säubern, Pfadschutz, Hochladen,
   Proxy-Fehler bei ausgeschaltetem Fibo/Werkstatt (verständliche Meldung, kein 500 ohne Text).
 
+## Verbindliche Präzisierungen (Gegenprüfung 22.10.2026)
+
+Codex war nicht nutzbar (Modell `gpt-6-astra` mit ChatGPT-Konto abgelehnt, HTTP 400); Claude hat die Spec gegen den Code
+geprüft. Diese Punkte gelten zusätzlich und gehen den Abschnitten oben vor:
+
+1. **uv-Python startet ein Kindprozess.** `C:\LLM\runtimes\Fibo2\.venv\Scripts\python.exe` ist ein uv-Starter, der den
+   eigentlichen Interpreter als Kindprozess startet. Erkennung in der Zentrale daher über **Skriptpfad + `--port 8098` in der
+   Befehlszeile, egal welcher Interpreter**; die Grafikspeicher-Belegung gehört zum Kindprozess. Stoppen beendet **den ganzen
+   Prozessbaum** (Eltern und Kind) und wartet, bis der Port frei ist. Test mit zwei Prozessen (Starter + Kind) wie
+   PolyStrata-Tests mit Fake-Prozessliste.
+2. **litellm lädt beim ersten Aufruf eine Preisliste aus dem Internet** (gemessen: 100 s Hänger bei Zeitüberschreitung). Der
+   Dienst setzt vor dem Import `os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"`.
+3. **Abbruch:** Die Pipeline hat `interrupt` (Attribut `_interrupt`, in `__call__` auf `False` gesetzt). Abbrechen setzt im
+   `callback_on_step_end` `pipe._interrupt = True`; danach Ergebnis verwerfen (kein Bild speichern), Zustand `abgebrochen`.
+4. **Eingabebilder** beim Bearbeiten vor der Pipeline auf höchstens 1,1 MP verkleinern (Seitenverhältnis halten, Vielfache
+   von 16); Maske auf dieselbe Größe (NEAREST, dann 0/255). Größe der Anfrage höchstens 64 MB, sonst 413 mit Text.
+5. **Schutz vor fremden Webseiten:** Alle `POST` im Dienst und im Atelier verlangen eine Kopfzeile (`X-Atelier: 1`), wie die
+   Werkstatt `X-Werkstatt: 1`; ohne sie 403. Nur `127.0.0.1`.
+6. **Freistellen über die Werkstatt** genau nach `STUDIO.md` §10: `POST http://127.0.0.1:3895/api/studio` mit
+   `X-Werkstatt: 1`, `{"aktion":"erzeugen","art":"freistellen","prompt":"" | Motiv,"verfahren":"schnell" (nur bei leerem
+   Prompt),"projekt":"","vorlagen":[{"art":"datei","pfad":"<absoluter Pfad>","rolle":"original"}]}`, Ergebnis über
+   `GET /api/studio` (Auftrag) bzw. die Bibliothek abholen; vorher `freistellen_schnell_verfuegbar` und `comfy.laeuft` prüfen.
+   Das Atelier kopiert das Ergebnis in `ebenen\` des Projekts.
+7. **Turbo-Wechsel** kostet Zeit (16 GB von der Platte). Der Dienst meldet den Wechsel als Zustand `laedt_modell` und misst
+   die Dauer im Begleit-JSON. Aufträge in der Warteschlange werden nicht umsortiert.
+8. **Zentrale-Freigabe während eines Auftrags:** „GPU freigeben“/Stoppen fragt `GET /health`; ist `laufend` gesetzt, nennt der
+   Dialog den laufenden Auftrag und beendet nur nach eigener Bestätigung (wie ComfyUI).
+9. **Flyer-Größen:** Fibo liefert ≈1 MP. Für A5/A4 zeigt das Atelier bei Fibo-Ebenen, die über 100 % vergrößert sind, einen
+   Hinweis „unscharf beim Druck“ (keine eigene Hochskalierung in diesem Bau).
+
 ## Nicht bauen
 
 Kein Umbau an Werkstatt/Studio/ComfyUI; keine Installation; kein Scene Analyzer; kein LoRA-Training; keine Verknüpfung auf
