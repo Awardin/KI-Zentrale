@@ -2,7 +2,9 @@
 
 Lokale Apps für Saschas zwei Grafikkarten: seit 14.10.2026 zwei RTX 3090 mit je 24 GiB – „RTX 3090 FE“ = Karte 0
 (gpu:0, Steckplatz 02; Monitor 16.–20.10.2026) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; seit 20.10.2026
-wieder mit Monitor, vorher bis 16.10.2026); die RTX 3080 ist ausgebaut.
+wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) hängt seit 22.10.2026 zum Test über USB4/Thunderbolt
+als Karte 2 (Bus 07, ~3,1 GB/s): für Strata ungeeignet (Schreiben halbiert, PLAN.md 22.10.2026); Zentrale und Studio sind
+nicht auf drei Karten abgestimmt (Kartenwahl und Ollama können sie mitbenutzen).
 Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen nach freiem Platz (README.md, „Kartenwahl“).
 Bedienung und Aufbau: [README.md](README.md). Entscheidungen, Stufen, Abnahme: [PLAN.md](PLAN.md).
 Studio (Bild & Video) im Detail – Arten, LoRAs, Rezepte, Prompt-Regeln, Grenzen, Schnittstelle: [STUDIO.md](STUDIO.md).

@@ -2324,6 +2324,39 @@ eigene Werte, die gelten weiter), eigene Optionen bleiben bei App/Setup erhalten
   v0.2.1.3 mit Engine 0.1.45.3** (aktiv); 0.1.46 liegt in `engine\.previous` – `setup.py --rollback-engine` schaltet um.
   PolyStrata danach kurz: FE, 172 Token/s, sauber beendet. Bei der nächsten Engine (> 0.1.46) wieder beide vergleichen.
 
+## RTX 3080 über USB4 als dritte Karte für Strata – getestet, nicht lohnend (22.10.2026)
+
+Anlass: Sascha wollte die RTX 3080 (20 GB) für größere Modelle nutzen und hat sie über ein Thunderbolt-Gehäuse (AG02)
+angeschlossen; Go für den Strata-Test („Go für den 1. Strata Test würde ich sagen“). Die Karte ist **Index 2, Bus 07**,
+Verbindung x4; Stratas eigene Messung: **3,1 GB/s** zur 3080 statt 12,9 GB/s zu den 3090 (USB4 1.0 ≈ PCIe 3.0 x4). Nach dem
+Neustart von Windows war die Zentrale aus (kein Autostart) und wurde mit `start.py --ohne-fenster` gestartet; sie erkennt die
+dritte Karte richtig als „RTX 3080“ (20.480 MiB).
+
+Test ohne Änderung an der Zentrale: eigene Einstellungen `strata-iq3_s-3gpu-128k-test.json` und
+`strata-unsloth-ud-iq4_xs-3gpu-128k-test.json` (Port 8099), Skript `Projekte\Lokale-Wissensextraktion\nachweise\
+2026-10-21-strata-rtx3080\strata_test.py` (Anmeldung über `/api/platz`, gleiche Proben wie am 20.10., nur eigene Prozesse
+beendet). `strata-iq3_s-2gpu-128k.json` hat dafür die Reserven 700 / 1.800 bekommen (Monitor an der Suprim). Engine 0.1.45.3.
+
+| Lauf (RAM vor dem Start 49–55 GiB frei) | Text (Token/s) | Code | 70K-Prompt | RAM frei geladen |
+|---|---|---|---|---|
+| IQ3_S, zwei 3090 | 113–114 | 149–175 | 3.158 | 0,5 GiB |
+| IQ3_S, drei Karten, Reihenfolge von Strata (3080 zuerst) | 26–39 | 37–43 | 3.380 | 0,9 GiB |
+| IQ3_S, drei Karten, FE → 3080 → Suprim (`"gpu_order": "as_given"`) | 37–68 | 33–44 | 3.647 | 0,7 GiB |
+| Q4, zwei 3090 (20.10.) | 86–93 | 100–117 | 2.673 | 10–12 GiB |
+| Q4, drei Karten, FE → 3080 → Suprim | 44–60 | 42–44 | 3.036 | 21,5 GiB |
+
+- **Schreiben halbiert bis gedrittelt**, auch wenn Strata nur 5 Schichten auf die 3080 legt und deren Experten ganz in ihren
+  Speicher passen: Jeder Schreibschritt muss über die langsame Leitung. Einlesen 10–15 % schneller.
+- **RAM:** IQ3_S braucht mit drei Karten gleich viel (Strata hält alle Experten im RAM, 40.290 MiB gesperrt; die Karten sind
+  nur Zwischenspeicher). Nur Q4 (RAM-Rahmen) gewinnt ~10 GiB freien RAM.
+- Strata ordnet Karten von sich aus nach Rechenleistung, die langsamste zuerst – dann wird die 3080 die erste Stufe; mit
+  `"gpu_order": "as_given"` lässt sich das festlegen, hilft aber nicht genug.
+- Bilder lesen alle Läufe richtig (3 Pflanzen). **Entscheidung offen bei Sascha**; Empfehlung: Strata bleibt auf den zwei 3090.
+  Die 3080 käme höchstens als Nebenkarte für Whisper oder Bilder in Frage (eigener Umbau, ungetestet).
+- **Achtung, solange die 3080 dranhängt:** Zentrale und Studio kennen keine Regel „langsame Karte zuletzt“ – die Kartenwahl
+  („engste passende Karte“) kann LightOnOCR, NInfer oder Bilder auf die 3080 legen, und Ollama verteilt Modelle selbst auch
+  auf sie. Strata und PolyStrata nutzen sie nicht (feste Kartenliste bzw. `--gpu`).
+
 ## Regel „nur Standardbibliothek, keine Pakete/Downloads“ gestrichen (21.10.2026)
 
 Sascha: „Das kam aus einem Video, nicht von mir“ – die feste Grenze „Python nur mit Standardbibliothek. Keine neuen
@@ -2386,6 +2419,13 @@ Datei für PolyStrata, `llama-gguf-split --merge`). Bauart Qwen3.5-MoE: 48 Schic
   langsam). Einstellungen: `C:\LLM\runtimes\PolyStrata\strata-ornith-122b-2gpu.json`, Tokenizer `packs\ornith-122b`;
   Skripte und `ergebnisse.jsonl` in `Projekte\Lokale-Wissensextraktion\nachweise\2026-10-18-strata-webdesign\`
   (`ornith122_test.py`, `ornith122_poly.py`).
+- **22.10.2026, dazu die RTX 3080 20 GiB am AG02 über USB4** (Auftrag Sascha „miss Ornith 122B Q5 mit llama.cpp auf allen
+  drei Karten“; `ornith122_test.py --ncmoe 0 --drei tempo`, Port 8100, `--fit` mit Rand 1024/1800/1024 MiB): belegt
+  22,6 + 21,6 + 17,4 GiB, nur noch ~10 GiB Experten auf der CPU (vorher ~28). Ergebnis: Text 9,0, Code 12,9, lang
+  **190** / 20,1 Token/s – Einlesen 50 % schneller, **Schreiben nicht** (Code sogar langsamer, 19,1 → 12,9). Jedes
+  Token läuft nacheinander durch alle drei Karten und zweimal über die USB4-Leitung; die bremst stärker, als die
+  eingesparten CPU-Experten bringen. Wie bei Strata (Abschnitt vom 22.10.): die 3080 über USB4 lohnt sich nicht für ein
+  Modell, das über mehrere Karten verteilt wird. Nach dem Laden nur 1,7 GiB RAM frei (mmap).
 
 ## Messungen lokaler Sprachmodelle am 16.10.2026 (Übersicht)
 
