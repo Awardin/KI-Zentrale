@@ -31,7 +31,12 @@ Zentrale hält die Kartenbuchhaltung ehrlich. Kein Umbau an Studio/ComfyUI.
   `pipe.enable_model_cpu_offload()`.
 - Grafikspeicher beim Rechnen: 17,4 GiB laut nvidia-smi (torch-Spitze 16,0 GiB). Bedarf für die Zentrale: 18.500 MiB.
 - Dev, 1248×832, 50 Schritte, Guidance 5: 160–168 s (≈3 s/Schritt), Laden 7 s (Dateicache warm).
-- Edit Turbo: 4 Schritte, Guidance 1,0 (laut Modellkarte), Messung folgt in der Abnahme.
+- Edit Turbo: 4 Schritte, Guidance 1,0: **20–34 s** je Bearbeitung (1248×832). Dev-Bearbeitung mit 50 Schritten: **≈360 s**.
+  Dev-Bild mit 30 Schritten sieht aus wie mit 50 (98 statt 160 s) → Standard 30.
+- Bearbeiten mit Klartext-Anweisung (Turbo): Farbe ändern, Schrift auf Schild ändern, Bereich mit Maske ersetzen –
+  sehr gut, Rest pixelstabil. **Zusammenführen** einer groben Collage → stimmiges Foto (Person sitzt natürlich vor dem
+  Fenster). Stilwechsel (Aquarell) schwach. **Mehrere Referenzbilder** mit Klartext: gescheitert (gab Bild 2 zurück) →
+  nicht in diesem Bau.
 - Edit Turbo unterscheidet sich von Dev **nur im Transformer** (Textencoder, VAE, Tokenizer byte-gleich): Pfad
   `C:\LLM\models\Fibo-2.0-edit-turbo\transformer`.
 - Schrift im Bild: gedruckte Schrift korrekt („Backstube Müller“), Kreide-Handschrift fehlerhaft („Morneg“). Deshalb setzt
@@ -131,7 +136,7 @@ VGL-Format: `C:\LLM\models\Fibo-2.0-dev\vgl\README.md`.
   1. **Bild erzeugen**: Prompt, Beschreiber (DeepSeek Flash – Standard / direkt), Ziel „Hintergrund“ (Seitenverhältnis der
      Leinwand, ≈1 MP, danach auf Leinwandgröße gesetzt) oder „Objekt“ (quadratisch, danach optional freistellen). Fortschritt
      und Abbrechen.
-  2. **Ebene bearbeiten**: ausgewähltes Bild + Anweisung → Edit Turbo (Standard) oder „Höchste Qualität (Dev, ≈2,5 min)“.
+  2. **Ebene bearbeiten**: ausgewähltes Bild + Anweisung → Edit Turbo (Standard) oder „Höchste Qualität (Dev, ≈6 min)“.
      Ergebnis ersetzt das Bild an gleicher Stelle und Größe; rückgängig machbar.
   3. **Bereich ändern**: Pinsel malt eine Maske auf das ausgewählte Bild (Pinselgröße einstellbar, Radierer), Anweisung →
      Bearbeiten mit Maske.
