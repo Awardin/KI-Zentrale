@@ -65,7 +65,7 @@ class PythonDienst(unittest.TestCase):
         self.assertEqual((self.e['port'], self.e['health_pfad']), (8098, '/health'))
         self.assertEqual(self.e['karten'], ['RTX 3090'])
         self.assertEqual((self.e['bedarf_je_karte_mib'], self.e['ram_bedarf_gib'], self.e['startzeit_max_s']),
-                         (18500, 30, 300))
+                         (19500, 36, 300))
         self.assertEqual(self.e['oeffnen_url'], 'http://127.0.0.1:3896/')
         self.assertEqual(self.e['oeffnen_text'], 'Atelier öffnen')
         self.assertTrue(self.e['skript'].endswith(os.path.join('KI-Zentrale', 'fibo', 'dienst.py')))
@@ -126,7 +126,7 @@ class PythonDienst(unittest.TestCase):
         z._anmeldung_rest = Mock(return_value=({}, 'Werkstatt', '#000'))
         z.akt = Mock()
         p = z.plan('fibo2', 'starten')
-        self.assertEqual((p['karte'], p['karte_kurz'], p['bedarf_mib']), (0, 'RTX 3090 · Nr. 0', {'0': 18500}))
+        self.assertEqual((p['karte'], p['karte_kurz'], p['bedarf_mib']), (0, 'RTX 3090 · Nr. 0', {'0': 19500}))
         self.assertTrue(p['genug_platz'])
 
     def test_start_argumente_karte_und_log(self):
