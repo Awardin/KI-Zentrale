@@ -53,6 +53,8 @@ class Aktionen:
         e = planung.variante(self.eintraege[eintrag_id], variante)
         if e['art'] == 'llamacpp':
             return self._llamacpp_starten(e, karte)
+        if e['art'] == 'python_dienst':
+            return self._python_dienst_starten(e, karte)
         if e['art'] == 'polystrata':
             return self._polystrata_starten(e, karte)
         if e['art'] == 'ninfer':
@@ -69,6 +71,8 @@ class Aktionen:
             return self._strata_stoppen(e)
         if e['art'] == 'llamacpp':
             return self._llamacpp_stoppen(e)
+        if e['art'] == 'python_dienst':
+            return self._python_dienst_stoppen(e, erzwingen)
         if e['art'] == 'polystrata':
             return self._polystrata_stoppen(e)
         if e['art'] == 'ollama':
@@ -87,6 +91,8 @@ class Aktionen:
             return self._strata_stoppen(self.erf.strata)
         if art == 'beenden' and ziel in self.erf.llamacpp:
             return self._llamacpp_stoppen(self.erf.llamacpp[ziel])
+        if art == 'beenden' and ziel in self.erf.python_dienst:
+            return self._python_dienst_stoppen(self.erf.python_dienst[ziel])
         if art == 'beenden' and ziel in self.erf.polystrata:
             return self._polystrata_stoppen(self.erf.polystrata[ziel])
         if art == 'entladen':
@@ -296,6 +302,115 @@ class Aktionen:
                     not any(self.erf.ist_polystrata(p, procs) == e['id'] for p in procs))
         if not _warten(frei, 15, 0.5):
             raise Fehler(f"{e['name']} ist nach dem Beenden noch nicht aus (Port {e['port']} oder Prozesse noch vorhanden).")
+        return f"{e['name']} beendet."
+
+    # ------------------------------------------------------------ Allgemeine Python-Dienste (z. B. Fibo 2.0)
+
+    def _python_dienst_prozesse(self, e, procs=None):
+        procs = procs if procs is not None else self.erf.messen()['procs']
+        return [p for p in procs if self.erf.ist_python_dienst(p, procs) == e['id']]
+
+    def _python_dienst_starten(self, e, karte=None):
+        """Python-Skript als Dienst starten; die Karte kommt über CUDA_VISIBLE_DEVICES."""
+        if karte is None:
+            raise Fehler(f"Keine Karte für {e['name']} gewählt.")
+        s = self.erf.messen()['dienste'][e['id']]
+        if s['zustand'] == 'bereit':
+            return f"{e['name']} läuft bereits."
+        if s['zustand'] == 'fremd':
+            raise Fehler(f"Port {e['port']} ist von {s['fremd']} belegt. {e['name']} wurde nicht gestartet.")
+        for pfad in (e['python'], e['skript']):
+            if not os.path.exists(pfad):
+                raise Fehler(f'Datei fehlt: {pfad}')
+        prozess = None
+        beginn = time.time()
+        if s['zustand'] != 'startet':
+            if e.get('ram_bedarf_gib'):
+                frei = winapi.freier_arbeitsspeicher_mib() / 1024
+                bedarf = e['ram_bedarf_gib']
+                if frei < bedarf:
+                    frei_text = f'{frei:.1f}'.replace('.', ',')
+                    bedarf_text = f'{bedarf:.1f}'.replace('.', ',')
+                    raise Fehler(f"Zu wenig freier Arbeitsspeicher: {frei_text} GiB frei, {e['name']} braucht etwa "
+                                 f"{bedarf_text} GiB. Bitte große Programme schließen.")
+            argv = [e['python'], e['skript']] + list(e.get('argumente') or []) + ['--port', str(e['port'])]
+            env = dict(os.environ, CUDA_DEVICE_ORDER='PCI_BUS_ID', CUDA_VISIBLE_DEVICES=str(karte),
+                       PYTHONIOENCODING='utf-8')
+            prozess = winapi.starte_losgeloest(argv, os.path.dirname(e['skript']), env,
+                                               log_basis=os.path.join(self.logs, e['id']))
+            self.log(f"{e['name']} gestartet auf Karte {karte}, PID {prozess.pid}, Port {e['port']}")
+        url = f"http://127.0.0.1:{e['port']}{e.get('health_pfad', '/health')}"
+        frist = time.time() + e.get('startzeit_max_s', 300)
+        while time.time() < frist:
+            # Der uv-Starter darf sich beenden, solange sein Kindprozess noch läuft. Erst wenn kein Dienstprozess
+            # mehr zu finden ist, gilt der Start als gescheitert.
+            if prozess is not None and prozess.poll() is not None and not self._python_dienst_prozesse(e):
+                # Dem uv-Starter kurz Zeit lassen, sein Kind zu starten, bevor der Start als gescheitert gilt.
+                time.sleep(0.5)
+                if not self._python_dienst_prozesse(e):
+                    grund = _letzte_meldung(os.path.join(self.logs, e['id'] + '.err.log'))
+                    raise Fehler(f"{e['name']} hat sich beim Start beendet. {grund}".strip())
+            try:
+                if (http_json(url, timeout=1.0) or {}).get('status') == 'ok':
+                    return f"{e['name']} ist bereit ({round(time.time() - beginn)} s)."
+            except Exception:
+                pass
+            time.sleep(1)
+        raise Fehler(f"{e['name']} antwortet nach {e.get('startzeit_max_s', 300)} s nicht.")
+
+    def _python_dienst_stoppen(self, e, erzwingen=False):
+        """Den ganzen Prozessbaum beenden (uv-Starter und Kind) und warten, bis der Port frei ist."""
+        roh = self.erf.messen()
+        procs = roh['procs']
+        ziele = self._python_dienst_prozesse(e, procs)
+        if not ziele:
+            return f"{e['name']} lief nicht."
+        if not erzwingen:
+            try:
+                h = http_json(f"http://127.0.0.1:{e['port']}{e.get('health_pfad', '/health')}",
+                              timeout=1.0) or {}
+                laufend = h.get('laufend')
+            except Exception:
+                laufend = None
+            if laufend:
+                raise Fehler(f"In {e['name']} läuft gerade ein Auftrag ({laufend}). Der Dienst wurde nicht beendet.")
+        # Frischer Stand, damit auch ein gerade gestartetes Kind erfasst wird.
+        procs = winapi.prozesse()
+        ziele = self._python_dienst_prozesse(e, procs)
+        if not ziele:
+            return f"{e['name']} lief nicht."
+        baum = set(ziele)
+        geaendert = True
+        while geaendert:
+            geaendert = False
+            for pid, (eltern, _) in procs.items():
+                if eltern in baum and pid not in baum:
+                    baum.add(pid)
+                    geaendert = True
+
+        def tiefe(pid):
+            t, gesehen = 0, set()
+            while pid in procs and pid not in gesehen:
+                gesehen.add(pid)
+                eltern = procs[pid][0]
+                if eltern == pid or eltern not in baum:
+                    break
+                t += 1
+                pid = eltern
+            return t
+
+        # Erst die Kinder, dann die Eltern: so bleibt kein Kind ohne Vater weiterlaufen.
+        for pid in sorted(baum, key=lambda p: (-tiefe(p), p)):
+            winapi.beenden(pid)
+            self.log(f"{e['name']} beendet, PID {pid}")
+
+        def frei():
+            frisch = winapi.prozesse()
+            return (e['port'] not in {p for _, p, _ in winapi.lauschende_ports()} and
+                    not any(self.erf.ist_python_dienst(p, frisch) == e['id'] for p in frisch))
+        if not _warten(frei, 15, 0.5):
+            raise Fehler(f"{e['name']} ist nach dem Beenden noch nicht aus (Port {e['port']} oder Prozesse noch "
+                         f'vorhanden).')
         return f"{e['name']} beendet."
 
     # ------------------------------------------------------------ llama.cpp (z. B. LightOnOCR)

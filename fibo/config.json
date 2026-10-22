@@ -1,0 +1,26 @@
+{
+  "modell": "C:\\LLM\\models\\Fibo-2.0-dev",
+  "turbo_transformer": "C:\\LLM\\models\\Fibo-2.0-edit-turbo\\transformer",
+  "schriften": [
+    "C:\\LLM\\models\\Fibo-2.0-dev\\fonts\\Aileron-Regular.otf",
+    "C:\\LLM\\models\\Fibo-2.0-dev\\fonts\\DejaVuSans.ttf"
+  ],
+  "ablage": "C:\\Workstation\\Arbeitsmaterial\\Atelier\\_fibo",
+  "deepseek": {
+    "url": "https://api.deepseek.com",
+    "schluessel_datei": "C:\\Users\\sasch\\.dsh\\.credentials.yaml",
+    "schluessel_name": "DEEPSEEK_API_KEY",
+    "modell": "deepseek-flash"
+  },
+  "turbo_im_speicher": false,
+  "standard": {
+    "dev": {
+      "schritte": 30,
+      "guidance": 5.0
+    },
+    "turbo": {
+      "schritte": 4,
+      "guidance": 1.0
+    }
+  }
+}

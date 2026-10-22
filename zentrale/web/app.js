@@ -231,13 +231,13 @@ function knoepfeFuer(e, s, beschaeftigt) {
       : [knopf('Öffnen', () => starten(e), true)];
   }
   const out = [];
-  if ((e.art === 'comfy' && (z === 'bereit' || z === 'teilweise')) || (['strata', 'polystrata'].includes(e.art) && z === 'bereit')) {
-    for (const l of e.links) {
+  if ((e.art === 'comfy' && (z === 'bereit' || z === 'teilweise')) || (['strata', 'polystrata', 'python_dienst'].includes(e.art) && z === 'bereit')) {
+    for (const l of e.links || []) {
       if (z === 'bereit' || l.art === 'comfy') out.push(h('a', { class: 'knopf', href: l.url, target: '_blank', rel: 'noopener' }, l.text));
     }
   }
   if (z === 'aus' || z === 'teilweise') out.push(knopf(e.art === 'ollama' ? 'Laden' : 'Starten', () => starten(e), true));
-  if (z === 'bereit' || z === 'teilweise' || (z === 'startet' && ['ninfer', 'strata', 'llamacpp', 'polystrata'].includes(e.art))) {
+  if (z === 'bereit' || z === 'teilweise' || (z === 'startet' && ['ninfer', 'strata', 'llamacpp', 'polystrata', 'python_dienst'].includes(e.art))) {
     out.push(knopf(e.art === 'ollama' ? 'Entladen' : 'Beenden', () => stoppen(e, s)));
   }
   return out;
@@ -357,6 +357,11 @@ async function stoppen(e, s) {
   if (e.art === 'programm') {
     zeigeDialog(`${e.name} beenden?`, [h('p', { text: `Laufende Aufgaben und nicht gesendete Eingaben in ${e.name} gehen verloren.` })],
       [{ text: 'Beenden', haupt: true, fn: () => senden(false) }]);
+    return;
+  }
+  if (e.art === 'python_dienst' && s.auftrag) {
+    zeigeDialog('Auftrag läuft', [h('p', { text: `In ${e.name} läuft gerade Auftrag ${s.laufend || ''}. Beim Beenden geht dieser Auftrag verloren.` })],
+      [{ text: 'Auftrag abbrechen und beenden', haupt: true, fn: () => senden(true) }]);
     return;
   }
   if (e.art === 'comfy' && s.auftrag) {
