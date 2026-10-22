@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Atelier</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='1' width='14' height='14' rx='3' fill='%23FF8A00'/%3E%3Cpath d='M4.5 12 7 4.5h1.6L11 12h-1.7l-.5-1.7H6.6L6.1 12Zm2.5-3.2h1.4L7.7 6.4Z' fill='%23050606'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="kopf">
+  <div class="kopf-zeile">
+    <div class="kopf-titel">
+      <h1>Atelier</h1>
+      <p class="kopf-stand" id="status">Verbinde mit dem Dienst …</p>
+    </div>
+    <div class="fibo-anzeige" id="fibo-anzeige" aria-live="polite">
+      <span class="fibo-punkt" aria-hidden="true"></span>
+      <span>Fibo: <b id="fibo-text">wird geprüft …</b></span>
+    </div>
+  </div>
+  <div class="leiste">
+    <div class="gruppe projekt-gruppe">
+      <span class="gruppe-titel">Projekt</span>
+      <select id="projekt-wahl" aria-label="Projekt wählen"></select>
+      <button class="knopf knopf-klein" id="projekt-neu" type="button">Neu …</button>
+      <button class="knopf knopf-klein" id="projekt-oeffnen" type="button">Öffnen …</button>
+      <button class="knopf knopf-klein" id="projekt-umbenennen" type="button">Umbenennen …</button>
+    </div>
+    <div class="gruppe format-gruppe">
+      <span class="gruppe-titel">Format</span>
+      <select id="format-wahl" aria-label="Format wählen"></select>
+      <span class="eigenes" id="format-eigen" hidden>
+        <input id="eigen-breite" type="number" min="32" max="4096" step="1" inputmode="numeric" aria-label="Breite in Pixel">
+        <span>×</span>
+        <input id="eigen-hoehe" type="number" min="32" max="4096" step="1" inputmode="numeric" aria-label="Höhe in Pixel">
+        <button class="knopf knopf-klein" id="eigen-anwenden" type="button">Anwenden</button>
+      </span>
+    </div>
+    <div class="gruppe geschichte">
+      <button class="knopf knopf-klein" id="rueckgaengig" type="button" title="Strg+Z" disabled>Rückgängig</button>
+      <button class="knopf knopf-klein" id="wiederholen" type="button" title="Strg+Y" disabled>Wiederholen</button>
+    </div>
+    <div class="gruppe speichern-gruppe">
+      <button class="knopf knopf-klein" id="speichern" type="button">Speichern</button>
+      <button class="knopf knopf-haupt" id="exportieren" type="button">Export …</button>
+    </div>
+  </div>
+</header>
+
+<main class="atelier">
+  <aside class="ebenen-spalte" aria-labelledby="ebenen-titel">
+    <div class="spalten-kopf">
+      <h2 class="abschnitt" id="ebenen-titel">Ebenen</h2>
+      <span class="leise" id="ebenen-anzahl"></span>
+    </div>
+    <div class="hinzufuegen">
+      <button class="knopf knopf-klein" id="bild-waehlen" type="button">Bild …</button>
+      <button class="knopf knopf-klein" id="text-hinzufuegen" type="button">Text</button>
+      <button class="knopf knopf-klein" id="rechteck-hinzufuegen" type="button">Rechteck</button>
+      <button class="knopf knopf-klein" id="kreis-hinzufuegen" type="button">Kreis</button>
+    </div>
+    <div class="hinzufuegen fremd">
+      <button class="knopf knopf-klein" id="studio-oeffnen" type="button">Aus Studio-Bibliothek …</button>
+      <button class="knopf knopf-klein" id="test-import" type="button" title="Nur zum Prüfen der Lizenzkennzeichnung – in diesem Schritt ohne Fibo-Anbindung">Test-Import (Fibo)</button>
+    </div>
+    <input id="datei-wahl" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <ol class="ebenen-liste" id="ebenen-liste"></ol>
+    <p class="ebenen-leer" id="ebenen-leer">Noch keine Ebene. Bild, Text oder Form hinzufügen.</p>
+    <div class="hintergrund-zeile">
+      <label for="hintergrund-farbe">Hintergrund</label>
+      <input id="hintergrund-farbe" type="color" value="#ffffff" aria-label="Hintergrundfarbe">
+      <span class="leise" id="hintergrund-wert">#ffffff</span>
+    </div>
+  </aside>
+
+  <section class="buehne" id="buehne" aria-label="Leinwand">
+    <div class="buehne-kopf">
+      <div class="zoom-gruppe">
+        <button class="knopf knopf-symbol" id="zoom-aus" type="button" title="Verkleinern" aria-label="Verkleinern">−</button>
+        <span class="zoom-anzeige" id="zoom-anzeige" aria-live="polite">100 %</span>
+        <button class="knopf knopf-symbol" id="zoom-ein" type="button" title="Vergrößern" aria-label="Vergrößern">+</button>
+        <button class="knopf knopf-klein" id="zoom-einpassen" type="button">Einpassen</button>
+        <button class="knopf knopf-klein" id="zoom-100" type="button">100 %</button>
+      </div>
+      <label class="zeitstempel-wahl" id="zeitstempel-wahl">
+        <input type="checkbox" id="hinweis-zeit"> Zeitstempel-Hinweis
+      </label>
+      <span class="leise" id="leinwand-groesse"></span>
+    </div>
+    <div class="leinwand-rahmen" id="leinwand-rahmen">
+      <div class="leinwand-huelle" id="leinwand-huelle">
+        <canvas id="leinwand" width="1280" height="720" aria-label="Zeichenfläche"></canvas>
+        <div class="hilfslinie vertikal" id="linie-v" hidden></div>
+        <div class="hilfslinie horizontal" id="linie-h" hidden></div>
+        <div class="zeitstempel-flaeche" id="zeitstempel-flaeche" hidden>Zeitstempel</div>
+      </div>
+      <div class="willkommen" id="willkommen" hidden>
+        <div class="willkommen-karte">
+          <h2>Willkommen im Atelier</h2>
+          <p>Lege ein Projekt an und gestalte Bilder, Objekte und Texte auf einer Leinwand.</p>
+          <button class="knopf knopf-haupt" id="willkommen-neu" type="button">Neues Projekt …</button>
+        </div>
+      </div>
+      <div class="ablegen-hinweis" id="ablegen-hinweis" hidden>Bild hier ablegen</div>
+    </div>
+  </section>
+
+  <aside class="rechte-spalte" aria-labelledby="eigenschaften-titel">
+    <section class="eigenschaften">
+      <h2 class="abschnitt" id="eigenschaften-titel">Eigenschaften</h2>
+      <p class="leise" id="eig-leer">Nichts ausgewählt.</p>
+      <p class="leise" id="eig-mehrfach" hidden>Mehrere Ebenen ausgewählt. Verschieben, Ausrichten und Löschen gelten für alle.</p>
+      <div id="eig-formular" hidden>
+        <div class="eig-block">
+          <label class="eig-feld">Name
+            <input id="eig-name" type="text" maxlength="80">
+          </label>
+          <div class="eig-paar">
+            <label class="eig-feld">X
+              <input id="eig-x" type="number" step="1">
+            </label>
+            <label class="eig-feld">Y
+              <input id="eig-y" type="number" step="1">
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Breite
+              <input id="eig-breite" type="number" min="1" step="1">
+            </label>
+            <label class="eig-feld">Höhe
+              <input id="eig-hoehe" type="number" min="1" step="1">
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Drehung
+              <input id="eig-drehung" type="number" step="1">
+            </label>
+            <label class="eig-feld">Deckkraft
+              <span class="range-zeile">
+                <input id="eig-deckkraft" type="range" min="0" max="100" step="1">
+                <output id="eig-deckkraft-wert">100 %</output>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="eig-knoepfe">
+          <button class="knopf knopf-klein" id="eig-spiegeln-x" type="button">Spiegeln ↔</button>
+          <button class="knopf knopf-klein" id="eig-spiegeln-y" type="button">Spiegeln ↕</button>
+        </div>
+        <div class="eig-ausrichten" role="group" aria-label="An der Leinwand ausrichten">
+          <button class="knopf knopf-klein" id="eig-links" type="button">Links</button>
+          <button class="knopf knopf-klein" id="eig-mitte" type="button">Mitte</button>
+          <button class="knopf knopf-klein" id="eig-rechts" type="button">Rechts</button>
+          <button class="knopf knopf-klein" id="eig-oben" type="button">Oben</button>
+          <button class="knopf knopf-klein" id="eig-unten" type="button">Unten</button>
+        </div>
+        <p class="warnung" id="eig-fibo-hinweis" hidden></p>
+
+        <div class="eig-art" id="eig-text" hidden>
+          <h3 class="abschnitt">Text</h3>
+          <label class="eig-feld">Inhalt
+            <textarea id="text-inhalt" rows="3"></textarea>
+          </label>
+          <div class="eig-paar">
+            <label class="eig-feld">Schrift
+              <select id="text-schrift"></select>
+            </label>
+            <label class="eig-feld">Größe
+              <input id="text-groesse" type="number" min="4" max="600" step="1">
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Farbe
+              <input id="text-farbe" type="color">
+            </label>
+            <label class="eig-feld">Ausrichtung
+              <select id="text-ausrichtung">
+                <option value="left">Links</option>
+                <option value="center">Mitte</option>
+                <option value="right">Rechts</option>
+                <option value="justify">Blocksatz</option>
+              </select>
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Kontur
+              <input id="text-kontur-farbe" type="color">
+            </label>
+            <label class="eig-feld">Konturbreite
+              <input id="text-kontur-breite" type="number" min="0" max="30" step="0.5">
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Zeilenabstand
+              <input id="text-zeilenabstand" type="number" min="0.6" max="3" step="0.05">
+            </label>
+            <span class="eig-feld schalter">
+              <span>Stil</span>
+              <span class="schalter-zeile">
+                <label><input id="text-fett" type="checkbox"> Fett</label>
+                <label><input id="text-kursiv" type="checkbox"> Kursiv</label>
+              </span>
+            </span>
+          </div>
+          <div class="eig-schatten">
+            <label class="haken"><input id="text-schatten" type="checkbox"> Schatten</label>
+            <div class="eig-paar" id="text-schatten-felder" hidden>
+              <label class="eig-feld">Farbe
+                <input id="text-schatten-farbe" type="color" value="#000000">
+              </label>
+              <label class="eig-feld">Unschärfe
+                <input id="text-schatten-unschaerfe" type="number" min="0" max="80" step="1" value="8">
+              </label>
+            </div>
+            <div class="eig-paar" id="text-schatten-versatz" hidden>
+              <label class="eig-feld">Versatz X
+                <input id="text-schatten-x" type="number" step="1" value="4">
+              </label>
+              <label class="eig-feld">Versatz Y
+                <input id="text-schatten-y" type="number" step="1" value="4">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="eig-art" id="eig-form" hidden>
+          <h3 class="abschnitt">Form</h3>
+          <p class="leise" id="form-art"></p>
+          <div class="eig-paar">
+            <label class="eig-feld" id="form-radius-feld">Rundung
+              <input id="form-radius" type="number" min="0" max="1000" step="1">
+            </label>
+            <label class="eig-feld">Konturbreite
+              <input id="form-kontur-breite" type="number" min="0" max="100" step="1">
+            </label>
+          </div>
+          <div class="eig-paar">
+            <label class="eig-feld">Füllung
+              <input id="form-fuellung" type="color">
+            </label>
+            <label class="eig-feld">Kontur
+              <input id="form-kontur" type="color">
+            </label>
+          </div>
+        </div>
+
+        <div class="eig-art" id="eig-bild" hidden>
+          <h3 class="abschnitt">Bild</h3>
+          <p class="leise" id="bild-quelle"></p>
+          <p class="warnung" id="bild-lizenz" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="ki-bereich">
+      <h2 class="abschnitt">KI</h2>
+      <p class="ki-platzhalter">Kommt im nächsten Schritt</p>
+    </section>
+  </aside>
+</main>
+
+<dialog id="dialog-neu" class="dialog">
+  <form method="dialog">
+    <h2>Neues Projekt</h2>
+    <label class="dialog-feld">Name
+      <input id="neu-name" type="text" maxlength="80" required autocomplete="off">
+    </label>
+    <label class="dialog-feld">Format
+      <select id="neu-format"></select>
+    </label>
+    <p class="dialog-fehler" id="neu-fehler" hidden></p>
+    <div class="dialog-knoepfe">
+      <button class="knopf" type="button" data-schliessen>Abbrechen</button>
+      <button class="knopf knopf-haupt" id="neu-ok" type="button">Anlegen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialog-oeffnen" class="dialog dialog-breit">
+  <h2>Projekt öffnen</h2>
+  <div class="oeffnen-liste" id="oeffnen-liste"></div>
+  <div class="dialog-knoepfe">
+    <button class="knopf" type="button" id="oeffnen-neu">Neu …</button>
+    <button class="knopf" type="button" data-schliessen>Schließen</button>
+  </div>
+</dialog>
+
+<dialog id="dialog-umbenennen" class="dialog">
+  <form method="dialog">
+    <h2>Projekt umbenennen</h2>
+    <label class="dialog-feld">Neuer Name
+      <input id="umbenennen-name" type="text" maxlength="80" required autocomplete="off">
+    </label>
+    <p class="dialog-fehler" id="umbenennen-fehler" hidden></p>
+    <div class="dialog-knoepfe">
+      <button class="knopf" type="button" data-schliessen>Abbrechen</button>
+      <button class="knopf knopf-haupt" id="umbenennen-ok" type="button">Umbenennen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dialog-export" class="dialog">
+  <h2>Exportieren</h2>
+  <p class="leise">Format und Qualität wählen. Der Maßstab ist in diesem Schritt fest 1×.</p>
+  <label class="dialog-feld">Dateiformat
+    <select id="export-dateiformat">
+      <option value="png">PNG (verlustfrei)</option>
+      <option value="jpeg">JPG (kompakter)</option>
+    </select>
+  </label>
+  <label class="dialog-feld" id="export-qualitaet-feld">Qualität
+    <span class="range-zeile">
+      <input id="export-qualitaet" type="range" min="50" max="100" step="1" value="92">
+      <output id="export-qualitaet-wert">92 %</output>
+    </span>
+  </label>
+  <p class="leise">Maßstab: 1× (Originalgröße)</p>
+  <p class="warnung" id="export-fibo-warnung" hidden></p>
+  <p class="leise">Neben dem Bild wird eine JSON-Datei mit den Quellen der Ebenen gespeichert. KI-Bilder bei einer Veröffentlichung kennzeichnen.</p>
+  <div class="dialog-knoepfe">
+    <button class="knopf" type="button" data-schliessen>Abbrechen</button>
+    <button class="knopf knopf-haupt" id="export-ok" type="button">Exportieren</button>
+  </div>
+</dialog>
+
+<dialog id="dialog-studio" class="dialog dialog-breit">
+  <h2>Studio-Bibliothek</h2>
+  <p class="leise" id="studio-status">Wird geladen …</p>
+  <div class="studio-liste" id="studio-liste"></div>
+  <div class="dialog-knoepfe">
+    <button class="knopf" type="button" id="studio-neu-laden">Neu einlesen</button>
+    <button class="knopf" type="button" data-schliessen>Schließen</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/vendor/fabric-6.4.3.min.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

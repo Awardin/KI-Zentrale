@@ -1,0 +1,63 @@
+{
+  "port": 3896,
+  "ablage": "C:\\Workstation\\Arbeitsmaterial\\Atelier",
+  "werkstatt_port": 3895,
+  "fibo_port": 8098,
+  "zeitlimit_werkstatt_s": 4,
+  "zeitlimit_fibo_s": 1.5,
+  "max_hochladen_mb": 40,
+  "max_export_mb": 120,
+  "max_projekt_mb": 16,
+  "max_seite": 4096,
+  "formate": [
+    {
+      "id": "youtube",
+      "name": "YouTube-Thumbnail",
+      "breite": 1280,
+      "hoehe": 720
+    },
+    {
+      "id": "instagram",
+      "name": "Instagram",
+      "breite": 1080,
+      "hoehe": 1080
+    },
+    {
+      "id": "story",
+      "name": "Story",
+      "breite": 1080,
+      "hoehe": 1920
+    },
+    {
+      "id": "flyer_a5",
+      "name": "Flyer A5 hoch",
+      "breite": 1748,
+      "hoehe": 2480
+    },
+    {
+      "id": "flyer_a4",
+      "name": "Flyer A4 hoch",
+      "breite": 2480,
+      "hoehe": 3508
+    },
+    {
+      "id": "eigenes",
+      "name": "Eigenes",
+      "breite": 1280,
+      "hoehe": 720,
+      "eigen": true
+    }
+  ],
+  "schriften": [
+    "Arial Black",
+    "Impact",
+    "Bahnschrift",
+    "Segoe UI",
+    "Georgia",
+    "Arial",
+    "Verdana",
+    "Trebuchet MS",
+    "Times New Roman",
+    "Courier New"
+  ]
+}
