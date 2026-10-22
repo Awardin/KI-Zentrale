@@ -36,9 +36,16 @@ STATISCH = {
     '/vendor/fabric-6.4.3.min.js': ('vendor/fabric-6.4.3.min.js', 'text/javascript; charset=utf-8'),
     '/vendor/FABRIC-LICENSE.txt': ('vendor/FABRIC-LICENSE.txt', 'text/plain; charset=utf-8'),
 }
-FIBO_AUS = 'aus – in der Modellzentrale starten'
+FIBO_AUS = 'Fibo ist aus – in der Modellzentrale starten.'
 WERKSTATT_AUS = ('Die Werkstatt ist aus. Bitte zuerst die Werkstatt starten – dann die '
                  'Studio-Bibliothek erneut öffnen.')
+WERKSTATT_FREI_AUS = ('Die Werkstatt ist aus. Bitte zuerst die Werkstatt starten – dann das '
+                      'Freistellen erneut versuchen.')
+COMFY_AUS = ('ComfyUI läuft nicht. Bitte ComfyUI in der Modellzentrale starten – '
+             'dann das Freistellen erneut versuchen.')
+FREISTELLEN_FEHLT = ('Das schnelle Freistellen ist nicht eingerichtet: In ComfyUI fehlt das '
+                     'Modell BiRefNet. Bitte in der Werkstatt einrichten.')
+FIBO_AUFTRAG_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 
 
 class ZuGross(Exception):
@@ -104,7 +111,11 @@ class Atelier:
         self.werkstatt = f"http://127.0.0.1:{int(cfg['werkstatt_port'])}"
         self.fibo = f"http://127.0.0.1:{int(cfg['fibo_port'])}"
         self.zeitlimit_werkstatt = float(cfg.get('zeitlimit_werkstatt_s', 4))
+        self.zeitlimit_werkstatt_status = float(cfg.get('zeitlimit_werkstatt_status_s', 10))
         self.zeitlimit_fibo = float(cfg.get('zeitlimit_fibo_s', 1.5))
+        self.zeitlimit_fibo_auftrag = float(cfg.get('zeitlimit_fibo_auftrag_s', 20))
+        self.zeitlimit_fibo_bild = float(cfg.get('zeitlimit_fibo_bild_s', 60))
+        self.max_fibo = int(cfg.get('max_fibo_mb', 64))
         self.max_hochladen = int(cfg.get('max_hochladen_mb', 40))
         self.max_export = int(cfg.get('max_export_mb', 120))
         self.max_projekt = int(cfg.get('max_projekt_mb', 16))
@@ -352,10 +363,10 @@ class Atelier:
 
     # ------------------------------------------------------------ Studio-Bibliothek
 
-    def _werkstatt_holen(self, pfad, grenze=None):
+    def _werkstatt_holen(self, pfad, grenze=None, zeitlimit=None):
         url = self.werkstatt + pfad
         try:
-            with self.opener.open(url, timeout=self.zeitlimit_werkstatt) as r:
+            with self.opener.open(url, timeout=zeitlimit or self.zeitlimit_werkstatt) as r:
                 return r.status, r.headers.get('Content-Type'), r.read() if grenze is None else r.read(grenze + 1)
         except urllib.error.HTTPError as e:
             try:
@@ -420,21 +431,303 @@ class Atelier:
 
     # ------------------------------------------------------------ Fibo
 
-    def fibo_health(self):
+    def _fibo_anfrage(self, methode, pfad, daten=None, zeitlimit=None, grenze=None):
+        """Eine Anfrage an den Fibo-Dienst weiterreichen (ohne System-Proxy, mit X-Atelier).
+
+        Liefert (Status, Content-Type, roher Inhalt); ein nicht erreichbarer Dienst wirft
+        ConnectionError mit verständlichem Text.
+        """
+        if not pfad.startswith('/'):
+            pfad = '/' + pfad
+        kopf = {'X-Atelier': '1', 'Accept': 'application/json, image/png, */*'}
+        roh = None
+        if daten is not None:
+            roh = json.dumps(daten, ensure_ascii=False).encode('utf-8')
+            kopf['Content-Type'] = 'application/json'
+        anfrage = urllib.request.Request(self.fibo + pfad, data=roh, method=methode, headers=kopf)
         try:
-            with self.opener.open(self.fibo + '/health', timeout=self.zeitlimit_fibo) as r:
-                daten = json.loads(r.read() or b'{}')
-        except (urllib.error.URLError, OSError, ValueError):
-            return {'bereit': False, 'status': 'aus', 'text': FIBO_AUS}
-        status = daten.get('status') if isinstance(daten, dict) else None
-        if status == 'ok':
-            return {'bereit': True, 'status': 'ok', 'text': 'bereit',
-                    'modell': daten.get('modell'), 'aktiv': daten.get('aktiv'),
-                    'laufend': daten.get('laufend')}
-        if status == 'loading':
-            return {'bereit': False, 'status': 'loading', 'text': 'startet – Fibo lädt das Modell'}
-        return {'bereit': False, 'status': status or 'aus', 'text': FIBO_AUS,
-                'fehler': (daten or {}).get('fehler') if isinstance(daten, dict) else None}
+            with self.opener.open(anfrage, timeout=zeitlimit or self.zeitlimit_fibo_auftrag) as r:
+                inhalt = r.read() if grenze is None else r.read(grenze + 1)
+                return r.status, r.headers.get('Content-Type', ''), inhalt
+        except urllib.error.HTTPError as e:
+            try:
+                inhalt = e.read(1024 * 1024)
+            except OSError:
+                inhalt = b''
+            return e.code, e.headers.get('Content-Type', ''), inhalt
+        except (urllib.error.URLError, OSError, TimeoutError):
+            raise ConnectionError(FIBO_AUS) from None
+
+    def fibo_proxy(self, methode, pfad, daten=None):
+        """GET/POST an den Fibo-Dienst; Fehler werden als Text weitergereicht."""
+        try:
+            return self._fibo_anfrage(methode, pfad, daten)
+        except ConnectionError:
+            raise
+
+    def fibo_health(self):
+        """Der echte Zustand des Fibo-Dienstes; aus -> 503 mit verständlichem Text."""
+        try:
+            code, _, roh = self._fibo_anfrage('GET', '/health', zeitlimit=self.zeitlimit_fibo)
+        except ConnectionError:
+            return 503, {'fehler': FIBO_AUS}
+        if code != 200:
+            return 503, {'fehler': FIBO_AUS}
+        try:
+            daten = json.loads(roh or b'{}')
+        except ValueError:
+            return 502, {'fehler': 'Fibo antwortet unverständlich.'}
+        if not isinstance(daten, dict):
+            return 502, {'fehler': 'Fibo antwortet unverständlich.'}
+        return 200, daten
+
+    def fibo_uebernehmen(self, daten):
+        """Ein fertiges Fibo-Ergebnis in `ebenen\\` des Projekts ablegen.
+
+        Dateiname mit Auftrags-ID; daneben eine JSON-Datei mit Prompt, Caption, Seed, Modell
+        und Lizenz. Die Ebene trägt `quelle` art fibo.
+        """
+        name = str(daten.get('projekt') or '')
+        ordner, sauber = self._projektordner(name)
+        if not os.path.isfile(os.path.join(ordner, 'projekt.json')):
+            return 404, {'fehler': 'Dieses Projekt gibt es nicht.'}
+        auftrag_id = str(daten.get('id') or '').strip()
+        if not FIBO_AUFTRAG_ID.match(auftrag_id):
+            return 400, {'fehler': 'Ungültige Auftrags-ID.'}
+        try:
+            code, _, roh = self._fibo_anfrage('GET', f'/api/auftrag/{auftrag_id}',
+                                              zeitlimit=self.zeitlimit_fibo_auftrag)
+        except ConnectionError as ex:
+            return 503, {'fehler': str(ex)}
+        if code != 200:
+            return 502, {'fehler': 'Den Fibo-Auftrag gibt es nicht (mehr).'}
+        try:
+            info = json.loads(roh or b'{}')
+        except ValueError:
+            return 502, {'fehler': 'Fibo antwortet unverständlich.'}
+        if not isinstance(info, dict):
+            return 502, {'fehler': 'Fibo antwortet unverständlich.'}
+        zustand = info.get('zustand')
+        if zustand == 'fehler':
+            return 502, {'fehler': str(info.get('fehler') or 'Der Fibo-Auftrag ist fehlgeschlagen.'),
+                         'zustand': zustand}
+        if zustand != 'fertig':
+            return 409, {'fehler': 'Der Fibo-Auftrag ist noch nicht fertig.', 'zustand': zustand}
+        ergebnis = info.get('ergebnis') if isinstance(info.get('ergebnis'), dict) else {}
+
+        begleit = {}
+        try:
+            b_code, _, b_roh = self._fibo_anfrage('GET', f'/api/datei/{auftrag_id}.json',
+                                                  zeitlimit=self.zeitlimit_fibo_auftrag)
+            if b_code == 200:
+                gelesen = json.loads(b_roh or b'{}')
+                if isinstance(gelesen, dict):
+                    begleit = gelesen
+        except (ConnectionError, ValueError):
+            begleit = {}
+
+        bildpfad = str(ergebnis.get('bild') or f'/api/datei/{auftrag_id}.png')
+        if not bildpfad.startswith('/api/datei/'):
+            bildpfad = f'/api/datei/{auftrag_id}.png'
+        try:
+            p_code, _, png = self._fibo_anfrage('GET', bildpfad, zeitlimit=self.zeitlimit_fibo_bild,
+                                                grenze=self.max_hochladen * 1024 * 1024)
+        except ConnectionError as ex:
+            return 503, {'fehler': str(ex)}
+        if p_code != 200:
+            return 502, {'fehler': 'Das Fibo-Ergebnisbild ließ sich nicht holen.'}
+        if len(png) > self.max_hochladen * 1024 * 1024:
+            return 413, {'fehler': f'Das Fibo-Ergebnis ist zu groß (höchstens {self.max_hochladen} MB).'}
+        typ = bild_typ(png)
+        if not typ:
+            return 502, {'fehler': 'Fibo liefert kein PNG, JPEG oder WebP.'}
+
+        stamm = 'Fibo_' + auftrag_id
+        datei, mime = self._speichern_bild(ordner, stamm, png, typ)
+        caption = begleit.get('caption', ergebnis.get('caption'))
+        seed = begleit.get('seed', ergebnis.get('seed'))
+        modell = begleit.get('modell', ergebnis.get('modell'))
+        prompt = begleit.get('prompt')
+        quelle = {'art': 'fibo', 'lizenz': 'CC BY-NC 4.0', 'modell': modell}
+        werte = {'datei': datei, 'name': stamm, 'prompt': prompt, 'caption': caption,
+                 'seed': seed, 'modell': modell,
+                 'breite': begleit.get('breite', ergebnis.get('breite')),
+                 'hoehe': begleit.get('hoehe', ergebnis.get('hoehe')),
+                 'quelle': quelle}
+        begleitdatei = os.path.splitext(datei)[0] + '.json'
+        try:
+            self._schreiben(os.path.join(ordner, 'ebenen', begleitdatei), werte)
+        except OSError:
+            pass
+        return 200, {'datei': datei, 'name': stamm, 'typ': mime, 'quelle': quelle,
+                     'daten': werte, 'begleit': begleitdatei}
+
+    # ------------------------------------------------------------ Freistellen (Werkstatt)
+
+    def _werkstatt_json(self, pfad, zeitlimit=None):
+        code, _, roh = self._werkstatt_holen(pfad, 32 * 1024 * 1024,
+                                             zeitlimit=zeitlimit or self.zeitlimit_werkstatt)
+        if code != 200:
+            raise ConnectionError(WERKSTATT_FREI_AUS)
+        try:
+            daten = json.loads(roh or b'{}')
+        except ValueError:
+            raise ValueError('Die Werkstatt antwortet unverständlich.') from None
+        if not isinstance(daten, dict):
+            raise ValueError('Die Werkstatt antwortet unverständlich.')
+        return daten
+
+    def _werkstatt_post(self, pfad, daten, zeitlimit=None):
+        roh = json.dumps(daten, ensure_ascii=False).encode('utf-8')
+        anfrage = urllib.request.Request(self.werkstatt + pfad, data=roh, method='POST',
+                                         headers={'X-Werkstatt': '1', 'Content-Type': 'application/json'})
+        try:
+            with self.opener.open(anfrage, timeout=zeitlimit or self.zeitlimit_werkstatt_status) as r:
+                return r.status, r.read(8 * 1024 * 1024)
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, e.read(1024 * 1024)
+            except OSError:
+                return e.code, b''
+        except (urllib.error.URLError, OSError, TimeoutError):
+            raise ConnectionError(WERKSTATT_FREI_AUS) from None
+
+    def _freistellen_lage(self):
+        """ComfyUI und BiRefNet über die Werkstatt prüfen; Text für die Oberfläche."""
+        try:
+            stand = self._werkstatt_json('/api/studio', self.zeitlimit_werkstatt_status)
+        except ConnectionError:
+            return {'bereit': False, 'text': WERKSTATT_FREI_AUS, 'werkstatt': False}
+        except ValueError:
+            return {'bereit': False, 'text': 'Die Werkstatt antwortet unverständlich.', 'werkstatt': True}
+        comfy = stand.get('comfy') if isinstance(stand.get('comfy'), dict) else {}
+        einstellungen = stand.get('einstellungen') if isinstance(stand.get('einstellungen'), dict) else {}
+        if not comfy.get('laeuft'):
+            return {'bereit': False, 'text': COMFY_AUS, 'werkstatt': True, 'comfy': False}
+        if not einstellungen.get('freistellen_schnell_verfuegbar'):
+            return {'bereit': False, 'text': FREISTELLEN_FEHLT, 'werkstatt': True, 'comfy': True,
+                    'schnell': False}
+        return {'bereit': True, 'text': 'bereit', 'werkstatt': True, 'comfy': True, 'schnell': True}
+
+    def freistellen_status(self):
+        return 200, self._freistellen_lage()
+
+    def freistellen_start(self, daten):
+        name = str(daten.get('projekt') or '')
+        bild = self.bild_pfad(name, str(daten.get('datei') or ''))
+        if not bild:
+            return 404, {'fehler': 'Das Bild gibt es nicht (mehr).'}
+        lage = self._freistellen_lage()
+        if not lage['bereit']:
+            return 503, {'fehler': lage['text']}
+        motiv = re.sub(r'\s+', ' ', str(daten.get('motiv') or '')).strip()[:300]
+        koerper = {'aktion': 'erzeugen', 'art': 'freistellen', 'prompt': motiv, 'projekt': '',
+                   'vorlagen': [{'art': 'datei', 'pfad': bild, 'rolle': 'original'}]}
+        if not motiv:
+            koerper['verfahren'] = 'schnell'
+        try:
+            code, roh = self._werkstatt_post('/api/studio', koerper)
+        except ConnectionError as ex:
+            return 503, {'fehler': str(ex)}
+        try:
+            antwort = json.loads(roh or b'{}')
+        except ValueError:
+            antwort = {}
+        if code != 200:
+            fehler = antwort.get('fehler') if isinstance(antwort, dict) else None
+            return 502, {'fehler': str(fehler or 'Das Freistellen wurde nicht angenommen.')}
+        neu = antwort.get('neu') if isinstance(antwort, dict) else None
+        if not isinstance(neu, list) or not neu or not FIBO_AUFTRAG_ID.match(str(neu[0])):
+            return 502, {'fehler': 'Die Werkstatt hat keine Auftragsnummer gemeldet.'}
+        return 200, {'id': str(neu[0]), 'motiv': motiv, 'verfahren': 'schnell' if not motiv else 'qwen'}
+
+    def _freistellen_bild_speichern(self, ordner, auftrag_id, roh):
+        """Ergebnis-PNG idempotent nach `ebenen\\` kopieren (Name mit Auftrags-ID)."""
+        typ = bild_typ(roh)
+        if typ is None or typ[0] != 'png':
+            raise ValueError('Die Werkstatt liefert kein PNG.')
+        unterordner = os.path.join(ordner, 'ebenen')
+        os.makedirs(unterordner, exist_ok=True)
+        basis = dateiname_saeubern('Frei_' + auftrag_id, 'png')
+        ziel = os.path.join(unterordner, basis)
+        if os.path.isfile(ziel):
+            try:
+                with open(ziel, 'rb') as f:
+                    if f.read() == roh:
+                        return basis, typ[1]
+            except OSError:
+                pass
+        nummer = 2
+        stamm = os.path.splitext(basis)[0]
+        while os.path.exists(ziel):
+            ziel = os.path.join(unterordner, f'{stamm}-{nummer}.png')
+            nummer += 1
+        with open(ziel, 'wb') as f:
+            f.write(roh)
+        return os.path.basename(ziel), typ[1]
+
+    def freistellen_stand(self, auftrag_id, projekt):
+        auftrag_id = str(auftrag_id or '').strip()
+        if not FIBO_AUFTRAG_ID.match(auftrag_id):
+            return 400, {'fehler': 'Ungültige Auftrags-ID.'}
+        ordner, sauber = self._projektordner(str(projekt or ''))
+        if not os.path.isfile(os.path.join(ordner, 'projekt.json')):
+            return 404, {'fehler': 'Dieses Projekt gibt es nicht.'}
+        try:
+            stand = self._werkstatt_json('/api/studio', self.zeitlimit_werkstatt_status)
+        except ConnectionError as ex:
+            return 503, {'fehler': str(ex)}
+        except ValueError as ex:
+            return 502, {'fehler': str(ex)}
+        auftraege = stand.get('auftraege') if isinstance(stand.get('auftraege'), list) else []
+        eintrag = next((a for a in auftraege if isinstance(a, dict) and str(a.get('id')) == auftrag_id), None)
+        if eintrag is None:
+            return 404, {'fehler': 'Diesen Freistell-Auftrag gibt es nicht (mehr).'}
+        zustand = eintrag.get('zustand')
+        if zustand == 'fertig':
+            dateien = eintrag.get('dateien') if isinstance(eintrag.get('dateien'), list) else []
+            pfad = str(dateien[0]) if dateien else ''
+            if not pfad:
+                return 502, {'fehler': 'Die Werkstatt hat kein Ergebnis gemeldet.'}
+            try:
+                code, _, roh = self._werkstatt_holen(
+                    '/studio/datei?p=' + urllib.parse.quote(pfad, safe=''),
+                    self.max_hochladen * 1024 * 1024, zeitlimit=self.zeitlimit_werkstatt_status)
+            except ConnectionError as ex:
+                return 503, {'fehler': str(ex)}
+            if code != 200 or not roh:
+                return 502, {'fehler': 'Das freigestellte Bild ließ sich nicht holen.'}
+            if len(roh) > self.max_hochladen * 1024 * 1024:
+                return 413, {'fehler': f'Das Bild ist zu groß (höchstens {self.max_hochladen} MB).'}
+            try:
+                datei, mime = self._freistellen_bild_speichern(ordner, auftrag_id, roh)
+            except ValueError as ex:
+                return 502, {'fehler': str(ex)}
+            return 200, {'zustand': 'fertig', 'datei': datei, 'typ': mime, 'name': datei,
+                         'pfad': pfad, 'motiv': eintrag.get('motiv')}
+        if zustand == 'fehler':
+            return 200, {'zustand': 'fehler',
+                         'fehler': str(eintrag.get('meldung') or 'Das Freistellen ist fehlgeschlagen.')}
+        if zustand == 'abgebrochen':
+            return 200, {'zustand': 'abgebrochen'}
+        return 200, {'zustand': zustand or 'wartet', 'meldung': eintrag.get('meldung') or '',
+                     'schritt': eintrag.get('schritt'), 'erwartet_s': eintrag.get('erwartet_s')}
+
+    def freistellen_abbrechen(self, daten):
+        auftrag_id = str(daten.get('id') or '').strip()
+        if not FIBO_AUFTRAG_ID.match(auftrag_id):
+            return 400, {'fehler': 'Ungültige Auftrags-ID.'}
+        try:
+            code, roh = self._werkstatt_post('/api/studio', {'aktion': 'abbrechen', 'id': auftrag_id})
+        except ConnectionError as ex:
+            return 503, {'fehler': str(ex)}
+        if code != 200:
+            try:
+                fehler = json.loads(roh or b'{}').get('fehler')
+            except (ValueError, AttributeError):
+                fehler = None
+            return 502, {'fehler': str(fehler or 'Der Auftrag ließ sich nicht abbrechen.')}
+        return 200, {'ok': True}
 
     # ------------------------------------------------------------ Export
 
@@ -543,8 +836,25 @@ class Anfrage(dienst.Anfrage):
         if pfad == '/api/projekte':
             return self._senden(200, {'projekte': self.atelier.projekte()})
         if pfad == '/api/fibo/health':
-            return self._senden(200, self.atelier.fibo_health())
+            return self._senden(*self.atelier.fibo_health())
+        if pfad.startswith('/api/fibo/'):
+            rest = pfad[len('/api/fibo'):]
+            if '..' in rest or '\\' in rest or ':' in rest:
+                return self._senden(400, {'fehler': 'Ungültige Fibo-Adresse.'})
+            try:
+                code, typ, roh = self.atelier.fibo_proxy('GET', rest)
+            except ConnectionError as ex:
+                return self._senden(503, {'fehler': str(ex)})
+            return self._senden(code, roh, typ or 'application/octet-stream')
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if pfad == '/api/freistellen/status':
+            return self._senden(*self.atelier.freistellen_status())
+        if pfad == '/api/freistellen':
+            try:
+                return self._senden(*self.atelier.freistellen_stand(
+                    (q.get('id') or [''])[0], (q.get('projekt') or [''])[0]))
+            except ValueError as ex:
+                return self._senden(400, {'fehler': str(ex)})
         if pfad == '/api/projekt':
             name = (q.get('name') or [''])[0]
             if not name:
@@ -599,8 +909,12 @@ class Anfrage(dienst.Anfrage):
         grenzen = {'/api/export': int(self.atelier.max_export * 1024 * 1024 * 4 / 3) + 65536,
                    '/api/hochladen': int(self.atelier.max_hochladen * 1024 * 1024 * 4 / 3) + 65536,
                    '/api/studio/uebernehmen': 65536}
+        if pfad.startswith('/api/fibo/'):
+            grenze = int(self.atelier.max_fibo * 1024 * 1024 * 4 / 3) + 65536
+        else:
+            grenze = grenzen.get(pfad, self.atelier.max_projekt * 1024 * 1024)
         try:
-            daten = self._lesen(grenzen.get(pfad, self.atelier.max_projekt * 1024 * 1024))
+            daten = self._lesen(grenze)
             if not isinstance(daten, dict):
                 raise ValueError
         except ZuGross as ex:
@@ -610,6 +924,18 @@ class Anfrage(dienst.Anfrage):
             return self._senden(400, {'fehler': 'Ungültige Anfrage.'})
         a = self.atelier
         try:
+            if pfad == '/api/fibo/uebernehmen':
+                return self._senden(*a.fibo_uebernehmen(daten))
+            if pfad == '/api/freistellen':
+                return self._senden(*a.freistellen_start(daten))
+            if pfad == '/api/freistellen/abbrechen':
+                return self._senden(*a.freistellen_abbrechen(daten))
+            if pfad.startswith('/api/fibo/'):
+                rest = pfad[len('/api/fibo'):]
+                if '..' in rest or '\\' in rest or ':' in rest:
+                    return self._senden(400, {'fehler': 'Ungültige Fibo-Adresse.'})
+                code, typ, roh = a.fibo_proxy('POST', rest, daten)
+                return self._senden(code, roh, typ or 'application/json; charset=utf-8')
             if pfad == '/api/projekt/neu':
                 return self._senden(*a.projekt_neu(str(daten.get('name') or ''), daten.get('format')))
             if pfad == '/api/projekt/speichern':
