@@ -55,7 +55,7 @@ VGL-Format: `C:\LLM\models\Fibo-2.0-dev\vgl\README.md`.
 - `fibo/config.json`: Modellpfade (Dev-Ordner, Turbo-Transformer, Schriften aus `<dev>\fonts`), Ablage
   `C:\Workstation\Arbeitsmaterial\Atelier\_fibo`, DeepSeek (`url` https://api.deepseek.com, `schluessel_datei`
   `C:\Users\sasch\.dsh\.credentials.yaml`, `schluessel_name` `DEEPSEEK_API_KEY`, `modell` `deepseek-flash`),
-  `turbo_im_speicher` (Standard `false`), Standardwerte (Dev 50 Schritte/Guidance 5; Turbo 4/1,0).
+  `turbo_im_speicher` (Standard `false`), Standardwerte (Dev 30 Schritte/Guidance 5 – gemessen gleichwertig zu 50; Turbo 4/1,0).
 - Server: Standardbibliothek (`ThreadingHTTPServer`), JSON. **Ein** Arbeiter-Thread rechnet; Aufträge stehen in einer
   Warteschlange. torch/diffusers werden erst im Arbeiter importiert, damit die Tests ohne GPU laufen
   (Pipeline-Fabrik injizierbar).
