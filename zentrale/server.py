@@ -152,6 +152,21 @@ class Zentrale:
                     detail = ' · '.join(teile)
                 elif zustand == 'fremd':
                     detail = f"Port {e['port']} ist von {s['fremd']} belegt."
+            elif e['art'] == 'python_dienst':
+                s = d.get(e['id']) or {'zustand': 'aus', 'fremd': None, 'laufend': None, 'aktiv': None}
+                zustand = s['zustand']
+                if zustand == 'bereit':
+                    karte = self._karte_von(roh, 'python_dienst:' + e['id'])
+                    teile = [f"Port {e['port']}"]
+                    if s.get('aktiv'):
+                        teile.append('Dev' if s['aktiv'] == 'dev' else 'Turbo' if s['aktiv'] == 'turbo' else s['aktiv'])
+                    if karte:
+                        teile.append(karte)
+                    if s.get('laufend'):
+                        teile.append(f"Auftrag {s['laufend']} läuft")
+                    detail = ' · '.join(teile)
+                elif zustand == 'fremd':
+                    detail = f"Port {e['port']} ist von {s['fremd']} belegt."
             elif e['art'] == 'ollama':
                 m = next((m for m in roh['ollama']['geladen'] if m['tag'] == e['tag']), None)
                 if not roh['ollama']['erreichbar']:
@@ -191,11 +206,15 @@ class Zentrale:
                         f', {wartend} warten.' if wartend else '.')
             else:
                 zustand = 'laeuft' if d[e['id']]['pids'] else 'aus'
-            z[e['id']] = {'zustand': self.laufend.get(e['id'], zustand), 'detail': detail,
-                          'auftrag': e['art'] == 'comfy' and (d['comfy']['auftraege_laufend']
-                                                              + (d.get('comfy2') or {}).get('auftraege_laufend', 0)) > 0}
-            if e['art'] in ('llamacpp', 'ninfer', 'polystrata'):
+            auftrag = e['art'] == 'comfy' and (d['comfy']['auftraege_laufend']
+                                               + (d.get('comfy2') or {}).get('auftraege_laufend', 0)) > 0
+            if e['art'] == 'python_dienst':
+                auftrag = bool((d.get(e['id']) or {}).get('laufend'))
+            z[e['id']] = {'zustand': self.laufend.get(e['id'], zustand), 'detail': detail, 'auftrag': auftrag}
+            if e['art'] in ('llamacpp', 'ninfer', 'polystrata', 'python_dienst'):
                 z[e['id']]['karte'] = karte
+            if e['art'] == 'python_dienst':
+                z[e['id']]['laufend'] = (d.get(e['id']) or {}).get('laufend')
         return z
 
     def status(self):
@@ -381,7 +400,7 @@ class Zentrale:
                                                          (self.erf.ollama_tags.get(ziel) or {}).get('id'))
             if ziel == 'strata':
                 eintrag = self.erf.strata['id'] if self.erf.strata else None
-            elif ziel in self.erf.llamacpp or ziel in self.erf.polystrata:
+            elif ziel in self.erf.llamacpp or ziel in self.erf.polystrata or ziel in self.erf.python_dienst:
                 eintrag = ziel
             if eintrag:
                 self.laufend[eintrag] = 'stoppt'
@@ -463,6 +482,8 @@ class Zentrale:
                 x['links'] = [{'art': 'comfy', 'text': 'ComfyUI öffnen', 'url': f"http://127.0.0.1:{e['comfy_port']}/"}]
             elif e['art'] in ('strata', 'polystrata'):
                 x['links'] = [{'art': e['art'], 'text': 'Chat öffnen', 'url': f"http://127.0.0.1:{e['port']}/"}]
+            elif e['art'] == 'python_dienst' and e.get('oeffnen_url'):
+                x['links'] = [{'art': e['art'], 'text': e.get('oeffnen_text') or 'Öffnen', 'url': e['oeffnen_url']}]
             eintraege.append(x)
         return {'eintraege': eintraege, 'reserve_mib': self.cfg['reserve_mib'],
                 'karten_namen': {i: c.get('kurz') for i, c in self.cfg.get('karten', {}).items()},

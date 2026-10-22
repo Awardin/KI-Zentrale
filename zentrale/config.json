@@ -285,6 +285,29 @@
       "wofuer": "Arbeiten mit DeepSeek oder dem lokalen Qwen3.8 über NInfer.",
       "farbe": "#6B7680",
       "programm": "C:\\Users\\sasch\\AppData\\Local\\Programs\\DSH Desktop\\DSH Desktop.exe"
+    },
+    {
+      "id": "fibo2",
+      "art": "python_dienst",
+      "gruppe": "Bild & Video",
+      "name": "Fibo 2.0 · Bild & Bearbeiten",
+      "untertitel": "8B · Dev + Edit Turbo · eine RTX 3090",
+      "wofuer": "Erzeugt und bearbeitet Bilder für das Atelier (Dev und Edit Turbo) auf einer RTX 3090. Nur nicht-kommerziell.",
+      "farbe": "#B5653A",
+      "python": "C:\\LLM\\runtimes\\Fibo2\\.venv\\Scripts\\python.exe",
+      "skript": "C:\\Workstation\\Werkzeuge\\KI-Zentrale\\fibo\\dienst.py",
+      "port": 8098,
+      "argumente": [],
+      "health_pfad": "/health",
+      "karten": ["RTX 3090"],
+      "bedarf_je_karte_mib": 18500,
+      "bedarf_grund": "22.10.2026 gemessen auf einer RTX 3090 FE mit CPU-Offload: 17,4 GiB laut nvidia-smi, torch-Spitze 16,0 GiB; 18.500 MiB Bedarf lässt Luft für Windows.",
+      "ram_bedarf_gib": 30,
+      "ram_grund": "Vorläufig 30 GiB: Textencoder und Transformer werden mit CPU-Offload gehalten; der genaue Wert wird bei der Abnahme gemessen.",
+      "startzeit_max_s": 300,
+      "oeffnen_url": "http://127.0.0.1:3896/",
+      "oeffnen_text": "Atelier öffnen",
+      "eingebaut_grund": "22.10.2026, Auftrag Sascha: Fibo 2.0 als eigener python_dienst in der Modellzentrale, damit Kartenwahl, Platzrechnung und GPU freigeben wie bei llama.cpp funktionieren."
     }
   ]
 }

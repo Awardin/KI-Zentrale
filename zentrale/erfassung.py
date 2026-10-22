@@ -71,6 +71,11 @@ class Erfassung:
         self.polystrata = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'polystrata'}
         self._polystrata_kennung = {i: (norm(e['server_skript']), f"--port {e['port']}", norm(e['engine']),
                                         norm(e['vision_exe'])) for i, e in self.polystrata.items()}
+        # Allgemeine Python-Dienste (seit 22.10.2026, erster Eintrag Fibo 2.0): erkannt an Skriptpfad und Port in der
+        # Kommandozeile, egal welcher Interpreter. Der uv-Starter und sein Kindprozess tragen beide dieselbe Kennung.
+        self.python_dienst = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'python_dienst'}
+        self._python_dienst_kennung = {i: (norm(e['skript']), f"--port {e['port']}")
+                                       for i, e in self.python_dienst.items()}
         self.ollama_tags = {e['tag']: e for e in cfg['eintraege'] if e['art'] == 'ollama'}
         self.ninfer_exe = norm(self.ninfer['programm'])
         self.ninfer_port_arg = f"--port {self.ninfer['port']}"
@@ -163,6 +168,22 @@ class Erfassung:
                 return eid
         return None
 
+    def ist_python_dienst(self, pid, procs):
+        """-> ID des python_dienst-Eintrags, zu dem der Prozess gehört, sonst None.
+
+        Erkannt wird an Skriptpfad und `--port` in der Kommandozeile, nicht am Interpreter: Der uv-Starter
+        `...\\.venv\\Scripts\\python.exe` startet den eigentlichen Interpreter als Kindprozess; beide tragen die
+        Kennung, und beide müssen zum Dienst gehören.
+        """
+        if not self.python_dienst or pid not in procs:
+            return None
+        i = self.info(pid, procs[pid][1])
+        cmd = i['cmd'].replace('"', '')
+        for eid, (skript, port_arg) in self._python_dienst_kennung.items():
+            if skript in cmd and port_arg in cmd:
+                return eid
+        return None
+
     def gehoert_zu_comfy(self, pid, procs, skript=None):
         """ComfyUI ('main.py') oder 2Wild ('server.py'), gestartet mit Pythons aus dem ComfyUI-Ordner."""
         kette = self._vorfahren(pid, procs, tiefe=1)
@@ -208,6 +229,9 @@ class Erfassung:
         eid = self.ist_polystrata(pid, procs)
         if eid:
             return 'polystrata:' + eid, self.polystrata[eid]['name']
+        eid = self.ist_python_dienst(pid, procs)
+        if eid:
+            return 'python_dienst:' + eid, self.python_dienst[eid]['name']
         if self.ist_ollama(pid, procs):
             return 'ollama', 'Ollama'
         if self.gehoert_zu_comfy(pid, procs):
@@ -339,6 +363,28 @@ class Erfassung:
             elif s['pids']:
                 s['zustand'] = 'startet'
             d[eid] = s
+        # Allgemeine Python-Dienste: /health meldet `loading`, bis das Modell bereit ist, danach `ok`.
+        for eid, e in self.python_dienst.items():
+            s = {'zustand': 'aus', 'pids': [p for p in procs if self.ist_python_dienst(p, procs) == eid],
+                 'fremd': None, 'laufend': None, 'aktiv': None}
+            pid = lausch.get(e['port'])
+            if pid is not None:
+                if self.ist_python_dienst(pid, procs) == eid:
+                    s['zustand'] = 'startet'
+                    try:
+                        h = http_json(f"http://127.0.0.1:{e['port']}{e.get('health_pfad', '/health')}",
+                                      timeout=1.0) or {}
+                        if h.get('status') == 'ok':
+                            s['zustand'] = 'bereit'
+                        s['laufend'] = h.get('laufend')
+                        s['aktiv'] = h.get('aktiv')
+                    except Exception:
+                        pass
+                else:
+                    s.update(zustand='fremd', fremd=freundlich(procs.get(pid, (0, ''))[1]))
+            elif s['pids']:
+                s['zustand'] = 'startet'
+            d[eid] = s
         # ComfyUI (zwei Prozesse seit Stufe 8) und 2Wild
         c = self.comfy
 
@@ -414,6 +460,15 @@ class Erfassung:
                 out.append({'eintrag': eid, 'schluessel': 'polystrata:' + eid, 'name': e['name'], 'farbe': e['farbe'],
                             'mib_je_karte': gruppen['polystrata:' + eid]['mib'], 'blockiert': None,
                             'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
+        for eid, e in self.python_dienst.items():
+            schluessel = 'python_dienst:' + eid
+            if schluessel not in gruppen:
+                continue
+            laufend = (dienste.get(eid) or {}).get('laufend')
+            out.append({'eintrag': eid, 'schluessel': schluessel, 'name': e['name'], 'farbe': e['farbe'],
+                        'mib_je_karte': gruppen[schluessel]['mib'],
+                        'blockiert': f"In {e['name']} läuft gerade ein Auftrag." if laufend else None,
+                        'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
         if 'ollama' in gruppen:
             gesamt = sum(m['vram_mib'] for m in ollama['geladen']) or 1
             for m in ollama['geladen']:
