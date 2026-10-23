@@ -19,7 +19,7 @@ import urllib.request
 
 from gemeinsam import winapi
 
-from . import anweisungen, watch_lauf
+from . import anweisungen, pruefung, watch_lauf
 
 _OHNE_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 _NETZ = urllib.request.build_opener()
@@ -698,7 +698,8 @@ class _Abbruch(Exception):
 
 
 FELDER = ('id', 'transkript', 'ordner', 'titel', 'auswerter', 'anweisung', 'frage', 'zustand', 'meldung', 'datei',
-          'erstellt', 'begonnen', 'beendet', 'dauer_s', 'kosten_usd', 'tokens', 'cloud', 'modell_tatsaechlich')
+          'erstellt', 'begonnen', 'beendet', 'dauer_s', 'kosten_usd', 'tokens', 'cloud', 'modell_tatsaechlich',
+          'pruefung')
 
 
 class Auswertungen:
@@ -954,6 +955,9 @@ class Auswertungen:
         text = (ergebnis.get('text') or '').strip()
         if not text:
             raise RuntimeError('Das Modell hat keinen Text geliefert.')
+        pruef = pruefung.nachpruefen(text, transkript, not anw.get('frage'))
+        text = text + '\n\n' + pruef['block']
+        a['pruefung'] = pruef['kurz']
         a['datei'] = self._ablegen(a, text, ergebnis, time.time() - a['begonnen'])
         a.update(zustand='fertig', meldung='', kosten_usd=ergebnis.get('kosten_usd'), tokens=ergebnis.get('tokens'),
                  modell_tatsaechlich=ergebnis.get('modell_tatsaechlich'))
@@ -988,6 +992,8 @@ class Auswertungen:
             kopf.append(f"tokens: {ergebnis['tokens']}")
         if ergebnis.get('kosten_usd') is not None:
             kopf.append(f"kosten_usd: {ergebnis['kosten_usd']}")
+        if a.get('pruefung'):
+            kopf.append(f"pruefung: {json.dumps(a['pruefung'], ensure_ascii=False)}")
         kopf += ['status: Entwurf, automatisch erstellt, nicht geprüft', '---', '']
         with open(pfad, 'w', encoding='utf-8') as f:
             f.write('\n'.join(kopf) + '\n' + text + '\n')
