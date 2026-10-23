@@ -179,12 +179,12 @@
     },
     "bedarf_grund": "Rollen: eine = alles auf einer Karte, haupt/neben = Diffusionsmodell auf der einen, Text-Encoder und VAE auf der anderen Karte, fest = Abläufe ohne Kartenwahl auf ComfyUIs Standardkarte 0. Gemessen 23.09.2026 (BF16, RTX 3090 + 3080): Qwen-Bild 1328², 40 Schritte ~14,7 GiB auf der Modellkarte und kurz ~1,3 GiB auf der anderen (Text-Encoder); eine Karte = Summe (Ein-Karten-Betrieb 14.10.2026). Auf zwei RTX 3090 (14.10.2026, INT8 Turbo 1328²): ganz auf der Suprim neben NInfer auf der FE, Spitze 8,0 GiB, 9,4 s.",
     "bedarf_gross_mib": {
-      "eine": 22016,
+      "eine": 19456,
       "haupt": 18432,
       "neben": 6144
     },
     "bedarf_gross_ab_pixel": 2000000,
-    "bedarf_gross_grund": "gemessen 24.09.2026 im 1-s-Takt (Spitzen): 1920×1088 16,1 GiB auf der Modellkarte + 3,5 GiB auf der anderen, 2752×1536 17,2 + 5,9 GiB (VAE wächst mit der Bildgröße); eine Karte höchstens 22.016 MiB (24 GiB minus Reserve und Windows)",
+    "bedarf_gross_grund": "Seit 23.10.2026 eine = 19.456 MiB statt 22.016 (Anlass: zweites großes Bild wartete auf die FE, weil es auf keine andere Karte passte – Suprim mit Monitor ~21,6 GiB frei, RTX 3080 fasst 19,7 GiB). Gemessen 23.10.2026, drei INT8-Bearbeitungen 2752×1536, 40 Schritte, Details, gleichzeitig: FE 113,9 s, Suprim (Monitor) 109,6 s, RTX 3080 133,2 s; Spitzen Suprim 23,1 GiB belegt samt ~2,4 GiB Windows, 3080 18,6 GiB; Bilder ohne Fehler. ComfyUI wächst in freien Platz und lädt dynamisch. Vorher: gemessen 24.09.2026 im 1-s-Takt (Spitzen): 1920×1088 16,1 GiB auf der Modellkarte + 3,5 GiB auf der anderen, 2752×1536 17,2 + 5,9 GiB (VAE wächst mit der Bildgröße); eine Karte höchstens 22.016 MiB (24 GiB minus Reserve und Windows)",
     "bedarf_hilfe_mib": {
       "fest": 6144
     },

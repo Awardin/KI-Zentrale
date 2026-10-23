@@ -210,7 +210,7 @@ function kopfZeichnen(verbunden) {
   if (k.erreichbar === false) {
     return mini.replaceChildren(h('p', { class: 'gk-aus', text: 'Modellzentrale läuft nicht. Sie startet beim nächsten Auftrag mit.' }));
   }
-  // Kartenband (Bernstein-Design, 16.10.2026): je RTX 3090 Verbraucher, Belegung, Auslastung als Segmentleiste und
+  // Kartenband (Bernstein-Design, 16.10.2026): je Karte Verbraucher, Belegung, Auslastung als Segmentleiste und
   // Verlauf. Alles aus dem echten Stand der Zentrale (`/api/platz`, alle 5 s); der Verlauf merkt sich die letzten Werte.
   const verbraucher = k.verbraucher || [];
   if (k.zeit && k.zeit !== VERLAUF.zeit) {
@@ -222,8 +222,10 @@ function kopfZeichnen(verbunden) {
     }
   }
   const aktiv = k.karten.filter((c) => (c.last ?? 0) >= 30);
-  const parallel = aktiv.length >= 2 ? 'Beide Karten rechnen parallel'
-    : aktiv.length === 1 ? `${aktiv[0].kurz} rechnet` : 'Beide Karten sind frei';
+  const zwei = k.karten.length === 2;
+  const parallel = aktiv.length >= 2 ? (zwei ? 'Beide Karten rechnen parallel' : `${aktiv.length} Karten rechnen parallel`)
+    : aktiv.length === 1 ? `${aktiv[0].kurz} rechnet` : (zwei ? 'Beide Karten sind frei' : 'Alle Karten sind frei');
+  mini.style.setProperty('--karten', k.karten.length);  // eine Spalte je Karte (seit 22.10.2026 auch die RTX 3080)
   mini.replaceChildren(...k.karten.map((c) => {
     const last = Math.round(c.last ?? 0);
     const wer = verbraucher

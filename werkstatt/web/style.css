@@ -216,7 +216,7 @@ fieldset { border: 0; min-width: 0; }
     z-index: 4;
     height: var(--band);
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--karten, 2), minmax(0, 1fr));
     grid-template-rows: 1fr auto;
     gap: 8px 16px;
     padding: 16px max(32px, calc((100vw - var(--schiene-breite) - 1180px) / 2)) 10px;
@@ -620,7 +620,7 @@ dialog h2 { margin-bottom: 12px; font: 600 21px/1.2 var(--display); }
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 8px;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - var(--oben) - 16px);
 }
 
 .zf-liste-kopf { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -886,7 +886,8 @@ a.knopf { text-decoration: none; }
   top: var(--oben);
   display: grid;
   gap: 12px;
-  max-height: calc(100vh - 134px);
+  /* bis knapp über den unteren Fensterrand: steht ab --oben, darf also nur den Rest der Höhe nutzen */
+  max-height: calc(100vh - var(--oben) - 16px);
   overflow-y: auto;
   padding: 16px 18px 18px;
   background: var(--flaeche);
@@ -994,6 +995,9 @@ img.durchsichtig { background: repeating-conic-gradient(#d5dae0 0 25%, #f3f5f7 0
 .st-check select { min-height: 30px; }
 
 .st-los { width: 100%; min-height: 42px; font-size: 15px; }
+
+/* „Erstellen“ bleibt unten im Formular sichtbar, auch wenn darüber gescrollt wird. */
+.st-form .st-los { position: sticky; bottom: 0; z-index: 1; box-shadow: 0 -8px 12px 6px var(--flaeche); }
 
 .st-hinweis {
   display: grid;

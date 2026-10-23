@@ -115,7 +115,7 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
   Monitorkarte (sonst geteilt, das Videomodell nicht auf der Monitorkarte). Mit zwei ComfyUI-Prozessen (Stufe 8) rechnet
   ComfyUI 2 die Videos auf der Suprim und ComfyUI 1 Bilder daneben auf der FE. Seit 22.10.2026 rechnet **ComfyUI 3**
   (Port 8190, nur die RTX 3080) Bilder und Hilfsabläufe, die auf die 3080 passen – sie gehen zuerst dorthin, auch wenn
-  Strata beide 3090 belegt; Videos, Bilder über 2 MP und „Ausformulieren“ bleiben bei den 3090. Passt ein Auftrag gerade
+  Strata beide 3090 belegt (seit 23.10.2026 auch Bilder über 2 MP); Videos und „Ausformulieren“ bleiben bei den 3090. Passt ein Auftrag gerade
   nirgends, wartet er in der Schlange, bis ein rechnender Prozess frei wird. Drei leere ComfyUI-Prozesse halten zusammen
   etwa 6 GiB Arbeitsspeicher; Strata prüft beim Start 42 GiB – reicht es nicht, Bild & Video vorher beenden. Abläufe ohne Kartenwahl (Pose, schnelles Freistellen, Stelle per Wort, Zeitlupe, Video
   freistellen, 3D) rechnen auf ComfyUIs Standardkarte 0 (FE).

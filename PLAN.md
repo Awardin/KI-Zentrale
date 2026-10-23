@@ -2447,6 +2447,30 @@ nachgeprüft.
 Testbilder: `Studio\Werkstatt-Abnahme\Test3080-k*` (ohne Begleitdatei, aus dem Messskript), `Bild-3_0000*`, `Bild_0013*`,
 `Bild-2_0000*` (können in den Papierkorb, wenn Sascha will).
 
+## Werkstatt: Formular unter der Taskleiste, Kartenband mit drei Karten, große Bilder auf jeder Karte (23.10.2026)
+
+Saschas Meldung: „Erstellen“ liegt oft unter der Windows-Taskleiste, der Scrollbalken klappt nicht immer; ein zweites
+bearbeitetes Bild wartet auf die FE, statt die nächste freie Karte zu nehmen.
+
+- **Formular:** Im breiten Fenster steht das Studio-Formular ab `--oben` (210 px), durfte aber `100vh − 134 px` hoch sein –
+  es ragte 76 px unter den Fensterrand, samt Ende des Scrollbalkens und „Erstellen“. Jetzt `100vh − --oben − 16 px` (ebenso die
+  Transkriptliste der Zusammenfassung, dort 70 px), und „Erstellen“ bleibt unten im Formular stehen (`sticky`), auch wenn
+  darüber gescrollt wird. Geprüft bei 1600×860 und 1200×760: Formular endet 16 px über dem Rand.
+- **Kartenband:** Seit der RTX 3080 rutschte ihre Kachel in eine zweite Zeile und verdeckte den Kopf des Inhalts. Jetzt eine
+  Spalte je Karte (`--karten`), Text „Alle Karten sind frei“ / „n Karten rechnen parallel“.
+- **Große Bilder:** Im Protokoll vom 23.10.2026 12:32 lief Bearbeiten 2752×1536 auf der FE, das zweite wartete 87 s, obwohl
+  die Suprim frei war. Ursache: Bilder über 2 MP planten auf einer Karte 22.016 MiB (Messung 24.09.2026, BF16); die Suprim hat mit
+  Monitor ~21,6 GiB frei (Windows & Programme ~2,4 GiB), die 3080 fasst 19,7 GiB – also passte das Bild nirgends sonst, und
+  `_darf_nehmen` ließ es in der Schlange auf Prozess 1 warten (richtig nach der Regel). **Messung** mit `eine` 19.456 MiB: drei
+  INT8-Bearbeitungen 2752×1536, 40 Schritte, Details, gleichzeitig (`--anzahl 3`) – Prozess 3 (3080) 133,2 s, Prozess 1 (FE)
+  113,9 s, Prozess 2 (Suprim, Monitor) 109,6 s; Spitzen 18,6 GiB (3080), 23,1 GiB belegt auf der Suprim samt Windows; Bilder
+  angesehen, sauber (keine Kachelnähte). **Übernommen:** `bedarf_gross_mib.eine` 19.456 (geteilt bleibt 18 + 6 GiB). Große Bilder
+  gehen damit wie kleine zuerst an die 3080 (gut 15 % langsamer als eine 3090, aber parallel statt nacheinander).
+  Testbilder: `Studio\Werkstatt-Abnahme\Bearbeitet_00006_`, `Bearbeitet-2_00001_`, `Bearbeitet-3_00001_`.
+- Nebenbefund: ComfyUI 3 beendete sich am 23.10.2026 12:30 beim Start („No CUDA GPUs are available“) – die 3080 war da noch
+  nicht bereit; später lief er. Bei fehlender 3080 rechnen die 3090 wie vorher.
+- Tests: Zentrale 168, Werkstatt 225, grün (Werkstatt neu gestartet).
+
 ## Regel „nur Standardbibliothek, keine Pakete/Downloads“ gestrichen (21.10.2026)
 
 Sascha: „Das kam aus einem Video, nicht von mir“ – die feste Grenze „Python nur mit Standardbibliothek. Keine neuen
