@@ -28,6 +28,8 @@ LOCALAPPDATA = os.environ.get('LOCALAPPDATA', os.path.join(HOME, 'AppData', 'Loc
 APPDATA = os.environ.get('APPDATA', os.path.join(HOME, 'AppData', 'Roaming'))
 STUFEN_TEXT = {'none': 'ohne Nachdenken', 'low': 'niedrig', 'medium': 'mittel', 'high': 'hoch', 'xhigh': 'sehr hoch',
                'max': 'maximal', 'ultra': 'ultra'}
+# Antwortgrenze der lokalen Modelle: Denkteil und Zusammenfassung müssen zusammen hineinpassen.
+LOKAL_MAX_TOKENS = 32768
 
 
 def _json_datei(pfad):
@@ -445,6 +447,17 @@ class DeepSeek(Anbieter):
         return {'text': text, 'kosten_usd': kosten, 'tokens': n.get('total_tokens')}
 
 
+def _lokaler_text(text, abgeschnitten):
+    """Entfernt den Denkteil. Ein offener Denkteil oder ein leerer Text ergibt keine Zusammenfassung."""
+    text = re.sub(r'<think>.*?</think>\s*', '', text or '', flags=re.S)
+    if '<think>' in text or not text.strip():
+        raise RuntimeError('Das Modell hat die Antwortgrenze schon beim Nachdenken verbraucht; es ist keine '
+                           'Zusammenfassung entstanden. Mit „Wiederholen“ neu versuchen.')
+    if abgeschnitten:
+        text += '\n\n[Hinweis der Werkstatt: Die Antwort wurde an der Längengrenze abgeschnitten.]'
+    return text
+
+
 class Lokal(Anbieter):
     schluessel, name, cloud = 'lokal', 'Lokal', None
 
@@ -525,16 +538,18 @@ class Lokal(Anbieter):
             a = ollama_senden(ollama.get('url', 'http://127.0.0.1:11434') + '/api/chat', daten, lauf.http, lauf.melden)
             text = (a.get('message') or {}).get('content') or ''
             tokens = (a.get('prompt_eval_count') or 0) + (a.get('eval_count') or 0) or None
+            abgeschnitten = a.get('done_reason') == 'length'
         else:
             daten = {'model': e['modell_id'], 'messages': [{'role': 'user', 'content': prompt}], 'stream': False,
-                     'max_tokens': 8192}
+                     'max_tokens': LOKAL_MAX_TOKENS}
             anfrage = urllib.request.Request(f"http://127.0.0.1:{e['port']}/v1/chat/completions",
                                              json.dumps(daten).encode('utf-8'), {'Content-Type': 'application/json'})
             a = lauf.http(lambda: _OHNE_PROXY.open(anfrage, timeout=3600))
-            text = a['choices'][0]['message'].get('content') or ''
+            wahl = a['choices'][0]
+            text = wahl['message'].get('content') or ''
             tokens = (a.get('usage') or {}).get('total_tokens')
-        text = re.sub(r'<think>.*?</think>\s*', '', text, flags=re.S)
-        return {'text': text, 'tokens': tokens}
+            abgeschnitten = wahl.get('finish_reason') == 'length'
+        return {'text': _lokaler_text(text, abgeschnitten), 'tokens': tokens}
 
 
 def ollama_senden(url, daten, oeffnen=None, melden=None, timeout=3600):
@@ -800,7 +815,10 @@ class Auswertungen:
                 info = self.profil_info(p)
                 for anw in gewaehlt:
                     geschaetzt = (laenge + len(anw['text']) + 600) / 3.0  # vorsichtig: gut 3 Zeichen je Token
-                    if info.get('kontext') and geschaetzt > info['kontext'] * 0.85:
+                    # Platz für Denkteil und Antwort freihalten: höchstens ein Viertel des Kontexts, aber nie mehr
+                    # als die Antwortgrenze der lokalen Modelle.
+                    reserve = min(LOKAL_MAX_TOKENS, info['kontext'] // 4) if info.get('kontext') else 0
+                    if info.get('kontext') and geschaetzt + reserve > info['kontext']:
                         abgelehnt.append(f"{p['name']}: Das Transkript ist zu lang für {info['kontext']:,} Token Kontext."
                                          .replace(',', '.'))
                         continue
