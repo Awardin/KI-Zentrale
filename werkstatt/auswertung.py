@@ -450,9 +450,11 @@ class DeepSeek(Anbieter):
 def _lokaler_text(text, abgeschnitten):
     """Entfernt den Denkteil. Ein offener Denkteil oder ein leerer Text ergibt keine Zusammenfassung."""
     text = re.sub(r'<think>.*?</think>\s*', '', text or '', flags=re.S)
-    if '<think>' in text or not text.strip():
+    if '<think>' in text or (abgeschnitten and not text.strip()):
         raise RuntimeError('Das Modell hat die Antwortgrenze schon beim Nachdenken verbraucht; es ist keine '
                            'Zusammenfassung entstanden. Mit „Wiederholen“ neu versuchen.')
+    if not text.strip():
+        raise RuntimeError('Das Modell hat keinen Text geliefert.')
     if abgeschnitten:
         text += '\n\n[Hinweis der Werkstatt: Die Antwort wurde an der Längengrenze abgeschnitten.]'
     return text
