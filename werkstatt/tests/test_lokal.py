@@ -1,19 +1,36 @@
-"""Lokale Auswerter: Antwortgrenze, Denkteil und Kontextreserve."""
+"""Lokale Auswerter: Antwortgrenze, Denkteil, Kontextreserve sowie Strata und PolyStrata."""
 import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 import urllib.request
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from werkstatt import auswertung, watch_lauf  # noqa: E402
+from werkstatt import auswertung, messungen, watch_lauf  # noqa: E402
+from werkstatt import server as wserver  # noqa: E402
 
 NINFER = {'id': 'ninfer', 'art': 'ninfer', 'name': 'Qwen3.8 27B · NInfer', 'port': 8080,
           'modell_id': 'qwen3.8-27b-ninfer-groupwise', 'untertitel': '128K Kontext · eine RTX 3090'}
 OLLAMA = {'id': 'ornith', 'art': 'ollama', 'name': 'Ornith 1.5 · Q5', 'tag': 'ornith-q5-128k:latest',
           'untertitel': '128K Kontext · Ollama verteilt auf die Karten', 'ollama_optionen': {'num_batch': 256}}
+STRATA = {'id': 'flash-next-strata', 'art': 'strata', 'name': 'Qwen3.8 Flash-Next · Strata',
+          'untertitel': '125B · IQ3_XXS (128K mit Bildern oder 256K) oder Q4 (genauer, mit Bildern) · beide Karten',
+          'wofuer': 'Großes Modell für Projekte, Coding und lange Dokumente.', 'port': 8095,
+          'varianten': [
+              {'id': '128k', 'name': '128K Kontext · mit Bildern', 'standard': True, 'kontext': 131072,
+               'modell': 'qwen3.8-flash-next-iq3_xxs'},
+              {'id': '256k', 'name': '256K Kontext · ohne Bilder', 'kontext': 262144,
+               'modell': 'qwen3.8-flash-next-iq3_xxs'},
+              {'id': 'q4', 'name': 'Q4 · genauer, etwas langsamer · 128K · mit Bildern', 'kontext': 131072,
+               'modell': 'qwen3.8-flash-next-unsloth-ud-iq4_xs'}]}
+POLY = {'id': 'ornith-polystrata', 'art': 'polystrata', 'name': 'Ornith 1.5 · PolyStrata',
+        'untertitel': 'Q4 (Ollama-Datei) · 128K · mit Bildern · eine RTX 3090',
+        'wofuer': 'Schnellster Ornith-Weg auf einer Karte.', 'port': 8097,
+        'modell': 'ornith-1.5-35b-a3b-q4_k_m-ollama'}
+Q4 = 'qwen3.8-flash-next-unsloth-ud-iq4_xs'
 ANWEISUNG = 'Kurz [Transkript]'
 HINWEIS = '[Hinweis der Werkstatt: Die Antwort wurde an der Längengrenze abgeschnitten.]'
 KEINE_ZUSAMMENFASSUNG = ('Das Modell hat die Antwortgrenze schon beim Nachdenken verbraucht; es ist keine '
@@ -179,6 +196,111 @@ class Kontextreserve(unittest.TestCase):
                          (200, 0, ['Lokal: Das Transkript ist zu lang für 32.768 Token Kontext.']))
         code, r = self.anlegen(self.video(24000))
         self.assertEqual((code, r['neu'], r['abgelehnt']), (200, 1, []))
+
+
+class ModellWelt:
+    """Antwortet wie die lokalen Ports; Ports sind offen, /v1/models liefert die eingetragenen Kennungen."""
+
+    def __init__(self):
+        self.modelle = {}
+        self.antworten = {}
+        self.anfragen = []
+        self.ports = [('127.0.0.1', p, 1) for p in (8080, 8095, 8097, 11434)]
+
+    def oeffnen(self, anfrage, timeout=0):
+        ziel = anfrage.full_url if isinstance(anfrage, urllib.request.Request) else str(anfrage)
+        self.anfragen.append((ziel, anfrage))
+        if ziel.endswith('/api/ps'):
+            return Antwort({'models': []})
+        port = int(ziel.split(':')[2].split('/')[0])
+        if ziel.endswith('/v1/models'):
+            return Antwort({'object': 'list', 'data': [{'id': x} for x in self.modelle.get(port, [])]})
+        if ziel.endswith('/v1/chat/completions'):
+            return Antwort(self.antworten.get(port) or {
+                'choices': [{'message': {'content': 'Fassung'}, 'finish_reason': 'stop'}], 'usage': {'total_tokens': 10}})
+        raise AssertionError(ziel)
+
+
+class StrataUndPolyStrata(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        zc = os.path.join(self.tmp.name, 'zentrale.json')
+        with open(zc, 'w', encoding='utf-8') as f:
+            json.dump({'ollama': {'url': 'http://127.0.0.1:11434'},
+                       'eintraege': [NINFER, OLLAMA, STRATA, POLY]}, f)
+        self.lokal = auswertung.Lokal({'zentrale_config': zc})
+        self.welt = ModellWelt()
+        p = mock.patch.object(auswertung._OHNE_PROXY, 'open', side_effect=self.welt.oeffnen)
+        p.start()
+        self.addCleanup(p.stop)
+        p = mock.patch.object(auswertung.winapi, 'lauschende_ports', return_value=self.welt.ports)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def anfrage(self):
+        return json.loads([a for ziel, a in self.welt.anfragen if ziel.endswith('/v1/chat/completions')][-1].data)
+
+    def test_strata_mit_geladener_q4_fassung(self):
+        self.welt.modelle[8095] = [Q4]
+        self.assertEqual(self.lokal.verfuegbar({'modell': 'flash-next-strata'}, frisch=True), (True, ''))
+        a = self.lokal.ausfuehren({'modell': 'flash-next-strata'}, 'Prompt', Lauf())
+        daten = self.anfrage()
+        self.assertEqual((daten['model'], daten['max_tokens']), (Q4, auswertung.LOKAL_MAX_TOKENS))
+        self.assertEqual(a['modell_tatsaechlich'], Q4)
+        self.assertEqual((a['text'], a['tokens']), ('Fassung', 10))
+
+    def test_strata_ohne_geladene_fassung_ist_nicht_verfuegbar(self):
+        self.welt.modelle[8095] = []
+        ok, grund = self.lokal.verfuegbar({'modell': 'flash-next-strata'}, frisch=True)
+        self.assertFalse(ok)
+        self.assertEqual(grund, 'Qwen3.8 Flash-Next · Strata ist nicht geladen. Bitte in der Modellzentrale laden.')
+
+    def test_strata_faellt_zwischen_pruefung_und_anfrage_weg(self):
+        self.welt.modelle[8095] = [Q4]
+        self.assertEqual(self.lokal.verfuegbar({'modell': 'flash-next-strata'}, frisch=True), (True, ''))
+        self.welt.modelle[8095] = []
+        with self.assertRaises(RuntimeError) as e:
+            self.lokal.ausfuehren({'modell': 'flash-next-strata'}, 'Prompt', Lauf())
+        self.assertEqual(str(e.exception),
+                         'Qwen3.8 Flash-Next · Strata ist nicht geladen. Bitte in der Modellzentrale laden.')
+
+    def test_polystrata_mit_geladener_fassung(self):
+        self.welt.modelle[8097] = [POLY['modell']]
+        self.assertEqual(self.lokal.verfuegbar({'modell': 'ornith-polystrata'}, frisch=True), (True, ''))
+        a = self.lokal.ausfuehren({'modell': 'ornith-polystrata'}, 'Prompt', Lauf())
+        daten = self.anfrage()
+        self.assertEqual((daten['model'], daten['max_tokens']), (POLY['modell'], auswertung.LOKAL_MAX_TOKENS))
+        self.assertEqual(a['modell_tatsaechlich'], POLY['modell'])
+        self.welt.modelle[8097] = []
+        ok, grund = self.lokal.verfuegbar({'modell': 'ornith-polystrata'}, frisch=True)
+        self.assertFalse(ok)
+        self.assertIn('Bitte in der Modellzentrale laden.', grund)
+
+    def test_katalog_kontexte(self):
+        self.assertEqual({m['modell']: m['kontext'] for m in self.lokal.katalog()},
+                         {'ninfer': 131072, 'ornith': 131072, 'flash-next-strata': 131072,
+                          'ornith-polystrata': 131072})
+
+    def test_messlauf_kennt_nur_ollama_und_ninfer(self):
+        m = messungen.Messlauf(os.path.join(self.tmp.name, 'messlaeufe.json'), self.lokal, lambda text: None)
+        for modell in ('flash-next-strata', 'ornith-polystrata'):
+            self.assertEqual(m.starten(modell)[0], 404)
+
+    def test_lokale_modelle_im_server_nur_ollama_und_ninfer(self):
+        self.welt.modelle[8080] = [NINFER['modell_id']]
+        w = wserver.Werkstatt.__new__(wserver.Werkstatt)
+        w._messungen = (time.time(), {'transkription': {}, 'bild_video': {}, 'historisch': None, 'gpu_lab_da': False})
+        w.auswertung = mock.Mock()
+        w.auswertung.anbieter = {'lokal': self.lokal}
+        w.auswertung.liste = []
+        w.messlauf = mock.Mock()
+        w.messlauf.liste.return_value = []
+        w.messlauf.laufend = None
+        st = wserver.Werkstatt.messungen(w)
+        self.assertEqual([m['id'] for m in st['lokale_modelle']], ['ninfer', 'ornith'])
+        self.assertNotIn('flash-next-strata', [m['id'] for m in st['lokale_modelle']])
+        self.assertNotIn('ornith-polystrata', [m['id'] for m in st['lokale_modelle']])
 
 
 if __name__ == '__main__':

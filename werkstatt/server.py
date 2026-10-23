@@ -233,8 +233,12 @@ class Werkstatt:
                      'gpu_lab_da': os.path.isfile(self.cfg['gpu_lab_db'])}
             self._messungen = (time.time(), daten)
         lokal = self.auswertung.anbieter['lokal']
+        # Der Messlauf fragt über den NInfer-Weg an: nur Ollama und NInfer anbieten, keine Strata-Einträge.
+        arten = {e['id']: e['art'] for e in lokal._eintraege()[0].values()}
         modelle = []
         for m in lokal.katalog():
+            if arten.get(m['modell']) not in ('ollama', 'ninfer'):
+                continue
             ok, grund = lokal.verfuegbar({'modell': m['modell']})
             modelle.append({'id': m['modell'], 'name': m['name'], 'geladen': ok, 'grund': grund})
         return dict(self._messungen[1], zusammenfassung=messungen.zusammenfassung(self.auswertung.liste),

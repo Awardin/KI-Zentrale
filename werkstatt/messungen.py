@@ -282,7 +282,8 @@ class Messlauf:
             os.replace(tmp, self.datei)
 
     def starten(self, modell_id):
-        eintraege, _ = self.lokal._eintraege()
+        # Der Messlauf fragt über den NInfer-Weg an; Strata und PolyStrata bieten sich hier deshalb nicht an.
+        eintraege = {k: e for k, e in self.lokal._eintraege()[0].items() if e['art'] in ('ollama', 'ninfer')}
         e = eintraege.get(modell_id)
         if not e:
             return 404, {'fehler': 'Dieses Modell kennt die Modellzentrale nicht.'}
