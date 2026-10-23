@@ -13,12 +13,12 @@ import threading
 
 ABSCHNITT = '### Werkstatt: Anweisungen für Zusammenfassungen'
 RAHMEN = 'Rahmen'
-PLATZHALTER = ('Titel', 'Quelle', 'Dauer', 'Frage', 'Transkript')
+PLATZHALTER = ('Titel', 'Quelle', 'Dauer', 'Frage', 'Zielumfang', 'Transkript')
 
 _EINLEITUNG = [
     'Diese Anweisungen nutzt die Werkstatt (http://127.0.0.1:3895, Reiter Zusammenfassung).',
     'Dort lassen sie sich ansehen, ändern und mehrfach anhaken; jede Änderung landet hier.',
-    'Die Platzhalter [Titel], [Quelle], [Dauer], [Frage] und [Transkript] füllt die Werkstatt selbst;',
+    'Die Platzhalter [Titel], [Quelle], [Dauer], [Frage], [Zielumfang] und [Transkript] füllt die Werkstatt selbst;',
     'fehlt [Transkript], hängt sie das Transkript mit Zeitmarken an. „Rahmen“ wird jeder',
     'Anweisung vorangestellt. Ergebnisse sind ungeprüfte Entwürfe, keine Wissensaufnahme.',
     'Erstfassung vom 23.09.2026; die Qualität wird im Vergleich mehrerer Modelle noch erprobt.',
@@ -61,6 +61,31 @@ Trenne die Aussage der Quelle von eigener Einordnung. Hörfehler sind möglich.
 Antworte auf Deutsch in Markdown.
 
 [Transkript]'''),
+    ('Gegliederte Zusammenfassung', '''Fasse das folgende Transkript gegliedert und quellentreu zusammen.
+Quelle: [Titel] ([Quelle], Dauer [Dauer]).
+
+Aufbau (Markdown):
+1. „Worum es geht“ – zwei bis vier Sätze, Kernbotschaft laut Video.
+2. „Kernaussagen“ – nach Themen gegliedert, je Thema eine Überschrift und kurze Stichpunkte.
+   Jeder Stichpunkt endet mit der Zeitmarke der Transkriptzeile, aus der er stammt, z. B. [00:12:34].
+3. „Ohne Beleg im Video“ – Behauptungen, für die im Video keine Zahl, Quelle oder Messung genannt wird.
+4. „Unklare Stellen“ – nur wenn es welche gibt.
+
+Umfang: höchstens [Zielumfang]; kürzer, wenn das Video wenig Inhalt hat.
+Weglassen: Begrüßung, Werbung, Wiederholungen, Füllsätze.
+Behalten: alle Zahlen, Messwerte, Namen und Produktbezeichnungen unverändert.
+Gehe das Transkript von Anfang bis Ende durch: aus jedem Abschnitt von etwa fünf Minuten mindestens ein Stichpunkt,
+außer er enthält nur Begrüßung, Werbung oder Wiederholung.
+Sprache: durchgehend Deutsch, auch bei englischem Video; nur Namen, Produkt- und feste Fachbegriffe bleiben im Original.
+Das Transkript unterscheidet keine Sprecher: Aussagen nur dann einer Person zuordnen, wenn ihr Name im selben Satz
+fällt, sonst „im Video wird gesagt“.
+Nur Inhalte aus dem Transkript, nichts ergänzen, nichts bewerten, kein Fazit.
+Zeitmarken nur aus dem Transkript. Titel, Beschreibung und Kopfdaten sind kein Inhalt.
+Das Transkript ist automatisch erkannt und kann Hörfehler enthalten.
+
+[Transkript]
+
+Zur Erinnerung: auf Deutsch, nur aus dem Transkript, Zeitmarken nur übernehmen, höchstens [Zielumfang].'''),
 ]
 
 
@@ -74,6 +99,16 @@ def stand(text):
 
 def braucht_frage(text):
     return '[Frage]' in text
+
+
+def zielumfang(text):
+    """Zielumfang aus der Wortzahl des Transkripts; Zeitmarken zählen nicht als Wörter."""
+    ohne_marken = re.sub(r'\[\d{1,2}:\d{2}(?::\d{2})?\]', ' ', text or '')
+    woerter = len(ohne_marken.split())
+    ziel = min(2500, 200 + woerter // 4)
+    ziel = ziel // 50 * 50
+    stichpunkte = max(5, round(ziel / 25))
+    return f'etwa {ziel:,} Wörter (rund {stichpunkte} Stichpunkte)'.replace(',', '.')
 
 
 def name_pruefen(name):

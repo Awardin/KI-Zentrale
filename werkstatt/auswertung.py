@@ -936,8 +936,14 @@ class Auswertungen:
             raise RuntimeError(f"Die Anweisung „{a['anweisung']['name']}“ steht nicht mehr in der Promptsammlung.")
         with open(os.path.join(a['transkript'], 'transcript-timestamps.txt'), encoding='utf-8') as f:
             transkript = f.read()
+        try:
+            with open(os.path.join(a['transkript'], 'transcript.txt'), encoding='utf-8') as f:
+                wortbasis = f.read()  # ohne Zeitmarken; daraus folgt der Zielumfang
+        except OSError:
+            wortbasis = transkript
         werte = {'Titel': a['titel'], 'Quelle': a.get('quelle') or a['titel'],
-                 'Dauer': _dauer(a.get('dauer')), 'Frage': a.get('frage') or ''}
+                 'Dauer': _dauer(a.get('dauer')), 'Frage': a.get('frage') or '',
+                 'Zielumfang': anweisungen.zielumfang(wortbasis)}
         rahmen = (sammlung.get('rahmen') or {}).get('text', '')
         prompt = anweisungen.zusammenbauen(rahmen, anw['text'], werte, transkript)
         a['anweisung']['stand'] = anw['stand']
