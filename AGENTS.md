@@ -2,9 +2,9 @@
 
 Lokale Apps für Saschas zwei Grafikkarten: seit 14.10.2026 zwei RTX 3090 mit je 24 GiB – „RTX 3090 FE“ = Karte 0
 (gpu:0, Steckplatz 02; Monitor 16.–20.10.2026) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; seit 20.10.2026
-wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) hängt seit 22.10.2026 über USB4/Thunderbolt als
-Karte 2 (Bus 07, ~3,1 GB/s) und ist **Nebenkarte** (`nebenkarte` in `zentrale\config.json`): Vorrang nur für LightOnOCR und
-Whisper, wenn sie ganz darauf passen; für Strata und verteilte Modelle ungeeignet. Ollama sieht sie nicht (Benutzervariablen
+wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) ist seit 22.10.2026 Karte 2,
+seit 23.10.2026 am M.2-Steckplatz (Bus 87, PCIe 4.0 ×4, 6,6 GB/s; vorher USB4, 3,1 GB/s), und ist **Nebenkarte** (`nebenkarte` in `zentrale\config.json`): Vorrang nur für LightOnOCR und
+Whisper, wenn sie ganz darauf passen; für Strata und verteilte Modelle ungeeignet (Strata am M.2 am 23.10.2026 neu gemessen: weiter halb bis ein Drittel so schnell beim Schreiben). Ollama sieht sie nicht (Benutzervariablen
 `CUDA_VISIBLE_DEVICES` = UUIDs der 3090 und `OLLAMA_VULKAN=0`; Rückweg in PLAN.md 22.10.2026) – Programme, die eine Karte
 brauchen, setzen `CUDA_VISIBLE_DEVICES` mit `CUDA_DEVICE_ORDER=PCI_BUS_ID` selbst.
 Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen nach freiem Platz (README.md, „Kartenwahl“).

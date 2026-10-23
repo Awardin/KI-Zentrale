@@ -26,12 +26,12 @@
     },
     "2": {
       "kurz": "RTX 3080",
-      "bus": 7,
+      "bus": 135,
       "name": "RTX 3080",
       "nebenkarte": true
     }
   },
-  "karten_grund": "Seit 22.10.2026 hängt die RTX 3080 (20 GiB) über USB4 am eGPU-Dock AG02 (Bus 07, x4, ~3,1 GB/s) als Nebenkarte: nur für Arbeiten, die ganz auf sie passen (LightOnOCR, Whisper); sie hat dort Vorrang, damit die 3090 frei bleiben. Ollama sieht sie nicht (Benutzervariablen CUDA_VISIBLE_DEVICES = UUIDs der 3090, OLLAMA_VULKAN=0), Strata, NInfer, PolyStrata, Fibo und ComfyUI nutzen sie nicht. Seit 14.10.2026 zwei RTX 3090 mit je 24 GiB. Steckplatz 02 = Founders Edition (Teilenummer 900-1G136-2510-000, 350 W, ohne Monitor), Steckplatz 04 = MSI Suprim (420 W, Monitor). Der Name gilt nur, wenn Steckplatz und gemessenes Kartenmodell passen. Keine Karte ist mehr für bestimmte Modelle reserviert: NInfer, LightOnOCR und Bilder nehmen die Karte, auf der sie passen; mehrere Modelle teilen sich eine Karte, wenn Platz ist.",
+  "karten_grund": "Seit 22.10.2026 die RTX 3080 (20 GiB) als Nebenkarte, seit 23.10.2026 am M.2-Steckplatz (Bus 0x87 = 135 in `bus`, PCIe 4.0 x4, 6,6 GB/s gemessen; vorher USB4 am eGPU-Dock AG02, Bus 07, 3,1 GB/s): nur für Arbeiten, die ganz auf sie passen (LightOnOCR, Whisper); sie hat dort Vorrang, damit die 3090 frei bleiben. Ollama sieht sie nicht (Benutzervariablen CUDA_VISIBLE_DEVICES = UUIDs der 3090, OLLAMA_VULKAN=0), Strata, NInfer, PolyStrata, Fibo und ComfyUI nutzen sie nicht. Seit 14.10.2026 zwei RTX 3090 mit je 24 GiB. Steckplatz 02 = Founders Edition (Teilenummer 900-1G136-2510-000, 350 W, ohne Monitor), Steckplatz 04 = MSI Suprim (420 W, Monitor). Der Name gilt nur, wenn Steckplatz und gemessenes Kartenmodell passen. Keine Karte ist mehr für bestimmte Modelle reserviert: NInfer, LightOnOCR und Bilder nehmen die Karte, auf der sie passen; mehrere Modelle teilen sich eine Karte, wenn Platz ist.",
   "ollama": {
     "url": "http://127.0.0.1:11434",
     "programm": "C:\\Users\\sasch\\AppData\\Local\\Programs\\Ollama\\ollama.exe",

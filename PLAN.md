@@ -2447,6 +2447,39 @@ nachgeprüft.
 Testbilder: `Studio\Werkstatt-Abnahme\Test3080-k*` (ohne Begleitdatei, aus dem Messskript), `Bild-3_0000*`, `Bild_0013*`,
 `Bild-2_0000*` (können in den Papierkorb, wenn Sascha will).
 
+## RTX 3080 am M.2-Steckplatz statt USB4; Bilder und Strata neu gemessen (23.10.2026)
+
+Sascha hat die 3080 vom eGPU-Dock (USB4) an einen M.2-Steckplatz umgesteckt. Geprüft: Windows und Treiber sehen sie als
+Karte 2 (gleiche UUID, Bus 0x87 statt 07, PCIe 4.0 ×4); die Reihenfolge nach Busnummer bleibt FE 0, Suprim 1, 3080 2.
+`karten."2".bus` in `zentrale\config.json` musste von 7 auf 135 (= 0x87): Name und `nebenkarte` gelten nur bei passendem
+Steckplatz – sonst meldete `/api/platz` die 3080 nicht mehr als Nebenkarte (beim ersten Start nach dem Umstecken gesehen). Kopiergeschwindigkeit (PyTorch, 1 GiB gepinnt, je
+5 Läufe): **3080 6,6 GB/s** hin und zurück (USB4 vorher 3,1), die 3090 je 12,9–13,2 GB/s (PCIe 4.0 ×8). Die Messungen
+„lohnt nicht für Strata/verteilte Modelle“ vom 22.10. galten für USB4.
+
+**Bilder auf der 3080 am M.2** (Studio, ComfyUI 3 frisch gestartet, je ein Auftrag allein): erstes Bild 1584×1056 Turbo mit
+Laden **11,1 s** (USB4 13,6, FE 8,9), Folgebild **7,4 s** (USB4 7,6, FE 6,6), Bearbeiten 2752×1536, 40 Schritte, Details
+**129,9 s** (USB4 133,2, FE 113,9, Suprim 109,6). Nur wenig Gewinn: Den Abstand zur 3090 macht die Rechenleistung der 3080,
+nicht die Leitung. Testbilder `Werkstatt-Abnahme\Bild-3_00007_`, `Bild-3_00008_`, `Bearbeitet-3_00002_`.
+
+**Strata auf drei Karten am M.2** (Auftrag Sascha „dann Strata auf drei Karten“; gleiches Skript und gleiche Proben wie am
+22.10., `nachweise\2026-10-21-strata-rtx3080`, Läufe `*-m2` in `ergebnisse.jsonl`; Bild & Video vorher beendet, für den Test
+`CUDA_VISIBLE_DEVICES=0,1,2`, weil die Benutzervariable die 3080 sonst ausblendet). Strata misst selbst 6,7 GB/s zur 3080.
+Schreiben laut Server in Token/s:
+
+| Lauf | Text | Code | 70K-Prompt | RAM frei geladen |
+|---|---|---|---|---|
+| IQ3_S, zwei 3090 | 102–108 | 136–158 | 3.067 | 0,3 GiB |
+| IQ3_S, FE → 3080 → Suprim (M.2) | 37–39 | 60–63 | 3.547 | 1,2 GiB |
+| – dasselbe über USB4 (22.10.) | 37–68 | 33–44 | 3.647 | 0,7 GiB |
+| Q4, zwei 3090 | 86–97 | 108–119 | 2.578 | 15,4 GiB |
+| Q4, FE → 3080 → Suprim (M.2) | 48–62 | 46–49 | 3.289 | 21,6 GiB |
+| – dasselbe über USB4 (22.10.) | 44–60 | 42–44 | 3.036 | 21,5 GiB |
+
+Ergebnis: Die doppelte Übertragungsrate ändert am Schreiben fast nichts – mit der 3080 bleibt es bei der Hälfte bis einem
+Drittel. Pro Token wandern nur wenige Daten zwischen den Karten; es bremsen die zusätzliche Stufe in der Kette und die
+langsamere 3080. Einlesen langer Prompts 16–28 % schneller, Bilder lesen alle Läufe richtig (3 Pflanzen). **Strata bleibt auf
+den zwei 3090.** Ornith 122B über drei Karten (gleiche Kette, 22.10. Schreiben langsamer) daraufhin nicht neu gemessen.
+
 ## Werkstatt: Formular unter der Taskleiste, Kartenband mit drei Karten, große Bilder auf jeder Karte (23.10.2026)
 
 Saschas Meldung: „Erstellen“ liegt oft unter der Windows-Taskleiste, der Scrollbalken klappt nicht immer; ein zweites

@@ -4,7 +4,8 @@ Zwei lokale Apps rund um die beiden Grafikkarten: seit 14.10.2026 zwei RTX 3090 
 (Steckplatz 02, Karte 0) und „RTX 3090 Suprim“ (Steckplatz 04, Karte 1, Monitor). Im Task-Manager heißen sie
 GPU 1 und GPU 2 (GPU 0 ist die Intel-Grafik). Keine Karte ist für bestimmte Modelle reserviert: Was auf eine Karte
 passt, startet dort, wo Platz ist, und mehrere Modelle teilen sich eine Karte (Abschnitt „Kartenwahl“).
-Seit 22.10.2026 hängt dazu die „RTX 3080“ (20 GiB, Karte 2, Bus 07) über USB4 am eGPU-Dock AG02 – als **Nebenkarte**
+Seit 22.10.2026 dazu die „RTX 3080“ (20 GiB, Karte 2), seit 23.10.2026 am M.2-Steckplatz (Bus 87, PCIe 4.0 ×4,
+6,6 GB/s; vorher USB4 am eGPU-Dock AG02, 3,1 GB/s) – als **Nebenkarte**
 für LightOnOCR und Whisper (Abschnitt „Kartenwahl“).
 
 - **Modellzentrale** (fertig): Wer belegt die Karten? Sprachmodelle starten, laden,
@@ -87,7 +88,7 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
   `monitor_puffer_mib` (2 GiB) für Windows frei bleiben, solange die andere Karte reicht. Passt es nirgends, schlägt
   sie die Karte vor, auf der am wenigsten weichen muss. NInfer startet mit `CUDA_VISIBLE_DEVICES` auf der gewählten
   Karte, LightOnOCR ebenso.
-- **Nebenkarte RTX 3080** (seit 22.10.2026, `nebenkarte` in `karten`): langsam angebunden (USB4, ~3,1 GB/s), deshalb nur für
+- **Nebenkarte RTX 3080** (seit 22.10.2026, `nebenkarte` in `karten`): schmaler angebunden (M.2, PCIe 4.0 ×4, 6,6 GB/s statt 13 GB/s der 3090; bis 23.10.2026 USB4, 3,1 GB/s), deshalb nur für
   Einträge, die „RTX 3080“ in `karten` nennen (LightOnOCR), und für Whisper. Passt es ohne Freigabe auf sie, hat sie Vorrang
   vor jeder 3090 – die 3090 bleiben für große Modelle frei. Whisper (Werkstatt) nimmt sie, wenn sie alle Worker trägt
   (gemessen 984 s Ton mit zwei Workern: 78 s statt 53 s auf der FE). NInfer, PolyStrata, Fibo, Strata und ComfyUI nutzen sie
