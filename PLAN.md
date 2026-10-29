@@ -3047,6 +3047,22 @@ abgenommen von Claude (Diff gelesen, Tests selbst gefahren), per Fast-Forward in
   nicht von Strata-Agenten steuern lassen, sondern von DeepSeek (API) oder einem Modell, das die FE frei lässt.
 - **Offen:** Push nach Saschas Go.
 
+## Qwen3.8 27B unzensiert (abliterated, IQ4_XS) auf der RTX 3080 (29.10.2026, getestet)
+
+Auftrag Sascha: „lad mal die unzensierte Fassung runter und installiere diese und teste auf der RTX 3080“ (gedacht als
+Video-Steuerer, der die FE frei lässt). Datei `huihui-ai/Huihui-Qwen3.8-27B-abliterated-GGUF`:
+`Huihui-Qwen3.8-27B-abliterated-UD-IQ4_XS.gguf` (14.403.496.864 Bytes) + `mmproj-model-bf16.gguf` (931.145.888 Bytes), SHA-256
+gegen die Hub-Angaben geprüft, `C:\LLM\models\Qwen3.8-27B-abliterated\`.
+- Zentrale-Eintrag `qwen27-abl` (llamacpp, Port 8105, 3080 vor 3090, 96K, q8-Cache, Bildteil). Gemessen **18.240 MiB** nach
+  dem Start, 18.525 nach Test → Bedarf 18.600 MiB, 2 GiB frei. DSH-Anbieter „Qwen 27B unzensiert – RTX 3080“ (96K, 16.384).
+- Test live (`Projekte\Lokale-Wissensextraktion\nachweise\2026-10-29-qwen27-abliterated\`, gleiche Bausteine wie IQ3_S):
+  Schreiben 38,7 tok/s, Einlesen 1.298 (8K) / 1.151 (34K) – gleich schnell wie IQ3_S, Karte 319 W/60 °C.
+  Patiententext **besser als IQ3_S**: Warnzeichen richtig (Neurologie, Blase/Darm, Fieber/Gewicht; „Verstopfung“ als
+  Darmzeichen unscharf), kein Sachfehler wie beim IQ3_S, ein Grammatikfehler in Lauf A („Das konzentrierte Starens“).
+  Bild: Lesezimmer treffend beschrieben, Schwäche „Blätter kleben an der Scheibe“ selbst erkannt.
+- Ablehnungsverhalten nicht eigens geprüft. Einordnung: als Video-Steuerer mit Bildern auf der 3080 geeignet;
+  Fachtexte weiter nur geprüft.
+
 ## Offen
 
 - **Zwei RTX 3090 seit 14.10.2026** (Stufe 6): Ein-Karten-Einstellung abgelöst, freie Kartenwahl, Strata gemessen. Offen:

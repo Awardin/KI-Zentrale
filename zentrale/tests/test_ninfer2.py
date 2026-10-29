@@ -229,11 +229,11 @@ class Konfiguration(unittest.TestCase):
         self.assertIn('29.10.2026', e1['karten_grund'])
         self.assertEqual((e2['port'], e2['feste_karte'], e2['modell_id'], e2['karten'], e2['bedarf_je_karte_mib'],
                           e2['startzeit_max_s']),
-                         (8081, 1, 'qwen3.8-27b-ninfer-2', ['RTX 3090'], 21000, 240))
+                         (8081, 1, 'qwen3.8-27b-ninfer-2', ['RTX 3090'], 21200, 240))   # gemessen 29.10.2026
         self.assertEqual((e2['programm'], e2['modelldatei']), (e1['programm'], e1['modelldatei']))
         self.assertIn('NInfer 2 (Suprim, 96K)', e2['wofuer'])
         self.assertIn('Port 8081', e2['wofuer'])
-        self.assertTrue(e2['bedarf_hinweis'].startswith('Schätzung 29.10.2026'))
+        self.assertTrue(e2['bedarf_hinweis'].startswith('Gemessen 29.10.2026'))
         self.assertNotEqual(e2['farbe'], e1['farbe'])
         for flag, wert in (('--port', '8081'), ('--model-id', 'qwen3.8-27b-ninfer-2'),
                            ('--max-context', '98304'), ('--kv-capacity', '98304')):
