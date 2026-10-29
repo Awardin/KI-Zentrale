@@ -386,7 +386,7 @@
         "sampler": "lcm",
         "shift_video": 12.0,
         "shift_audio": 2.0,
-        "grund": "Seit 11.10.2026: DMAD full critic (ZhengmingYu/DMAD, Lizenz MiniMax-H3-Community, 1,96 GB, SHA-256 d3ee9f59…eb1b geprüft), 4 Schritte, lcm, Verschiebung 12/2 laut Modellkarte. Vergleich 11.10.2026 (Video „I Tested the BEST MiniMax H3 Turbo LoRAs“): gegen die Studio-LoRA bei 4 und 8 Schritten, DMAD lora critic und LightX2V 4 Schritte v1.2, drei Szenen, 960×544 und 1344×768: natürlichste, matteste Haut, sauberste Bewegung (Läufer ohne auftauchende Gegenstände), halbe Zeit von 8 Schritten. Nur für neue Videos aus Text bzw. Bild mit 4 Schritten. Befunde in PLAN.md, Stufe 3s."
+        "grund": "Seit 11.10.2026: DMAD full critic (ZhengmingYu/DMAD, Lizenz MiniMax-H3-Community, 1,96 GB, SHA-256 d3ee9f59…eb1b geprüft), 4 Schritte, lcm, Verschiebung 12/2 laut Modellkarte. Vergleich 11.10.2026 (Video „I Tested the BEST MiniMax H3 Turbo LoRAs“): gegen die Studio-LoRA bei 4 und 8 Schritten, DMAD lora critic und LightX2V 4 Schritte v1.2, drei Szenen, 960×544 und 1344×768: natürlichste, matteste Haut, sauberste Bewegung (Läufer ohne auftauchende Gegenstände), halbe Zeit von 8 Schritten. Nur für neue Videos aus Text bzw. Bild mit 4 Schritten. Befunde in PLAN.md, Stufe 3s. Hörprobe Sascha 29.10.2026 (Sprechszene, 2 Nummern gegen 20 Schritte): Stimme hallt wie in einem gekachelten Raum, Mundinneres falsch – für Videos mit Sprache „Beste“ (PLAN.md, Test 29.10.2026)."
       },
       "acc8": {
         "aktiv": true,
@@ -447,7 +447,7 @@
         {
           "schritte": 4,
           "name": "Schnell",
-          "text": "am schnellsten; aus Text und Bild mit DMAD: natürlichste Haut, besonders für Personen"
+          "text": "am schnellsten; aus Text und Bild mit DMAD: natürliche Haut – nicht für Sprache (Stimme hallt, Mund innen falsch)"
         },
         {
           "schritte": 6,
@@ -472,7 +472,7 @@
         {
           "schritte": 20,
           "name": "Beste",
-          "text": "ohne Turbo, wie die guten Clips bisher",
+          "text": "ohne Turbo, wie die guten Clips bisher; für Personen, die sprechen",
           "standard": true
         }
       ],

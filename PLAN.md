@@ -3063,6 +3063,43 @@ gegen die Hub-Angaben geprüft, `C:\LLM\models\Qwen3.8-27B-abliterated\`.
 - Ablehnungsverhalten nicht eigens geprüft. Einordnung: als Video-Steuerer mit Bildern auf der 3080 geeignet;
   Fachtexte weiter nur geprüft.
 
+## Test 29.10.2026: H3-„Realismus-Rezept“ aus einem YouTube-Kommentar (abgebrochen; Befund: DMAD nicht für Sprache)
+
+Anlass: Kommentar unter „MiniMax H3 Singularity V2 vs V1.3“ (The AI Brief): Startbild aus Krea2 mit Haut-LoRA, H3 ohne
+Turbo, 1,5 MP, Euler, Planer beta, 25 Schritte, Realism-LoRA. Krea2 (Lizenz offen) und Singularity (abgelehnt 04.10.)
+nicht geprüft. Auftrag Sascha „Ja, testen“. Skript im Sitzungsordner (nicht im Repo): Studio-Ablauf `video_graph`, direkt an
+ComfyUI 1, Platz angemeldet, Modell FE / Text-Encoder+VAE Suprim, Startbild `Werkstatt-Abnahme/Bild_00136_.png` (Qwen
+Turbo, `video169`), Sprech-Prompt Therapeutin, Realism-LoRA und schnelle Aufmerksamkeit an, 960×544, 5 s, Nummern 11/12.
+
+| Variante | Rechenzeit (n11 / n12) | Dateien |
+|---|---|---|
+| A DMAD 4 Schritte (Studio „Schnell“) | 71,7 / 53,7 s | `Video-Real-A-n11_00001_`, `…-n12_…` |
+| B 20 Schritte, res_multistep/simple („Beste“) | 202,8 / 237,6 s | `Video-Real-B-…` |
+| E 25 Schritte, Euler/beta (Rezept) | 313,7 / 288,6 s | `Video-Real-E-…` |
+
+- **Abgebrochen** nach E (Sascha: keine Stunde Grafikkarte): C (1344×768) lief an und wurde unterbrochen, D (1632×928 ≈
+  1,5 MP) nie gerechnet. Lehre: Läufe über ~15 min nur mit ausdrücklich bestätigter Dauer, teure Varianten erst nach einem
+  Vorergebnis. ComfyUI gestoppt (/interrupt, gewartet bis die Warteschlange leer war), abgemeldet, Speicher freigegeben.
+- **Standbilder** (Gesicht bei 0,2 / 2,5 / 4,8 s, gleiche Anzeigegröße, plus Vollbild): A, B und E praktisch gleichwertig –
+  matte Haut, kein Plastikglanz, Gesicht erkennbar; bei allen dieselben sehr weißen, gleichmäßigen Zähne. E zeigt keinen
+  sichtbaren Vorteil gegenüber B oder A, kostet aber das 4- bis 6-Fache von A. Die Grenze ist die Auflösung: Das Startbild
+  hat deutlich mehr Poren und feine Falten als jedes Videobild bei 960×544 (dort weicher, auf der Stirn Farbstufen).
+- **Hörprobe Sascha:** „Bei A ist der Sound voller Hall wie in der Toilette, und auch der Mund ist falsch von innen.“
+  B und E klingen messbar gleich (−13,4/−12,3 LUFS, gleiche Helligkeit), A ist rund 4 dB leiser. Meine erste Deutung der
+  Messung („A trockener“) war falsch: Hall zeigt die spektrale Flachheit nicht. Lehre: Sprechszenen mit dem Ohr abnehmen;
+  der DMAD-Test vom 11.10. (Stufe 3s) hatte nur Haut, Bewegung und mit Whisper die Wörter geprüft, „Lippen nicht geprüft“.
+- **Umgestellt (Auftrag Sascha „Ja, umstellen“):** Skill `bild-video-studio`, `scripts\studio.py`: neue Funktion
+  `video_standard` – Videos aus Text/Bild mit `<d>` im Prompt standardmäßig `beste` (20 Schritte), ohne Sprache weiter
+  `schnell` (DMAD), mit Referenz `schnell_beste`; bei ausdrücklich `--qualitaet schnell` und Sprache ein Hinweis. Gebaut von
+  DeepSeek V4.1 Flash (DSH-Lauf `videostandard-sprache-20261029`, 74 s, 0,01 USD, nur der Python-Aufruf außerhalb des
+  Ordners); abgenommen: Diff gelesen, `py_compile`, `video --help`, `cmd_video` mit Attrappe statt Werkstatt in fünf Fällen
+  (Sprache Text/Bild → 20, ohne Sprache → 4 + DMAD, Referenz → 8 + acc8, `schnell` + Sprache → Hinweis). Oberfläche
+  (`werkstatt\config.json`): „Schnell“ – „nicht für Sprache (Stimme hallt, Mund innen falsch)“, „Beste“ – „für Personen,
+  die sprechen“ (Standard der Oberfläche war schon „Beste“); Werkstatt-Tests 225 OK, Werkstatt neu gestartet, Texte live.
+  STUDIO.md (Qualitätsstufen, LoRA-Tabelle, „Videos im Detail“, Abschnitt 8) und SKILL.md nachgezogen.
+- Ungeprüft: höhere Auflösung, Whisper, Szenenfolge/Weiterführen mit Sprache (rechnen mit Turbo-LoRA bzw. 8 Schritten,
+  nicht DMAD). Suprim-Videotest (Video ganz auf der Suprim trotz Ultrawide-Monitor) vorbereitet, nicht gerechnet.
+
 ## Offen
 
 - **Zwei RTX 3090 seit 14.10.2026** (Stufe 6): Ein-Karten-Einstellung abgelöst, freie Kartenwahl, Strata gemessen. Offen:
