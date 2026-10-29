@@ -330,10 +330,18 @@
         "--cache-type-v",
         "q8_0",
         "--jinja",
+        "--reasoning-budget",
+        "2048",
+        "--spec-type",
+        "draft-mtp",
+        "--spec-draft-n-max",
+        "3",
         "--no-webui"
       ],
-      "bedarf_je_karte_mib": 18600,
-      "bedarf_hinweis": "Gemessen 29.10.2026 auf der RTX 3080: 18.240 MiB nach dem Start, 18.525 MiB nach 34K Einlesen und Bild (96K, q8-Cache, Bildteil); 2 GiB bleiben frei.",
+      "mtp_grund": "29.10.2026 (Sascha: „MTP würde ich trotzdem mal versuchen“): Die UD-IQ4_XS enthält den MTP-Kopf schon (blk.64.nextn, qwen35.nextn_predict_layers 1); draft-mtp mit 3 Vorschlägen wie im früheren Start-LLM.ps1.",
+      "denk_grund": "29.10.2026 (Sascha): In DSH dachte das Modell vor jedem Schritt minutenlang (bis 5 min fürs Beurteilen eines Bildes, ~38 Token/s). --reasoning-budget 2048 begrenzt das Denken je Antwort auf ~2.000 Token (~50 s).",
+      "bedarf_je_karte_mib": 19700,
+      "bedarf_hinweis": "Gemessen 29.10.2026 auf der RTX 3080 mit MTP: 19.560 MiB nach dem Start, 19.684 MiB nach 34K Einlesen und Bild (96K, q8-Cache, Bildteil); ohne MTP 18.240/18.525. Knapp 0,8 GiB bleiben frei.",
       "startzeit_max_s": 180
     },
     {

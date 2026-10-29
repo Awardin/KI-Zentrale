@@ -3062,6 +3062,13 @@ gegen die Hub-Angaben geprüft, `C:\LLM\models\Qwen3.8-27B-abliterated\`.
   Bild: Lesezimmer treffend beschrieben, Schwäche „Blätter kleben an der Scheibe“ selbst erkannt.
 - Ablehnungsverhalten nicht eigens geprüft. Einordnung: als Video-Steuerer mit Bildern auf der 3080 geeignet;
   Fachtexte weiter nur geprüft.
+- **Denkbudget** (Sascha: DSH dachte bis 5 min fürs Beurteilen eines Bildes): `--reasoning-budget 2048` im Eintrag.
+- **MTP** (Sascha: „MTP würde ich trotzdem mal versuchen“): Die UD-IQ4_XS enthält den MTP-Kopf (`blk.64.nextn`,
+  `qwen35.nextn_predict_layers` 1; die GSQ-RCO-IQ3_S nicht) → `--spec-type draft-mtp --spec-draft-n-max 3`. Gleicher
+  Test, ohne Denken: Schreiben **+26 bis +57 %** (kurz 38,7 → 51,3; nach 8K 36,8 → 57,8; nach 34K 31,4 → 44,9;
+  Patiententext 38,6 → 48,7; Bild 38,4 → 48,7 tok/s), Einlesen ~6 % langsamer (1.298 → 1.215). Speicher 19.560 →
+  19.684 MiB (frei ~0,8 GiB, 34K-Lauf ohne Fehler) → Bedarf 19.700 MiB. Bleibt eingeschaltet. Belege
+  `test_3080_ohne_mtp.json` / `test_3080_mit_mtp.json`.
 
 ## Test 29.10.2026: H3-„Realismus-Rezept“ aus einem YouTube-Kommentar (abgebrochen; Befund: DMAD nicht für Sprache)
 
