@@ -118,6 +118,10 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   `ornith-q6-256k:latest` mit num_ctx 262144 und num_batch 256 im Modelfile, Bedarf 33.500 MiB, 31,2 GiB gemessen,
   121 Token/s). DSH Desktop kennt Ornith Q6 (Ollama) und Ornith Q4 (PolyStrata) als Anbieter. Für Agentenarbeit
   (Webseiten bauen) Flash-Next statt Ornith nehmen – Ornith scheiterte über DSH an den Werkzeugen. PLAN.md, 19.10.2026.
+- **Qwen3.8 27B IQ3_S auf der RTX 3080** (29.10.2026, Auftrag Sascha): Zentrale-Eintrag `qwen27-iq3s` (Art `llamacpp`,
+  Port 8103, llama-server b11838, ISTA GSQ-RCO IQ3_S + Bildteil, 128K, q8-Cache, RTX 3080 vor RTX 3090, Bedarf noch
+  geschätzt 17.500 MiB), in DSH Desktop als Anbieter „Qwen 27B – RTX 3080 lokal“. Gedacht neben Strata auf beiden 3090.
+  Noch nicht gestartet und nicht gemessen; PLAN.md, 29.10.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,

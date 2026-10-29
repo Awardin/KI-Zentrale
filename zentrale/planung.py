@@ -37,6 +37,22 @@ def variante(e, vid=None):
                 variante_name=v['name'])
 
 
+def startbedarf(e):
+    """Eintrag so, wie er zum Starten Platz braucht.
+
+    Ein Dienst wie ComfyUI belegt nach dem Start fast nichts; Platz für die eigentliche Arbeit meldet jeder Auftrag
+    vorher selbst an (`/api/platz`). `start_bedarf_je_karte_mib` und `start_karten` ersetzen dann beim Starten
+    `bedarf_je_karte_mib` und `karten` (29.10.2026: ComfyUI ließ sich neben Strata nicht starten, obwohl Bilder auf
+    der RTX 3080 rechnen). Ohne diese Felder bleibt der Eintrag unverändert.
+    """
+    neu = {}
+    if 'start_bedarf_je_karte_mib' in e:
+        neu['bedarf_je_karte_mib'] = e['start_bedarf_je_karte_mib']
+    if 'start_karten' in e:
+        neu['karten'] = e['start_karten']
+    return dict(e, **neu) if neu else e
+
+
 def wunschkarten(karten, wunsch):
     indizes = []
     for name in wunsch:

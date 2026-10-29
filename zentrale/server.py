@@ -276,6 +276,8 @@ class Zentrale:
         """`variante`: gewählte Variante (Kontextgröße), sonst die Standardvariante; unbekannt -> ValueError."""
         if aktion != 'freigeben':
             e = planung.variante(self.eintraege[eintrag_id], variante)
+            if aktion == 'starten':
+                e = planung.startbedarf(e)
         roh = self._aktuell()
         karten, verbraucher = self._mit_reserven(roh)
         if aktion == 'freigeben':
@@ -501,7 +503,7 @@ class Zentrale:
 
     def starten(self, eintrag_id, schritte, ohne_freigabe, variante=None):
         try:
-            e = planung.variante(self.eintraege[eintrag_id], variante)
+            e = planung.startbedarf(planung.variante(self.eintraege[eintrag_id], variante))
         except ValueError as ex:
             return 400, {'fehler': str(ex)}
         karte = None

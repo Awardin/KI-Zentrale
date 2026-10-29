@@ -2447,6 +2447,51 @@ nachgeprüft.
 Testbilder: `Studio\Werkstatt-Abnahme\Test3080-k*` (ohne Begleitdatei, aus dem Messskript), `Bild-3_0000*`, `Bild_0013*`,
 `Bild-2_0000*` (können in den Papierkorb, wenn Sascha will).
 
+## Werkstatt: Zusammenfassungen mit lokalen Modellen (23.10.2026, Zweig abgenommen, noch nicht in main)
+
+Anlass: Modellvergleich Flint / Qwen3.8 27B / Flash-Next an einem Video-Transkript (Projekt Lokale-Wissensextraktion,
+README 23.10.2026). Konzept von Claude, gegengelesen von Fable 5.1 (xhigh), Auftrag Sascha „Schritte 1 bis 4, Bau durch
+DeepSeek, Abnahme durch dich“.
+- **Bau:** DeepSeek V4.1 Flash über DSH (59 Aufrufe, 0,09 USD, 0 Werkzeugfehler), Zweig `werkstatt/zusammenfassung-20261023`
+  im Worktree `C:\Worktrees\ki-zentrale-werkstatt-zf`, Basis `5ea8f2b`, Commits `a41c6d9` (Antwortgrenze 32.768, offener
+  Denkteil/abgeschnittene leere Antwort als Fehler statt Ablage, Kontextreserve min(32.768, Kontext/4)), `0d683df` (Strata
+  und PolyStrata als lokale Auswerter, gesendet wird die laut `/v1/models` geladene Kennung, `modell_tatsaechlich` im
+  Dateikopf; Messlauf bleibt bei Ollama/NInfer), `061916e` (Platzhalter `[Zielumfang]` = min(2.500, 200 + Wörter/4) samt
+  Stichpunktzahl; Anweisung „Gegliederte Zusammenfassung“ in `STANDARD`), `ea16bb3` (Nachprüfung `werkstatt\pruefung.py`:
+  Zeitmarken ±5 s gegen das Transkript, 5-Minuten-Abdeckung ab 60 Wörtern, CJK-Zeichen; Block unter dem Ergebnis, Feld
+  `pruefung`), `8cafe28` (Baustand), Abnahme-Korrektur `40f44a6` (leerer Text ohne Abschneiden: „keinen Text geliefert“).
+  Tests im Zweig: Werkstatt 262 OK (vorher 225); Zentrale 166/168 (die zwei Steckplatz-Tests, im Hauptcheckout korrigiert).
+- **Echttest** (Werkstatt aus dem Zweig, eigener Datenordner; Flash Q4): englischer Podcast 27 min (5.353 Wörter) →
+  Vorgabe 1.500 Wörter, Ergebnis 1.147 Wörter, 52 Stichpunkte, 530 s, 52 Zeitmarken echt, gemeldete Lücke Minute 25–30 =
+  Werbeteil (richtig weggelassen); deutsches Gartenvideo 18 min (2.759 Wörter) → 850 / 699 Wörter, 34 Stichpunkte, 272 s,
+  „in Ordnung“. Kopf zeigt `modell_tatsaechlich: qwen3.8-flash-next-unsloth-ud-iq4_xs`. **Offen:** beim englischen
+  Podcast viel Denglisch (Fachjargon bleibt englisch) und Überschriften in Anführungszeichen → Sprachregel verschärfen,
+  danach erneut testen, dann Zweig in main zusammenführen und Haupt-Werkstatt neu starten.
+- Die Anweisung „Gegliederte Zusammenfassung“ steht schon in der Promptsammlung (über `/api/anweisung`), die Einleitung
+  nennt `[Zielumfang]`. Die Haupt-Werkstatt (alter Code) läuft wieder und kennt den Platzhalter noch nicht.
+
+## Weitere Änderungen am 23.10.2026 (nicht committet, außer wo genannt)
+- **Chat-Reiter:** zweiter Flash-Eintrag „Qwen3.8 Flash-Next Q4 · Strata“ (Kennung `qwen3.8-flash-next-unsloth-ud-iq4_xs`),
+  der alte heißt „… IQ3_XXS · Strata“ (`Strata-App\daten\data\model-providers.json`; Strata antwortet immer mit der
+  gestarteten Fassung). Kopierknöpfe: `allow="clipboard-read; clipboard-write"` an den Rahmen von Chat und Monitor
+  (`zentrale\web\index.html`), live noch nicht bestätigt.
+- **Zentrale-Tests:** `test_karten.py` auf Steckplatz 135 der 3080 nachgezogen (nach dem Umstecken übersehen; seit
+  `5ea8f2b` rot gewesen), Zentrale 168 OK.
+- **Open WebUI 0.12.3** (Auftrag Sascha) in eigener Umgebung `C:\LLM\runtimes\open-webui` (uv, Python 3.12), Start/Stopp
+  `starten.py [--stopp]`, nur 127.0.0.1:8792, ohne Anmeldung, OFFLINE_MODE, ohne Telemetrie/Update-Prüfung/Websuche,
+  Verbindungen Strata 8095, PolyStrata 8097, NInfer 8080, Testplatz 8101; **Ollama bewusst aus** (würde Ornith ohne
+  `num_batch 256` laden). Nicht in der Zentrale. Angeboten, nicht umgesetzt: Code-Ausführung/Tools ganz abschalten.
+- **Flash-Standard:** Zentrale-Standard bleibt IQ3_XXS; Sascha nutzt für Recherche und Zusammenfassungen Q4 (Variante
+  `q4`, `recherche-lokal` fest Q4). Ob Q4 Standard wird, ist offen.
+- **RTX 3090 FE zu heiß:** allein unter Last 88–89 °C bei 336 W, Takt gedrosselt auf ~1.500 MHz; auch bei 200 W 89 °C mit
+  100 % Lüfter. Über beide Karten verteilt (Strata) 77–78 °C. Befund: Wärmeleitpaste (ggf. Pads) erneuern – Saschas Umbau.
+- PandaCode (Desktop-Hülle um Claude Code/Codex, kennt OpenCode/GLM/MiMo) gefunden; lokale Modelle nur indirekt (OpenCode
+  nicht installiert, Claude Code gegen Strata ungeprüft). Nichts geändert.
+
+## NInfer (Qwen3.8 27B): Antwortgrenze 32.768 statt 8.192 Token (23.10.2026)
+
+Saschas Chat-Test (Strata-Oberfläche, Reiter „Chat“) mit einem Transkript (6.407 Token Prompt): Qwen brach zweimal nach genau 8.192 Token ab (`finish=output_limit`), alles Denkteil, die Oberfläche meldete „The model returned no text“. Die Oberfläche schickt keine Längenvorgabe mit, deshalb greift NInfers `--default-max-tokens`. Im Eintrag `ninfer` jetzt `32768` (Zentrale und NInfer neu gestartet, Kommandozeile geprüft); in der Chat-Verbindung `model-providers.json` (Strata-App) `maxOutput` ebenfalls 32.768. Clients mit eigener Vorgabe (DSH, Hermes) betrifft das nicht.
+
 ## RTX 3080 am M.2-Steckplatz statt USB4; Bilder und Strata neu gemessen (23.10.2026)
 
 Sascha hat die 3080 vom eGPU-Dock (USB4) an einen M.2-Steckplatz umgesteckt. Geprüft: Windows und Treiber sehen sie als
@@ -2783,6 +2828,196 @@ ChatGPT-Konto abgelehnt) und Messwerte: [SPEC-atelier.md](SPEC-atelier.md), [SPE
 - **Offen/später:** LoRA-Feintuning auf Fibo Dev (Hausstil), Bria-LoRAs „Multi-Turn Local Editing“/„Product Shot“, sobald
   veröffentlicht; Scene Analyzer (`C:\LLM\models\fibo-scene-analyzer-gguf`, geladen, nicht eingebunden) für Ebenen-Zerlegung;
   ein lokaler Beschreiber statt DeepSeek.
+
+## Bewertet 24.10.2026: PTD-Beschleuniger für Referenz-Videos (nur geklärt, nichts geladen)
+
+Anlass: Video „RefMods Replace LoRAs?“ (Winnougan). RefMods selbst (vorab durch den VAE kodierte Referenzen als kleine
+safetensors) bringen dem Studio nichts Neues – es nimmt Referenzbilder direkt. Auftrag Sascha: nur klären, ob Taobaos
+PTD-Beschleuniger mit Kernknoten und unserem MiniMax-Modell gehen.
+
+- **Quelle:** `taobao-content-ai/MiniMax-H3-PTD-LoRAs` (Ref2VA, 8 und 4 Schritte, Rang 128, BF16; 11,1 bzw. 5,58 GB),
+  dazu `…-PTD-RefAsymOPD-LoRAs` (8 Schritte, laut Autor schärfer und glaubwürdigerer Hintergrund, keine Messzahlen;
+  4 Schritte „coming soon“). Verfahren: Parametric Trajectory Distillation (arXiv 2610.11498, Code vita-epfl/PTD-inference).
+  Verkleinert: nynxz (INT8, 4 Schritte 2,86 GB, 8 Schritte 5,68 GB), Winnougan (Rang 64/32, nur Rang gekürzt; sein Adapter
+  für gekürzte Modelle nur als RAR mit `.bat` über Patreon).
+- **Lizenz:** Gewichte MiniMax H3 Community License (wie das Videomodell, Gebietsbefund 06.10.2026); Knoten-Code Apache 2.0.
+- **Kernknoten:** nein. ComfyUI hat kein PTD im Kern (anders als PDD seit 0.37). Nötig wären ComfyUI-PTD (EPFL, eigener
+  Sampler und eigene Sigmas; Taobaos Knoten verlangt `pip install -e` in der ComfyUI-Umgebung) und für unser Modell
+  zusätzlich `Nynxz/ComfyUI-PTD-Compact` (eine Person, 4 Sterne). Kein KSampler, keine Verschiebung, kein CFG.
+- **Unser Modell** `minimax_h3_ref2va_pruned_int8_convrot`: Taobao und Winnougan nennen gekürzte, quantisierte und
+  PDD-Basen „not valid“; nynxz' Lader nimmt sie, warnt aber, dass der Quantisierungsfehler der Basis größer ist als der
+  Beitrag von PTD. Geprüft jeweils nur in 1344 × 768 (Studio-Standard 960 × 544).
+- **Entscheidung:** nicht einbauen. Für 8 Schritte bleibt die PDD-LoRA (laut Video kein Zeitgewinn durch PTD); neu wäre nur
+  die 4-Schritt-Fassung für Referenz-Videos. Wieder ansehen, wenn PTD in den ComfyUI-Kern kommt – dann INT8 4 Schritte
+  gegen die Turbo-LoRA v0.1 vergleichen.
+
+## Bewertet 27.10.2026: „Generate 4K AI Videos on a 6GB GPU? MiniMax H3 in ComfyUI“ (nur gelesen, nichts geändert)
+
+Quelle: YouTube `sJbhZjAzkE0` (CG Pixel, 25.10.2026), Beschreibung und Transkript von Sascha eingefügt. Nur das
+Transkript gelesen, nicht das SelfLit-Repo; kein Download. Ergebnis: **nicht einbauen.**
+
+| Baustein | Bewertung |
+|---|---|
+| **SelfLit Progressive Sampler** (erste Schritte klein, Latent hochskaliert, letzte Schritte in voller Größe; 0,4–0,6 MP) | dasselbe Prinzip wie DualPass mit Latent-Upscaler (Bewertung 04.10.2026). Zielt auf 6-GB-Karten; die 3090 rechnen „nativ“ 1344 × 768 direkt. Unverändert: nur prüfen, wenn größere Videos gebraucht werden |
+| Die „neue Aufmerksamkeit“ (nur unausgewogene Köpfe korrigieren) | Das Studio hat seit Stufe 3u die schnellere Aufmerksamkeit (Kernknoten, 24–32 % kürzer, gleichwertig), Veda Sparse ist verworfen. Im Transkript sind Auflösungsstufe und Aufmerksamkeit als Ursache vermischt; welche wirkt, bleibt offen |
+| **DLSS-5-Knoten** (fertiges Video auf 2K/4K) | Video-Hochskalieren fehlt dem Studio (Bilder ja, mit Qwen). Die DLLs kommen aber von einem privaten Google-Drive-Link statt von NVIDIA: nicht laden |
+| „Fuse Delta“-Turbomodell | Community-Mischung, abgelehnt wie am 04.10.2026 („Nochmal“ alter Videos wäre nicht mehr gleich) |
+| Anti-Burn-LoRA (Stärke 0,5, gegen verbrannte Haut bei wenigen Schritten) | gelöst durch DMAD (4 Schritte), die PDD-LoRA (8 Schritte) und die Realism-LoRA; höchstens kleiner Gewinn |
+
+- Auffällig: Zeitangaben widersprechen sich („rund 13 Minuten“ am Anfang, „rund 38 Minuten je Video“ bei den
+  Ergebnissen); kein Vergleich mit einem Video, das gleich in voller Größe gerechnet wurde. Der Autor zeigt selbst
+  Gesichtsverformungen bei 0,4–0,5 MP.
+- Wieder ansehen, wenn Sascha Videos in 2K/4K will: dann „klein → groß“ (SelfLit oder DualPass) gegen „nativ“ mit
+  5-s-Clips messen und einen Video-Hochskalierer aus vertrauenswürdiger Quelle suchen.
+
+## Bewertet 27.10.2026: „MiniMax H3 Ref2VA vs FL2VA … and What's a Hybrid?“ (nur gelesen, nichts geändert)
+
+Quelle: YouTube `NZsupp9RAlc` (Beyond Frame AI, 26.10.2026), Beschreibung und Transkript von Sascha eingefügt. Nur das
+Transkript gelesen, weder Workflow (`faridtgv/Hybrid_workflow`) noch Loader-Repo oder Hybrid-Dateien
+(`smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models`); kein Download.
+
+- **Aussage:** Laut MiniMax haben die beiden H3-Modelle verschiedenes Nachtraining, Ref2VA hat die schwächere Bildqualität
+  (abgesoffene Schatten, harter Kontrast, übersättigte Haut). Ein Nutzer verglich beide Modelle tensorweise: über 97 %
+  gleich oder fast gleich, verschieden ist vor allem die AdaLN-Projektion in jedem der 50 Blöcke. Hybrid = FL2VA als
+  Grundlage, AdaLN von Ref2VA nur in einem Blockbereich (Knoten „MiniMax H3 Hybrid Loader“ oder fertig gemischte
+  Dateien für den normalen Modell-Lader). Im Video (gleiche Nummer, Waveform) war 45–49 am saubersten; 5–49 und 30–49
+  schnitten mehr ab. Danach je Bild im Bildraum nachbearbeitet (Kontrast leicht negativ, filmische Lichterkurve von
+  Orion4D, fremde Knoten); laut Video lässt sich Abgeschnittenes nicht zurückholen.
+
+| Baustein | Bewertung |
+|---|---|
+| **Hybrid FL2VA + Ref2VA-AdaLN** | Echter neuer Hebel für „Video mit Referenz“ und „Person tauschen“ (rechnen mit `minimax_h3_ref2va_pruned_int8_convrot`); kein Training. Beide Dateien liegen schon da |
+| Fertige Hybrid-Dateien | neue Modelldateien (Download-Freigabe, vermutlich BF16); wie bei INT8 nur für neue Aufträge, „Nochmal“ alter Videos bliebe beim alten Modell |
+| Nachbearbeitung je Bild | nicht im Studio (nur Kernknoten); niedrige Priorität, Abgeschnittenes kommt dadurch nicht zurück |
+| FastH3-Omni 8 Schritte (FastVideo) | „manche finden es weniger kontrastreich“, unbelegt; für 8 Schritte rechnet die PDD-LoRA |
+| Startbild + Referenz in einem Durchgang | Szenenfolge nimmt Startbild **oder** Referenzbilder; kleine Lücke, für Praxis-Videos selten nötig |
+
+- **Haken:** (1) PDD-LoRA (eigene Ausgabeköpfe) und Character-Swap-LoRA sind auf Ref2VA trainiert; ob sie auf einem Hybrid
+  gleich wirken, ist offen. (2) Unsere Dateien sind INT8 (convrot); ob der Loader sie nimmt oder ob die AdaLN-Schichten
+  darin unquantisiert liegen (dann ließe sich das Hybrid aus den vorhandenen Dateien selbst bauen), ist ungeprüft.
+  (3) Ob unsere Referenz-Videos überhaupt härter sind, ist ungemessen; notiert ist bisher nur „Turbo glänzt orange“.
+- **Entscheidung Sascha 27.10.2026:** nur festhalten, nichts messen. Möglicher Weg später (nur auf Auftrag): erst an
+  vorhandenen Studio-Videos den Anteil fast schwarzer/fast weißer Pixel bei Referenz- gegen Text-/Bild-Videos messen (kein
+  Download); nur wenn Referenz-Videos härter sind, Hybrid 45–49 bei gleicher Nummer mit und ohne PDD-LoRA vergleichen.
+
+## Bewertet 27.10.2026: „Baidu Unlimited OCR 2 Tested Locally!“ – Texterkennung ganzer Dokumente (nur gelesen, nichts geändert)
+
+Quelle: YouTube `SEY5sRYlG3s` (AI WITH Rithesh, 27.10.2026), Beschreibung und Transkript von Sascha eingefügt. Nur das
+Transkript gelesen, weder Modellkarte (`baidu/Unlimited-OCR-2`) noch Code oder Bericht; kein Download.
+
+- **Was es ist:** OCR-Modell von Baidu, MIT, am 27.10.2026 erschienen. 3,3 Mrd. Parameter (Mixture of Experts, ~0,5 Mrd.
+  aktiv), Bild-Encoder wie DeepSeek-OCR. Liest ein ganzes Dokument in einem Durchgang: spärliche Aufmerksamkeit (SR-SWA)
+  mit Seitentor (aktuelle Seite und Nachbarn) und wenigen fernen Blöcken, fest ~512 Bezugs-Token. Ausgabe je Block mit
+  Art (Titel, Text, Tabelle, Fußzeile), Überschriftenebene und Koordinaten; fortgesetzte Tabellen als „append table“.
+- **Zahlen:** von Baidu MPDocBench 84,6 (bis 30 Seiten), MarathonDocBench 77,1 (100–300 Seiten, eigener Benchmark),
+  Einzelseiten OmniDocBench 94,0 (andere fast 97). Test im Video (MacBook Air M5, PyTorch, BF16, ~8 GB): Tabelle mit
+  52 Zeilen über 3 Seiten fehlerfrei; Vertrag mit 30 Seiten alle Seiten erhalten, 5 von 6 Angaben richtig (Buchstabe O
+  als Null gelesen), 29 min für ~10.000 Token; 9 von 18 Überschriftenebenen richtig; verrauschte Einzelseite fast
+  fehlerfrei (nur Englisch und Chinesisch getestet). Gleichbleibende Zeit je Schritt nur mit Baidus NVIDIA-Kernels.
+
+| Punkt | Werkstatt (LightOnOCR-3, Stufe 4) | Unlimited OCR 2 |
+|---|---|---|
+| Einzelseiten, Scans, Bögen | 99,5 % der Zeichen, alle Zahlen in Tabellen, 4–9 s je Seite auf der 3080; an deutschen Unterlagen gemessen | laut Baidu bei Einzelseiten nicht vorn; Deutsch ungeprüft |
+| Tabellen über Seitenwechsel | jede Seite für sich, auf Folgeseiten fehlt der Bezug zum Tabellenkopf | **Stärke:** Fortsetzung erkannt, Seiten bleiben zusammen |
+| Seitenbezug (wissens-notebook) | Markdown je Seite, wie gebraucht | Seiten mit Blockart und Koordinaten; kein Vorteil für uns |
+| Überschriftenebenen | kein bekanntes Problem | benannte Schwäche (9 von 18) |
+| Laufzeit | llama.cpp, GGUF, über die Zentrale angebunden | PyTorch mit eigenem Code und Kernels; neue Umgebung und Zentrale-Eintrag (Art `python_dienst`) nötig; ob die Kernels auf Ampere laufen, ist offen |
+
+- **Entscheidung:** nicht einbauen. Unsere Fälle (Bücher mit Seitenbezug, Befund- und Fragebögen, Scans) deckt
+  LightOnOCR auf Deutsch gemessen ab; ein Gewinn wäre nur bei Tabellen über mehrere Seiten (Rechnungslisten,
+  Kontoauszüge). Wieder ansehen, wenn solche Dokumente bei LightOnOCR den Zusammenhang verlieren oder eine schlankere
+  Laufzeit (etwa llama.cpp) kommt; dann mit einem deutschen Dokument testen, nicht nach dem Benchmark.
+- **Nachtrag 28.10.2026** (YouTube `OneYJJWDnNA`, 1littlecoder, nur Transkript): gemietete RTX 4090 (24 GB als
+  Mindestmaß genannt), englisches Fachpaper mit 13 Seiten in einem Durchgang, Stichproben an zwei Tabellenwerten und
+  einer Formel richtig; keine Rechenzeiten, kein Deutsch. Neu sind nur Betriebsdetails: zwei Lesearten (`infer_multi`
+  für mehrere Seiten in einer Anfrage, `infer` für eine Seite mit Kachelung, „Gundam mode“, weniger Speicher);
+  Transformers zum Ausprobieren, SGLang für Dauerbetrieb – beides eine neue Umgebung, kein llama.cpp. 24 GB würde
+  eine 3090 tragen, nicht die 3080 (20 GB); ob Baidus Kernels auf Ampere laufen, bleibt offen (gezeigt nur Ada/4090).
+  Seiten zerlegt er mit PyMuPDF wie wir. Urteil unverändert: nicht einbauen.
+
+## Bewertet 27.10.2026: „MOSS-Image in ComfyUI“ – neues Bildmodell (nur gelesen, nichts geändert)
+
+Quelle: YouTube `JQf72yS8vWI` (The Ai Blueprint, 27.10.2026), Beschreibung und Transkript von Sascha eingefügt. Nur das
+Transkript gelesen, weder Modellseite (`Comfy-Org/Moss-Image`) noch Repo oder Workflow (Patreon); kein Download.
+Ergebnis: **nicht einbauen.**
+
+- **Was es ist:** Bildmodell mit 5 Mrd. Parametern, Fassungen Base und SFT (nachtrainiert für Schrift und Layout), BF16
+  und quantisiert, von Comfy-Org verpackt. Besonderheit „Layout to Image“: Objekte und Textstellen als JSON mit Position;
+  dazu ein Prompt-Enhancer. Im Video: SFT BF16, 2K, 50 Schritte, CFG 2,8 (oder 3), Shift 5 (für Porträts/Blätter 3),
+  Euler; 8-Schritt-DMD-LoRA mit CFG 1 sichtbar schwächer bei Gesichtern. Der Autor zieht für Fotorealismus Krea 2 vor
+  und sagt, MOSS schlage die führenden Modelle nicht; ein Vergleich mit Qwen fehlt. Lizenz nennt das Video nicht.
+
+| Baustein | Bewertung |
+|---|---|
+| Fotorealismus, Charakterblätter | Qwen-Image 2.1 mit INT8 und offiziellem Turbo (1 MP 5–8 s, 4 MP 32 s) und Rezept „Charakterblatt“; kein Gewinn |
+| Schrift im Bild | Qwen kann Schrift; was exakt stimmen muss, setzen Atelier (Textebene) und Moodboard-Skill (HTML); kein Gewinn |
+| **Objekte und Text per JSON platzieren** | Atelier legt Ebenen zum Verschieben an; Fibo 2.0 arbeitet dort schon mit strukturiertem JSON, ist aber **nur nicht-kommerziell**. Einziger interessanter Punkt, falls MOSS offen lizenziert ist |
+| 8-Schritt-DMD-LoRA | verliert Qualität; das Studio-Turbo ist gleichwertig zum Standard |
+| Upscaler im Workflow | laut Autor wechselhaft; Hochskalieren und Auffrischen mit Qwen sind da |
+
+- **Wieder ansehen**, wenn die Modellseite eine offene Lizenz (etwa Apache oder MIT) nennt: dann kleiner Vergleich
+  JSON-Layout von MOSS gegen Qwen plus Atelier, für Fälle, in denen Fibo wegen der Lizenz ausscheidet.
+
+## Qwen3.8 27B IQ3_S auf der RTX 3080, in DSH als Anbieter (29.10.2026, angelegt, noch nicht gestartet)
+
+Auftrag Sascha: „kannst du mir das mal mit dem deepseek harness verbinden?“ → „Ja, anlegen“ (mit Ausweichen auf eine 3090).
+Anlass: Video DeepWakeLabs (Nemotron Bolt gegen Qwen 27B) und der Hinweis auf ISTA-DASLabs GSQ-RCO IQ3_S („task-lossless“).
+
+- **Modell:** `C:\LLM\models\Qwen3.8-27B-GSQ-RCO\Qwen3.8-27B-GSQ-RCO-IQ3_S.gguf` (11.771.546.784 Bytes) und
+  `mmproj-Qwen3.8-27B-BF16.gguf` (931.146.528 Bytes), am 29.10.2026 auf Auftrag geladen, SHA-256 geprüft (`sha256.txt`
+  daneben). Befunde und Vorgeschichte (IQ3_XXS 19.10.): `Projekte\Lokale-Wissensextraktion\README.md`, Eintrag 29.10.2026.
+- **Zentrale:** Eintrag `qwen27-iq3s` (Art `llamacpp`, Gruppe Sprachmodelle), llama-server b11838, Port **8103**, Alias
+  `qwen3.8-27b-gsq-iq3s`, `karten` RTX 3080 vor RTX 3090 (Nebenkarte hat Vorrang wie bei LightOnOCR), 128K Kontext,
+  `-fa on`, q8-Cache, `-np 1`, Bilder über `--mmproj`. Bedarf **17.500 MiB geschätzt** (`bedarf_hinweis`) – beim ersten Start
+  messen und nachtragen. Tests: 168 OK. Die Zentrale lief nach Saschas Neustart nicht und wurde neu gestartet; `/api/konfig`
+  zeigt den Eintrag.
+- **DSH Desktop:** Anbieter `qwen27-3080` („Qwen 27B – RTX 3080 lokal“, `http://127.0.0.1:8103/v1`, 128K, maxTokens
+  32.768, Text und Bild) in `~\.dsh\profiles\desktop\cordis.patch.yml` neben Strata. DSH Desktop lief nicht; der Anbieter
+  erscheint beim nächsten Start.
+- **Erster Start (Sascha, 29.10.2026 ~14:50):** „Bereit“ auf der RTX 3080, **17.444 MiB** belegt (Schätzung 17.500 passt,
+  bleibt), 3 GiB frei; `/v1/models` meldet `qwen3.8-27b-gsq-iq3s`; DSH Desktop zeigt den Anbieter in der Modellwahl.
+- **Schritt 1 Tempo (29.10.2026, sichtbar im Terminal, Skript und JSON in
+  `Projekte\Lokale-Wissensextraktion\nachweise\2026-10-29-qwen27-iq3s\`):** ohne Denken, RTX 3080 allein:
+  Schreiben **40,6 Token/s** (573 Token), bei 8K Kontext 37,8, bei 34K 32,3; Einlesen **1.264 Token/s** (8,3K) und
+  **1.128** (34K). Speicher danach 17.660 MiB → Bedarf auf **18.000 MiB** gesetzt. Karte unter Last 318 W (am Limit 320 W),
+  57 °C. Zum Vergleich: Flash-Next über Strata auf beiden 3090 115 Token/s, Einlesen 3.895.
+- **Schritt 2 Fachtext (29.10.2026, gegen NInfer):** NInfer etwas sauberer und fachlich genauer; IQ3_S ohne Denken mit
+  Sachfehler beim Reithosen-Warnzeichen (einmal Blase/Darm ganz vergessen), mit Denken fachlich vollständig, aber
+  Nicht-Wörter („Säulenbruch“). Denken kostet beide 11–13K Token fast nur fürs Wörterzählen. NInfer kennt
+  `chat_template_kwargs` nicht (400) – Denken über `enable_thinking` direkt. Auswertung:
+  `nachweise\2026-10-29-qwen27-iq3s\schritt2_auswertung.md`.
+- **DSH-Fehler „CONTEXT_WINDOW_EXCEEDED“ bei „Hi“ (262.252 Token > 131.072):** Ursache nicht das Modell, sondern REA. Seit
+  22.10.2026 hängte `~\.dsh\cordis.patch.yml` (gilt für alle DSH-Profile) den MCP-Server REA (`npx rea-agents@6.7.0 mcp`)
+  ein: 245 Werkzeuge, ~807.000 Zeichen ≈ 220.000 Token Beschreibung in jeder Anfrage (größtes Werkzeug
+  `compare_web_captures` allein ~166.000 Zeichen); DSH-Sitzungsdaten zeigen `toolsTokens` 201.894 in allen Sitzungen.
+  Mit der DeepSeek-API (1M) unauffällig, lokale 128K-Modelle (IQ3_S, NInfer, Ornith, Strata) scheitern. **Sascha: „Ja, ganz
+  abschalten“** → Eintrag auskommentiert (Datei jetzt `[]`, Block zum Wiedereinschalten darunter). REA bleibt in Claude.
+  DSH Desktop muss neu starten. Werkzeug zum Nachzählen: Node 24 `zlib.zstdDecompressSync` auf
+  `~\.dsh\sessions\…\session.v4.jsonl.zstd`.
+- **Test beendet nach Schritt 2 (Sascha: „Du kannst den Test hier beenden“).** Bild, Spiel und Kundenbox nicht gelaufen.
+  Eintrag und DSH-Anbieter bleiben; Einsatz für Entwürfe und Nebenaufgaben neben Strata, Fachtexte nur geprüft.
+
+## Befund 29.10.2026: ComfyUI lässt sich neben Strata nicht starten
+
+Test „Flash-Next steuert das Studio“ (Projekt Lokale-Wissensextraktion, README 29.10.2026): Läuft Strata auf beiden
+3090, lehnt die Zentrale den Start von ComfyUI ab („RTX 3090 FE: es fehlen 19,2 GiB, belegt von Windows & Programme“),
+obwohl Bilder auf Prozess 3 (RTX 3080) rechnen könnten. Zwei Punkte: (1) Der Start-Plan für `bild-video` verlangt
+Platz für Prozess 1 auf der FE, statt im Leerlauf nur die ~0,2–0,4 GB von ComfyUI zu prüfen bzw. dann nur Prozess 3 zu
+starten; (2) Strata, über `/api/starten` gestartet, erschien in der Begründung als „Windows & Programme“. Behelf: ComfyUI
+vor Strata starten (gemessen: FE 224 MiB, danach Strata 23,3 / 23,7 GB, Bild auf der 3080 in 11,6 s).
+
+**Behoben am 29.10.2026 (Sascha: „Ja, beheben“):**
+- (1) Neue Felder im Eintrag `bild-video`: `start_karten` ["RTX 3080", "RTX 3090"] und `start_bedarf_je_karte_mib` 1024
+  (mit `start_grund`). `planung.startbedarf(e)` setzt sie beim Starten an die Stelle von `karten` / `bedarf_je_karte_mib`
+  (`server.plan` bei Aktion „starten“ und `server.starten`, auch für `warten_auf_platz`). Der Auftragswert 20.000 MiB
+  bleibt (Werkstatt nutzt ihn als Rückfall); jeder Auftrag meldet seinen Platz weiter über `/api/platz` an.
+- (2) `erfassung.ist_strata`: Liefert Windows für `strata.exe` / `strata-vision.exe` keinen Pfad (gemessen: leer, auch
+  bei `Get-Process`), zählen sie zu Strata, wenn ihr Elternprozess der eigene Strata-Server (server.py mit Port) ist.
+- Tests: Zentrale 171 (neu: ComfyUI neben Strata, Startbedarf ohne Felder unverändert, Engine ohne Pfad), Werkstatt 225.
+- **Live geprüft:** Zentrale neu gestartet, Strata über die Zentrale gestartet → Belegung zeigt „Qwen3.8 Flash-Next ·
+  Strata“ 23.382 / 22.324 MiB statt „Windows & Programme“; Plan für ComfyUI: genug Platz, Karte RTX 3080, 1.024 MiB;
+  `studio.py start` neben Strata → bereit, alle drei Prozesse (8188/8189/8190), ComfyUI je 224 MiB auf den 3090. Danach
+  ComfyUI und Strata über die Zentrale gestoppt, Karten leer. Skill `bild-video-studio` ergänzt.
 
 ## Offen
 

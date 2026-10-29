@@ -69,6 +69,17 @@ class Strata(unittest.TestCase):
             with self.subTest(pid=pid):
                 self.assertFalse(self.erf.ist_strata(pid, self.procs))
 
+    def test_engine_ohne_lesbaren_pfad_ueber_den_server(self):
+        # 29.10.2026: Windows lieferte für strata.exe und strata-vision.exe keinen Pfad; ihr Elternprozess ist der Server.
+        self.procs.update({14: (11, 'strata.exe'), 15: (11, 'strata-vision.exe'), 16: (20, 'strata.exe'),
+                           17: (0, 'strata.exe'), 18: (24, 'strata-vision.exe')})
+        self.infos.update({14: ('', ''), 15: ('', ''), 16: ('', ''), 17: ('', ''), 18: ('', '')})
+        self.assertTrue(self.erf.ist_strata(14, self.procs))
+        self.assertTrue(self.erf.ist_strata(15, self.procs))
+        for pid in (16, 17, 18):   # fremder Server, kein Elternprozess, Elternprozess ist kein Python
+            with self.subTest(pid=pid):
+                self.assertFalse(self.erf.ist_strata(pid, self.procs))
+
     def _bildprozesse(self):
         self.procs.update({13: (11, 'strata-vision.exe'), 25: (0, 'strata-vision.exe')})
         self.infos.update({13: (self.e['vision_exe'], ''),

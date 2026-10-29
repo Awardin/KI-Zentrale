@@ -89,7 +89,7 @@
         "--draft-tokens",
         "3",
         "--default-max-tokens",
-        "8192",
+        "32768",
         "--lm-head-draft",
         "--cors"
       ],
@@ -220,6 +220,40 @@
       "startzeit_max_s": 300
     },
     {
+      "id": "qwen27-iq3s",
+      "art": "llamacpp",
+      "gruppe": "Sprachmodelle",
+      "name": "Qwen3.8 27B · IQ3_S · RTX 3080",
+      "untertitel": "GSQ-RCO 3,5 Bit · 128K · mit Bildern · RTX 3080, sonst eine RTX 3090",
+      "wofuer": "Dichtes Qwen 27B (ISTA-DASLab GSQ-RCO IQ3_S, laut ISTA fast verlustfrei) mit Bildern auf der Nebenkarte, damit es neben Strata auf beiden 3090 laufen kann. In DSH Desktop als Anbieter „Qwen 27B – RTX 3080 lokal“; OpenAI-API auf Port 8103.",
+      "farbe": "#8A6A1E",
+      "programm": "C:\\LLM\\runtimes\\llama-b11838-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\Qwen3.8-27B-GSQ-RCO\\Qwen3.8-27B-GSQ-RCO-IQ3_S.gguf",
+      "mmproj": "C:\\LLM\\models\\Qwen3.8-27B-GSQ-RCO\\mmproj-Qwen3.8-27B-BF16.gguf",
+      "modell_id": "qwen3.8-27b-gsq-iq3s",
+      "port": 8103,
+      "karten": ["RTX 3080", "RTX 3090"],
+      "argumente": [
+        "-ngl",
+        "99",
+        "-c",
+        "131072",
+        "-np",
+        "1",
+        "-fa",
+        "on",
+        "--cache-type-k",
+        "q8_0",
+        "--cache-type-v",
+        "q8_0",
+        "--jinja",
+        "--no-webui"
+      ],
+      "bedarf_je_karte_mib": 18000,
+      "bedarf_hinweis": "Gemessen 29.10.2026 auf der RTX 3080: 17.444 MiB nach dem Start, 17.660 MiB nach 34K Token Einlesen (128K, q8-Cache, Bildteil).",
+      "startzeit_max_s": 180
+    },
+    {
       "id": "lightonocr",
       "art": "llamacpp",
       "gruppe": "Texterkennung",
@@ -286,6 +320,9 @@
       "karten": ["RTX 3090"],
       "bedarf_je_karte_mib": 20000,
       "bedarf_hinweis": "Braucht während eines Bildauftrags bis zu 20 GiB auf einer Karte, für Videos zusätzlich etwa 7 GiB auf der anderen. Das Studio wählt die Karten je Auftrag.",
+      "start_karten": ["RTX 3080", "RTX 3090"],
+      "start_bedarf_je_karte_mib": 1024,
+      "start_grund": "29.10.2026: Zum Starten braucht ComfyUI nur seinen Leerlauf (gemessen 224 MiB auf der FE, Prozesse 2 und 3 ähnlich); den Platz für Bilder und Videos meldet jeder Auftrag vorher an. Vorher verlangte der Start 20 GiB auf einer 3090 und scheiterte neben Strata, obwohl Bilder auf der RTX 3080 rechnen.",
       "startzeit_max_s": 300
     },
     {

@@ -133,6 +133,12 @@ class Erfassung:
         if name not in ('strata.exe', 'strata-vision.exe', 'python.exe', 'pythonw.exe'):
             return False
         i = self.info(pid, procs[pid][1])
+        if name in ('strata.exe', 'strata-vision.exe') and not i['pfad']:
+            # Windows gibt den Pfad der Engine nicht immer heraus (29.10.2026: Pfad leer, auch für Get-Process); dann
+            # zählt sie zu Strata, wenn ihr Elternprozess unser Strata-Server ist (server.py mit unserem Port).
+            eltern = procs[pid][0]
+            return eltern != pid and eltern in procs and procs[eltern][1].lower() in ('python.exe', 'pythonw.exe') \
+                and self.ist_strata(eltern, procs)
         if name == 'strata-vision.exe':
             return i['pfad'] == self.strata_vision
         cmd = i['cmd'].replace('"', '')

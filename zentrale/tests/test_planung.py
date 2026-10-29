@@ -105,6 +105,26 @@ class Kartenliste(unittest.TestCase):
         k[0]['belegt'] = 22300
         self.assertEqual(planung.karte_waehlen(k, [], ninfer, 768, 2048), (1, None))
 
+    def test_comfyui_startet_neben_strata(self):
+        # 29.10.2026: Strata belegt beide 3090 (je ~1,2 GiB frei), die 3080 ist leer. Mit dem Auftragsbedarf (20 GiB auf
+        # einer 3090) müsste Strata weichen; mit dem Startbedarf (1 GiB, auch auf der 3080) startet ComfyUI ohne Freigabe.
+        comfy = {'id': 'bild-video', 'karten': ['RTX 3090'], 'bedarf_je_karte_mib': 20000,
+                 'start_karten': ['RTX 3080', 'RTX 3090'], 'start_bedarf_je_karte_mib': 1024}
+        k = [self.karte(0, belegt=23285), dict(self.karte(1, belegt=23744), monitor=True),
+             dict(self.karte(2, name='RTX 3080', belegt=0, gesamt=20480), nebenkarte=True)]
+        v = [verbraucher('flash-next-strata', 'Strata', {0: 22300, 1: 22800})]
+        alt = self.plan(k, v, ziel=comfy)[1]
+        self.assertEqual([s['id'] for s in alt['schritte']], ['x:Strata'])
+        idx, p = self.plan(k, v, ziel=planung.startbedarf(comfy))
+        self.assertEqual(idx, 2)
+        self.assertEqual(p['schritte'], [])
+        self.assertTrue(p['genug_platz'])
+
+    def test_startbedarf_ohne_felder_unveraendert(self):
+        self.assertIs(planung.startbedarf(self.ZIEL), self.ZIEL)
+        e = planung.startbedarf({'karten': ['RTX 3090'], 'bedarf_je_karte_mib': 20000, 'start_bedarf_je_karte_mib': 1024})
+        self.assertEqual((e['karten'], e['bedarf_je_karte_mib']), (['RTX 3090'], 1024))
+
     def test_volle_karten_wenigstes_freigeben(self):
         # Nirgends Platz: lieber das kleinere Modell beenden als das große.
         k = [self.karte(0, belegt=23500), self.karte(1, belegt=21000)]

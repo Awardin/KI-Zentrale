@@ -778,6 +778,8 @@ Befunde zu „Figur in neue Szene“ und „Logo aufbringen“ (24.09.2026, Turb
 | **Schleife mit zwei festgehaltenen Stücken** (Ende des Clips vorn, Anfang hinten) | zwei harte Schnitte (Sprung 104 und 58). Stattdessen vorn das Stück, hinten das erste Bild als Endbild |
 | **Ton des Clips danach mit anheften** | stört das Bild nicht, liegt aber zeitlich falsch; nicht übernommen – der Ton wechselt am Übergang hart |
 | **Verbinden verschiedener Orte ohne beschriebenen Weg** (Abnahme 27.09.2026) | harter Schnitt im letzten Bild (`Video_00011_`, Sprung 60 bei sonst 2). Mit beschriebenem Weg und längerem Stück weich (`Video_00015_`, Abschnitt 3) |
+| **PTD-Beschleuniger für Referenz-Videos** (Taobao, 4 und 8 Schritte; 24.10.2026 nur geklärt, nicht geladen) | nicht mit Kernknoten: braucht ComfyUI-PTD mit eigenem Sampler und für unser gekürztes INT8-Ref2VA-Modell zusätzlich einen Lader aus einem Ein-Personen-Projekt; die Hersteller nennen gekürzte und quantisierte Basen ungeeignet. 8 Schritte bleiben bei der PDD-LoRA; erst prüfen, wenn PTD im ComfyUI-Kern ist (PLAN.md, 24.10.2026) |
+| **RefMods** (vorab kodierte Referenzen als kleine Datei; Video Winnougan, 24.10.2026) | nichts Neues fürs Studio: Referenzbilder gehen direkt („Figur in neue Szene“, „Video mit Referenz“), das Kodieren dauert Sekunden; die Knoten dafür sind fremd. Nicht eingebaut |
 
 ## 9. Ablage, Begleitdaten, Wiederholbarkeit
 

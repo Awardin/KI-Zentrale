@@ -25,7 +25,7 @@ def karte(idx, belegt, bus, name='NVIDIA GeForce RTX 3090', gesamt=24576, nebenk
 
 def drei_karten():
     return [karte(0, 0, 2), karte(1, 884, 4),
-            karte(2, 0, 7, name='NVIDIA GeForce RTX 3080', gesamt=20480, nebenkarte=True)]
+            karte(2, 0, 135, name='NVIDIA GeForce RTX 3080', gesamt=20480, nebenkarte=True)]
 
 
 class Eintraege(unittest.TestCase):
@@ -50,7 +50,7 @@ class Eintraege(unittest.TestCase):
 
     def test_kartennamen_nach_steckplatz(self):
         namen = {c['bus']: c['kurz'] for c in KONFIG['karten'].values()}
-        self.assertEqual(namen, {2: 'RTX 3090 FE', 4: 'RTX 3090 Suprim', 7: 'RTX 3080'})
+        self.assertEqual(namen, {2: 'RTX 3090 FE', 4: 'RTX 3090 Suprim', 135: 'RTX 3080'})
 
     def test_kurznamen_und_nebenkarte_aus_der_messung(self):
         k = drei_karten()
@@ -116,7 +116,7 @@ class Server(unittest.TestCase):
 
 
 class Dreikarten(unittest.TestCase):
-    """Mit der RTX 3080 als Nebenkarte (Bus 7): LightOnOCR darf dorthin, NInfer und Ollama nur auf die 3090."""
+    """Mit der RTX 3080 als Nebenkarte (Bus 135 = 0x87, M.2 seit 23.10.2026): LightOnOCR darf dorthin, NInfer und Ollama nur auf die 3090."""
 
     def setUp(self):
         self.z = Zentrale.__new__(Zentrale)
