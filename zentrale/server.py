@@ -144,12 +144,13 @@ class Zentrale:
             detail = ''
             karte = None
             if e['art'] == 'ninfer':
-                n = d['ninfer']
+                n = d[e['id']]
                 zustand = n['zustand']
                 if n['fremd']:
                     detail = f"Port {e['port']} ist von {n['fremd']} belegt."
                 elif zustand == 'bereit':
-                    karte = self._karte_von(roh, 'ninfer')
+                    schluessel = 'ninfer' if e['id'] == 'ninfer' else 'ninfer:' + e['id']
+                    karte = self._karte_von(roh, schluessel)
                     detail = f'Auf der {karte}' if karte else ''
             elif e['art'] == 'strata':
                 s = d['strata']
@@ -486,15 +487,21 @@ class Zentrale:
         return True
 
     def _schritte_ausfuehren(self, schritt_ids):
+        ninfer = getattr(self.erf, 'ninfer_eintraege', None)
+        if not isinstance(ninfer, dict):
+            ninfer = {}
         for sid in schritt_ids:
             ziel = sid.partition(':')[2]
-            eintrag = 'ninfer' if ziel == 'ninfer' else (
-                'bild-video' if ziel == 'bild-video' or ziel.startswith('bild-video-') else
-                (self.erf.ollama_tags.get(ziel) or {}).get('id'))
-            if ziel == 'strata':
+            if ziel in ninfer:
+                eintrag = ziel
+            elif ziel == 'bild-video' or ziel.startswith('bild-video-'):
+                eintrag = 'bild-video'
+            elif ziel == 'strata':
                 eintrag = self.erf.strata['id'] if self.erf.strata else None
             elif ziel in self.erf.llamacpp or ziel in self.erf.polystrata or ziel in self.erf.python_dienst:
                 eintrag = ziel
+            else:
+                eintrag = (self.erf.ollama_tags.get(ziel) or {}).get('id')
             if eintrag:
                 self.laufend[eintrag] = 'stoppt'
             self.melden(self.akt.schritt(sid), 'ok')

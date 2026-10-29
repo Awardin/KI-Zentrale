@@ -54,7 +54,14 @@ class Erfassung:
     def __init__(self, cfg):
         self.cfg = cfg
         self.eintraege = {e['id']: e for e in cfg['eintraege']}
-        self.ninfer = next(e for e in cfg['eintraege'] if e['art'] == 'ninfer')
+        # NInfer (29.10.2026 zwei Instanzen): jede für sich erkannt an Programmpfad und `--port`. Der Eintrag mit der
+        # ID `ninfer` behält Schlüssel und Schritt `beenden:ninfer`, weitere heißen `ninfer:<id>` (Muster llama.cpp).
+        self.ninfer_eintraege = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'ninfer'}
+        self.ninfer = self.ninfer_eintraege.get('ninfer')
+        if self.ninfer is None and self.ninfer_eintraege:
+            self.ninfer = next(iter(self.ninfer_eintraege.values()))
+        self._ninfer_kennung = {i: (norm(e['programm']), f"--port {e['port']}")
+                                for i, e in self.ninfer_eintraege.items()}
         self.comfy = next(e for e in cfg['eintraege'] if e['art'] == 'comfy')
         self.strata = next((e for e in cfg['eintraege'] if e['art'] == 'strata'), None)
         self.strata_engine = norm(self.strata['engine']) if self.strata else ''
@@ -77,8 +84,6 @@ class Erfassung:
         self._python_dienst_kennung = {i: (norm(e['skript']), f"--port {e['port']}")
                                        for i, e in self.python_dienst.items()}
         self.ollama_tags = {e['tag']: e for e in cfg['eintraege'] if e['art'] == 'ollama'}
-        self.ninfer_exe = norm(self.ninfer['programm'])
-        self.ninfer_port_arg = f"--port {self.ninfer['port']}"
         self.comfy_ordner = norm(self.comfy['comfy_ordner'])
         # Weitere ComfyUI-Prozesse (Stufe 8, 16.10.2026; seit der RTX 3080 eine Liste): jeder sieht nur seine Karte
         # und rechnet neben dem ersten.
@@ -121,10 +126,18 @@ class Erfassung:
         return kette
 
     def ist_ninfer(self, pid, procs):
-        if pid not in procs:
-            return False
+        """-> ID des NInfer-Eintrags, zu dem der Prozess gehört, sonst None.
+
+        Beide Instanzen haben dasselbe Programm; nur `--port` in der Kommandozeile unterscheidet sie.
+        """
+        if not self.ninfer_eintraege or pid not in procs:
+            return None
         i = self.info(pid, procs[pid][1])
-        return i['pfad'] == self.ninfer_exe and self.ninfer_port_arg in i['cmd']
+        cmd = i['cmd'].replace('"', '')
+        for eid, (exe, port_arg) in self._ninfer_kennung.items():
+            if i['pfad'] == exe and port_arg in cmd:
+                return eid
+        return None
 
     def ist_strata(self, pid, procs):
         if self.strata is None or pid not in procs:
@@ -236,8 +249,10 @@ class Erfassung:
         if pid not in procs:
             return 'andere', 'beendetes Programm'
         name = procs[pid][1]
-        if self.ist_ninfer(pid, procs):
-            return 'ninfer', self.ninfer['name']
+        eid = self.ist_ninfer(pid, procs)
+        if eid:
+            e = self.ninfer_eintraege[eid]
+            return ('ninfer' if eid == 'ninfer' else 'ninfer:' + eid), e['name']
         if self.ist_strata(pid, procs):
             return 'strata', self.strata['name']
         eid = self.ist_llamacpp(pid, procs)
@@ -308,27 +323,28 @@ class Erfassung:
 
     def _dienste(self, procs, lausch):
         d = {}
-        # NInfer
-        e = self.ninfer
-        n = {'zustand': 'aus', 'pid': None, 'fremd': None}
-        pid = lausch.get(e['port'])
-        if pid is not None:
-            if self.ist_ninfer(pid, procs):
-                n['pid'] = pid
-                try:
-                    m = http_json(f"http://127.0.0.1:{e['port']}/v1/models", timeout=1.0) or {}
-                    ids = [x.get('id') for x in m.get('data', [])]
-                    n['zustand'] = 'bereit' if e['modell_id'] in ids else 'startet'
-                except Exception:
-                    n['zustand'] = 'startet'
+        # NInfer: je Eintrag eigener Port und eigener Dienstzustand.
+        for eid, e in self.ninfer_eintraege.items():
+            n = {'zustand': 'aus', 'pid': None, 'fremd': None}
+            pid = lausch.get(e['port'])
+            if pid is not None:
+                if self.ist_ninfer(pid, procs) == eid:
+                    n['pid'] = pid
+                    try:
+                        m = http_json(f"http://127.0.0.1:{e['port']}/v1/models", timeout=1.0) or {}
+                        ids = [x.get('id') for x in m.get('data', [])]
+                        n['zustand'] = 'bereit' if e['modell_id'] in ids else 'startet'
+                    except Exception:
+                        n['zustand'] = 'startet'
+                else:
+                    n['zustand'] = 'fremd'
+                    n['fremd'] = freundlich(procs.get(pid, (0, ''))[1])
             else:
-                n['zustand'] = 'fremd'
-                n['fremd'] = freundlich(procs.get(pid, (0, ''))[1])
-        else:
-            startend = [p for p, (_, nm) in procs.items() if nm.lower() == 'ninfer-serve.exe' and self.ist_ninfer(p, procs)]
-            if startend:
-                n.update(zustand='startet', pid=startend[0])
-        d['ninfer'] = n
+                startend = [p for p, (_, nm) in procs.items()
+                            if nm.lower() == 'ninfer-serve.exe' and self.ist_ninfer(p, procs) == eid]
+                if startend:
+                    n.update(zustand='startet', pid=startend[0])
+            d[eid] = n
         # Strata (optional)
         if self.strata:
             e = self.strata
@@ -464,11 +480,13 @@ class Erfassung:
             out.append({'eintrag': None, 'schluessel': 'ollama', 'name': 'Ollama (lädt oder gibt frei)',
                         'farbe': self.cfg['ollama']['farbe_fremd'], 'mib_je_karte': gruppen.pop('ollama')['mib'],
                         'blockiert': None, 'schritt': None})
-        if 'ninfer' in gruppen:
-            e = self.ninfer
-            out.append({'eintrag': 'ninfer', 'schluessel': 'ninfer', 'name': e['name'], 'farbe': e['farbe'],
-                        'mib_je_karte': gruppen['ninfer']['mib'], 'blockiert': None,
-                        'schritt': {'id': 'beenden:ninfer', 'text': f"{e['name']} beenden"}})
+        for eid, e in self.ninfer_eintraege.items():
+            schluessel = 'ninfer' if eid == 'ninfer' else 'ninfer:' + eid
+            if schluessel not in gruppen:
+                continue
+            out.append({'eintrag': eid, 'schluessel': schluessel, 'name': e['name'], 'farbe': e['farbe'],
+                        'mib_je_karte': gruppen[schluessel]['mib'], 'blockiert': None,
+                        'schritt': {'id': 'beenden:' + eid, 'text': f"{e['name']} beenden"}})
         if 'strata' in gruppen:
             e = self.strata
             out.append({'eintrag': e['id'], 'schluessel': 'strata', 'name': e['name'], 'farbe': e['farbe'],

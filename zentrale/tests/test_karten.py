@@ -72,15 +72,16 @@ class Server(unittest.TestCase):
         self.z._schritte_ausfuehren = Mock()
         self.z._im_hintergrund = Mock(side_effect=lambda text, fn: (fn(), True)[1])
 
-    def test_ninfer_plan_und_start_auf_der_freien_karte(self):
-        # Auf der FE liegt LightOnOCR: NInfer (22,3 GiB) passt nur noch auf die Suprim.
+    def test_ninfer_plan_auf_der_festen_karte(self):
+        # Seit 29.10.2026 ist NInfer 1 fest auf Karte 0; LightOnOCR dort muss dafür weichen, Karte 1 bleibt unberührt.
         self.roh['karten'][0]['belegt'] = 4700
         self.roh['verbraucher'] = [{'eintrag': 'lightonocr', 'name': 'LightOnOCR', 'mib_je_karte': {0: 4700},
                                    'blockiert': None, 'schritt': {'id': 'beenden:lightonocr', 'text': 'x'}}]
         p = self.z.plan('ninfer', 'starten')
-        self.assertEqual((p['karte'], p['karte_kurz'], p['schritte'], p['genug_platz']), (1, 'RTX 3090 Suprim', [], True))
-        self.assertEqual(self.z.starten('ninfer', [], False)[0], 202)
-        self.z.akt.starten.assert_called_once_with('ninfer', karte=1)
+        self.assertEqual((p['karte'], p['karte_kurz'], [s['id'] for s in p['schritte']], p['genug_platz']),
+                         (0, 'RTX 3090 FE', ['beenden:lightonocr'], True))
+        self.assertEqual(self.z.starten('ninfer', ['beenden:lightonocr'], False)[0], 202)
+        self.z.akt.starten.assert_called_once_with('ninfer', karte=0)
 
     def test_ornith_plan_zaehlt_beide_karten_zusammen(self):
         p = self.z.plan('ornith-q5', 'starten')

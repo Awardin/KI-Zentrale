@@ -85,8 +85,8 @@ class Aktionen:
 
     def schritt(self, schritt_id):
         art, _, ziel = schritt_id.partition(':')
-        if art == 'beenden' and ziel == 'ninfer':
-            return self._ninfer_stoppen(self.erf.ninfer)
+        if art == 'beenden' and ziel in self.erf.ninfer_eintraege:
+            return self._ninfer_stoppen(self.erf.ninfer_eintraege[ziel])
         if art == 'beenden' and ziel == 'strata' and self.erf.strata:
             return self._strata_stoppen(self.erf.strata)
         if art == 'beenden' and ziel in self.erf.llamacpp:
@@ -125,29 +125,30 @@ class Aktionen:
     def _ninfer_starten(self, e, karte=None):
         if karte is None:
             raise Fehler(f"Keine Karte für {e['name']} gewählt.")
-        n = self.erf.messen()['dienste']['ninfer']
+        n = self.erf.messen()['dienste'][e['id']]
         if n['zustand'] == 'bereit':
             return f"{e['name']} läuft bereits."
         if n['zustand'] == 'fremd':
-            raise Fehler(f"Port {e['port']} ist von {n['fremd']} belegt. NInfer wurde nicht gestartet.")
+            raise Fehler(f"Port {e['port']} ist von {n['fremd']} belegt. {e['name']} wurde nicht gestartet.")
         for pfad in (e['programm'], e['modelldatei']):
             if not os.path.exists(pfad):
-                raise Fehler(f'Datei fehlt: {pfad}')
+                raise Fehler(f"{e['name']}: Datei fehlt: {pfad}")
         prozess = None
         beginn = time.time()
+        # Der Eintrag `ninfer` behält den alten Lognamen; weitere Instanzen schreiben unter ihrer ID.
+        log_basis = os.path.join(self.logs, 'ninfer' if e['id'] == 'ninfer' else e['id'])
         if n['zustand'] != 'startet':
-            log_basis = os.path.join(self.logs, 'ninfer')
             # Nur die gewählte Karte ist sichtbar (Nummern wie nvidia-smi); für NInfer ist sie dann „--device 0“.
             env = dict(os.environ, CUDA_DEVICE_ORDER='PCI_BUS_ID', CUDA_VISIBLE_DEVICES=str(karte))
             prozess = winapi.starte_losgeloest([e['programm'], e['modelldatei']] + e['argumente'],
                                                os.path.dirname(e['programm']), env, log_basis=log_basis)
-            self.log(f'NInfer gestartet auf Karte {karte}, PID {prozess.pid}, Port {e["port"]}')
+            self.log(f"{e['name']} gestartet auf Karte {karte}, PID {prozess.pid}, Port {e['port']}")
         url = f"http://127.0.0.1:{e['port']}/v1/models"
         frist = time.time() + e.get('startzeit_max_s', 240)
         while time.time() < frist:
             if prozess is not None and prozess.poll() is not None:
-                grund = _letzte_meldung(os.path.join(self.logs, 'ninfer.err.log'))
-                raise Fehler(f'NInfer hat sich beim Start beendet. {grund}'.strip())
+                grund = _letzte_meldung(log_basis + '.err.log')
+                raise Fehler(f"{e['name']} hat sich beim Start beendet. {grund}".strip())
             try:
                 ids = [m.get('id') for m in (http_json(url, timeout=1.0) or {}).get('data', [])]
                 if e['modell_id'] in ids:
@@ -155,20 +156,21 @@ class Aktionen:
             except Exception:
                 pass
             time.sleep(1)
-        raise Fehler(f"NInfer antwortet nach {e.get('startzeit_max_s', 240)} s nicht.")
+        raise Fehler(f"{e['name']} antwortet nach {e.get('startzeit_max_s', 240)} s nicht.")
 
     def _ninfer_stoppen(self, e):
         roh = self.erf.messen()
         procs = roh['procs']
-        ziele = [p for p, (_, nm) in procs.items() if nm.lower() == 'ninfer-serve.exe' and self.erf.ist_ninfer(p, procs)]
+        ziele = [p for p, (_, nm) in procs.items()
+                 if nm.lower() == 'ninfer-serve.exe' and self.erf.ist_ninfer(p, procs) == e['id']]
         if not ziele:
             return f"{e['name']} lief nicht."
         for pid in ziele:
             winapi.beenden(pid)
-            self.log(f'NInfer beendet, PID {pid}')
+            self.log(f"{e['name']} beendet, PID {pid}")
         frei = _warten(lambda: e['port'] not in {p for _, p, _ in winapi.lauschende_ports()}, 10, 0.5)
         if not frei:
-            raise Fehler(f"Port {e['port']} ist nach dem Beenden noch belegt.")
+            raise Fehler(f"Port {e['port']} ist nach dem Beenden von {e['name']} noch belegt.")
         return f"{e['name']} beendet."
 
     # ------------------------------------------------------------ Strata

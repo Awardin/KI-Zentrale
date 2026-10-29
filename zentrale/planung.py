@@ -8,7 +8,8 @@ Grafikspeicher belegt:
 
 Ein Eintrag braucht Platz auf eine von drei Arten:
     bedarf_mib          {karte: MiB} auf festen Karten (Strata: beide Karten)
-    karten + bedarf_je_karte_mib   eine beliebige passende Karte, die Zentrale wählt (NInfer, LightOnOCR, ComfyUI)
+    karten + bedarf_je_karte_mib   eine beliebige passende Karte, die Zentrale wählt (NInfer, LightOnOCR, ComfyUI);
+                                   `feste_karte` schränkt das auf genau diese Karte ein
     bedarf_gesamt_mib   MiB auf allen Karten zusammen, das Programm verteilt selbst (Ollama)
 """
 from gemeinsam.gpu import kurznamen  # noqa: F401  (Anzeigenamen; hier für Zentrale und Tests)
@@ -65,9 +66,10 @@ def wunschkarten(karten, wunsch):
 def karte_waehlen(karten, verbraucher, ziel, reserve_mib, monitor_puffer_mib=0):
     """Karte für einen Eintrag, der auf jede passende Karte darf (`karten`: Namen wie „RTX 3090“).
 
-    Passt er ohne Freigabe auf mehrere Karten, nimmt er die engste: Kleine Modelle teilen sich eine Karte, und auf der
-    anderen bleibt Platz für große. Eine Nebenkarte (langsam angebunden, `nebenkarte`) bekommt dabei den Vorzug vor
-    allen anderen. Die Karte mit dem Monitor füllt er nur, wenn dort danach noch `monitor_puffer_mib`
+    Ist `feste_karte` gesetzt (nvidia-smi-Index), kommt nur diese Karte in Frage; sie muss in `karten` enthalten sein.
+    Sonst gilt: Passt er ohne Freigabe auf mehrere Karten, nimmt er die engste: Kleine Modelle teilen sich eine Karte,
+    und auf der anderen bleibt Platz für große. Eine Nebenkarte (langsam angebunden, `nebenkarte`) bekommt dabei den
+    Vorzug vor allen anderen. Die Karte mit dem Monitor füllt er nur, wenn dort danach noch `monitor_puffer_mib`
     frei bleiben (Windows braucht dort schwankend Speicher) oder keine andere Karte passt.
     Passt er nirgends, nimmt er die Karte, auf der am wenigsten weichen muss.
     Bei Gleichstand zählt die Reihenfolge der Namen, dann die Kartennummer.
@@ -75,6 +77,12 @@ def karte_waehlen(karten, verbraucher, ziel, reserve_mib, monitor_puffer_mib=0):
     indizes = wunschkarten(karten, ziel['karten'])
     if not indizes:
         return None, f"Keine der Karten {', '.join(ziel['karten'])} ist erkannt."
+    feste = ziel.get('feste_karte')
+    if feste is not None:
+        if feste not in indizes:
+            return None, f"Karte {feste} passt nicht zu {', '.join(ziel['karten'])}."
+        # Auch wenn der Platz dort knapp ist: Die Freigaben plant der Aufrufer für genau diese Karte.
+        return feste, None
     frei = {k['index']: k['gesamt'] - k['belegt'] for k in karten}
     bedarf = ziel['bedarf_je_karte_mib'] + reserve_mib
     monitor = {k['index'] for k in karten if k.get('monitor')}
