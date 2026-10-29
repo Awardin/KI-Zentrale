@@ -3019,6 +3019,34 @@ vor Strata starten (gemessen: FE 224 MiB, danach Strata 23,3 / 23,7 GB, Bild auf
   `studio.py start` neben Strata → bereit, alle drei Prozesse (8188/8189/8190), ComfyUI je 224 MiB auf den 3090. Danach
   ComfyUI und Strata über die Zentrale gestoppt, Karten leer. Skill `bild-video-studio` ergänzt.
 
+## Zwei NInfer-Instanzen, jede fest auf ihrer Karte (29.10.2026, gebaut, noch nicht live gestartet)
+
+Auftrag Sascha („Ja, anlegen“): NInfer zweimal, Instanz 1 fest auf der FE mit 128K, Instanz 2 fest auf der Suprim
+(Monitorkarte) mit 96K, beide in DSH wählbar. Gebaut von DeepSeek V4.1 Flash (Builder, DSH headless, 7 min, 85
+Werkzeugaufrufe, 0,09 USD; Branch `ki-zentrale/ninfer2-20261029`, Commits `b18f5e2` + `963f02c` mit `Baustand-ninfer2.md`),
+abgenommen von Claude (Diff gelesen, Tests selbst gefahren), per Fast-Forward in `main`, **nicht gepusht**.
+- Art `ninfer` mehrfach (Muster llama.cpp): Erkennung je Eintrag an Programmpfad + `--port`; der Eintrag `ninfer` behält
+  Schlüssel `ninfer` und `beenden:ninfer`, weitere heißen `ninfer:<id>` / `beenden:<id>`; Start, Stopp, Log
+  (`logs\ninfer-2.*`) und Zustand je Eintrag.
+- Neues Feld `feste_karte` (nvidia-smi-Index): `planung.karte_waehlen` nimmt dann nur diese Karte und plant Freigaben dort.
+  `ninfer` → 0 (FE), `ninfer-2` → 1 (Suprim). Folge: NInfer 1 weicht nicht mehr auf die Suprim aus (Test angepasst).
+- Eintrag `ninfer-2`: Port 8081, `modell_id` `qwen3.8-27b-ninfer-2`, 98.304 Kontext/KV, sonst wie `ninfer`; Bedarf
+  21.000 MiB geschätzt (beim ersten Start messen).
+- DSH Desktop (`~\.dsh\profiles\desktop\cordis.patch.yml`): „NInfer 1 – FE (128K)“ (Antwortgrenze 8.192 → 16.384) und neu
+  „NInfer 2 – Suprim (96K)“ (16.384); dazu IQ3_S-Anbieter 32.768 → 16.384, weil DSH die volle Grenze schickt und
+  Verlauf (Verdichtung ab ~80 %) + Grenze sonst über den Kontext gingen.
+- Tests: Zentrale 185 (14 neu), Werkstatt 225 grün.
+- **Live geprüft (29.10.2026, nach dem Videoauftrag):** Zentrale neu gestartet; Pläne: `ninfer` → FE, `ninfer-2` →
+  Suprim, beide ohne Freigaben. Beide über die Zentrale gestartet und bereit (8080/8081). Belegung: FE 22.286 MiB
+  (NInfer 1, frei 2,3 GiB), Suprim 23.042 MiB = NInfer 2 **21.164 MiB** + Windows 1.878 MiB (frei 1,5 GiB, knapp unter dem
+  Monitorpuffer von 2 GiB) → Bedarf auf 21.200 MiB gesetzt. Gleichzeitige Anfrage an beide (~380 Token ohne Denken):
+  NInfer 1 43,6 tok/s, NInfer 2 50,4 tok/s (Wanduhr, inkl. Einlesen). Zuordnung in der Zentrale korrekt.
+- **Video-Nebenbefund:** Flash-Next (Strata) bestellte selbst ein Video; der Auftrag wartete korrekt auf eine freie 3090,
+  Flash-Next bot von sich aus Strata-Freigabe (mit Hinweis auf eigenes Sitzungsende) / Warten / Abbrechen an. Nach
+  Saschas Freigabe rechnete der Clip auf der FE (`KI-Zentrale Titelbild\Video_00001_.mp4`, 5,2 s, 61,8 s). Lehre: Videos
+  nicht von Strata-Agenten steuern lassen, sondern von DeepSeek (API) oder einem Modell, das die FE frei lässt.
+- **Offen:** Push nach Saschas Go.
+
 ## Offen
 
 - **Zwei RTX 3090 seit 14.10.2026** (Stufe 6): Ein-Karten-Einstellung abgelöst, freie Kartenwahl, Strata gemessen. Offen:

@@ -143,8 +143,8 @@
       ],
       "karten": ["RTX 3090"],
       "feste_karte": 1,
-      "bedarf_je_karte_mib": 21000,
-      "bedarf_hinweis": "Schätzung 29.10.2026 (Gewichte 16,7 GiB + 96K-KV ~3,7 GiB + Laufzeit ~1,2 GiB); beim ersten Start messen.",
+      "bedarf_je_karte_mib": 21200,
+      "bedarf_hinweis": "Gemessen 29.10.2026 auf der Suprim: 21.164 MiB (96K, INT8-KV, MTP); daneben Windows 1,9 GiB, frei 1,5 GiB.",
       "startzeit_max_s": 240
     },
     {

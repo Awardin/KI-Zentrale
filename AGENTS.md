@@ -122,6 +122,8 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Port 8103, llama-server b11838, ISTA GSQ-RCO IQ3_S + Bildteil, 128K, q8-Cache, RTX 3080 vor RTX 3090, Bedarf noch
   geschätzt 17.500 MiB), in DSH Desktop als Anbieter „Qwen 27B – RTX 3080 lokal“. Gedacht neben Strata auf beiden 3090.
   Noch nicht gestartet und nicht gemessen; PLAN.md, 29.10.2026.
+- **Zwei NInfer** (29.10.2026, Auftrag Sascha): `ninfer` fest auf der FE (128K, Port 8080) und `ninfer-2` fest auf der
+  Suprim (96K, Port 8081), Feld `feste_karte`; in DSH „NInfer 1 – FE“ und „NInfer 2 – Suprim“. PLAN.md, 29.10.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
