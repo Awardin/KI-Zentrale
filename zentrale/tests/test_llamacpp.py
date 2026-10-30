@@ -214,6 +214,65 @@ class LlamaCpp(unittest.TestCase):
         self.assertEqual(z._zustaende({'dienste': {'qwen27-abl': s}})['qwen27-abl']['detail'],
                          'Denkstufe hoch (gründlicher) · Port 8105')
 
+    def test_unsloth_q4_fest_auf_der_fe(self):
+        """Qwen 27B Unsloth Q4 (30.10.2026): fest auf der FE, 128K, Bildteil im Arbeitsspeicher, Denkstufe wählbar."""
+        q = self.erf.llamacpp['qwen27-unsloth']
+        self.assertEqual((q['art'], q['port'], q['feste_karte'], q['karten'], q['bedarf_je_karte_mib']),
+                         ('llamacpp', 8106, 0, ['RTX 3090'], 23000))
+        self.assertEqual(q['programm'], r'C:\LLM\runtimes\llama-b11838-cuda\llama-server.exe')
+        self.assertEqual(q['modelldatei'], r'C:\LLM\models\Qwen3.8-27B\Qwen3.8-27B-UD-Q4_K_XL.gguf')
+        self.assertEqual(q['mmproj'], r'C:\LLM\models\Qwen3.8-27B-GSQ-RCO\mmproj-Qwen3.8-27B-BF16.gguf')
+        self.assertEqual([(v['id'], v.get('standard', False)) for v in q['varianten']], [('low', True), ('high', False)])
+        self.assertEqual(q['argumente'], q['varianten'][0]['argumente'])
+        for v in q['varianten']:
+            with self.subTest(variante=v['id']):
+                argumente = v['argumente']
+                for flag, wert in (('-c', '131072'), ('--spec-type', 'draft-mtp'), ('--spec-draft-n-max', '3')):
+                    self.assertEqual(argumente[argumente.index(flag) + 1], wert)
+                self.assertIn('--no-mmproj-offload', argumente)
+                self.assertNotIn('--reasoning-budget', argumente)
+                self.assertEqual(v['kennung'], f"reasoning_effort:{v['id']}")
+                self.assertEqual(argumente[argumente.index('--chat-template-kwargs') + 1],
+                                 json.dumps({'reasoning_effort': v['id']}, separators=(',', ':')))
+        self.assertEqual(planung.variante(q)['variante'], 'low')
+
+        self.erf.messen.return_value['dienste']['qwen27-unsloth'] = {'zustand': 'aus'}
+        self.starte_losgeloest.return_value = Mock(pid=41, poll=Mock(return_value=None))
+        self.antwort.return_value = {'status': 'ok'}
+        with patch('zentrale.aktionen.time.sleep'):
+            self.akt.starten('qwen27-unsloth', karte=0, variante='high')
+        args = self.starte_losgeloest.call_args.args
+        argv, env = args[0], args[2]
+        self.assertEqual(env['CUDA_VISIBLE_DEVICES'], '0')
+        self.assertEqual(env['CUDA_DEVICE_ORDER'], 'PCI_BUS_ID')
+        for flag, wert in (('--mmproj', q['mmproj']), ('--alias', 'qwen3.8-27b-unsloth-q4kxl'), ('--port', '8106'),
+                           ('--chat-template-kwargs', '{"reasoning_effort":"high"}')):
+            self.assertEqual(argv[argv.index(flag) + 1], wert)
+
+        # So steht das JSON-Argument in der Windows-Kommandozeile.
+        self.procs[35] = (0, 'llama-server.exe')
+        self.infos[35] = (q['programm'], f'"{q["programm"]}" -m "{q["modelldatei"]}" --port 8106 '
+                                         '--chat-template-kwargs "{\\"reasoning_effort\\":\\"high\\"}"')
+        self.health.return_value = {'status': 'ok'}
+        s = self.erf._dienste(self.procs, {8106: 35})['qwen27-unsloth']
+        self.assertEqual((s['zustand'], s['variante']), ('bereit', 'high'))
+        z = Zentrale.__new__(Zentrale)
+        z.cfg = dict(self.cfg, eintraege=[q])
+        z.erf, z.akt, z.laufend = self.erf, self.akt, {}
+        self.assertEqual(z._zustaende({'dienste': {'qwen27-unsloth': s}})['qwen27-unsloth']['detail'],
+                         'Denkstufe hoch (gründlicher) · Port 8106')
+
+        karten = [{'index': 0, 'name': 'NVIDIA GeForce RTX 3090', 'gesamt': 24576, 'belegt': 1200},
+                  {'index': 1, 'name': 'NVIDIA GeForce RTX 3090', 'gesamt': 24576, 'belegt': 0}]
+        self.assertEqual(planung.karte_waehlen(karten, [], q, 768), (0, None))
+        ohne_feste_karte = dict(q)
+        ohne_feste_karte.pop('feste_karte')
+        self.assertEqual(planung.karte_waehlen(karten, [], ohne_feste_karte, 768), (1, None))
+
+    def test_ports_der_eintraege_sind_eindeutig(self):
+        ports = [e['port'] for e in self.cfg['eintraege'] if 'port' in e]
+        self.assertEqual(len(ports), len(set(ports)))
+
 
 class KartenlisteServer(unittest.TestCase):
     def setUp(self):

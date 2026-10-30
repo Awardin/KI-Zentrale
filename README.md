@@ -370,6 +370,7 @@ nicht direkt. Kurzüberblick der Schnittstellen, nur `127.0.0.1`:
 | Eintrag | Art | Belegung (gemessen 23.09.2026 mit RTX 3090 + 3080; seit 14.10.2026 zwei RTX 3090) |
 |---|---|---|
 | Qwen3.8 27B · NInfer, 128K | eigener Server, Port 8080, eine RTX 3090 | 21,8 GiB (14.10.2026: auf der FE, 22.286 MiB) |
+| Qwen3.8 27B · Unsloth Q4 (UD-Q4_K_XL, MTP), 128K, Bilder, Denkstufe low/high | llama.cpp b11838, Port 8106, fest auf der FE | 30.10.2026: 22.716–22.760 MiB (Bildteil im Arbeitsspeicher), Schreiben 54,6 Token/s, 72K-Prompt 994 Token/s; Bedarf 23.000 MiB |
 | Ornith 1.5 Q5, 128K | Ollama `ornith-q5-128k:latest`, verteilt | 14.10.2026: 14.633 (FE) + 12.787 MiB (Suprim) |
 | Ornith 1.5 Q6, 256K | Ollama `ornith-q6-256k:latest` (Q6_K, num_ctx und num_batch 256 im Modelfile), beide Karten | 19.10.2026: 18.742 (FE, inkl. ~1,1 GiB Windows) + 15.644 MiB (Suprim), 31,2 GiB ganz im Grafikspeicher, bereit nach 9 s, 121 Token/s; Bedarf 33.500 MiB |
 | Ornith 1.5 Q4 | Ollama `ornith-1.5:35b`, verteilt | 14.10.2026: 14.051 + 12.411 MiB bei 256K Kontext (Ollama wählt ihn nach dem Grafikspeicher; mit 3090 + 3080 waren es 32K, 13,0 + 9,4 GiB) |

@@ -329,6 +329,32 @@
       "startzeit_max_s": 180
     },
     {
+      "id": "qwen27-unsloth",
+      "art": "llamacpp",
+      "gruppe": "Sprachmodelle",
+      "name": "Qwen3.8 27B · Unsloth Q4 · RTX 3090 FE",
+      "untertitel": "UD-Q4_K_XL · 128K · mit Bildern · Denkstufe wählbar · fest auf der RTX 3090 FE",
+      "wofuer": "Genaueres dichtes Qwen 27B (Unsloth UD-Q4_K_XL, nicht unzensiert) mit MTP für Wissensarbeit: liest lange Texte 45–50 % schneller ein als NInfer und schreibt etwa gleich schnell; Bilder über den Bildteil im Arbeitsspeicher (~7–10 s je Bild). In DSH als Anbieter „Qwen 27B Q4 – FE (128K)“; OpenAI-API auf Port 8106.",
+      "farbe": "#3F7F5F",
+      "programm": "C:\\LLM\\runtimes\\llama-b11838-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\Qwen3.8-27B\\Qwen3.8-27B-UD-Q4_K_XL.gguf",
+      "mmproj": "C:\\LLM\\models\\Qwen3.8-27B-GSQ-RCO\\mmproj-Qwen3.8-27B-BF16.gguf",
+      "modell_id": "qwen3.8-27b-unsloth-q4kxl",
+      "port": 8106,
+      "karten": ["RTX 3090"],
+      "feste_karte": 0,
+      "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"low\"}", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"],
+      "varianten": [
+        {"id": "low", "name": "Denkstufe niedrig (schneller)", "standard": true, "kennung": "reasoning_effort:low", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"low\"}", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"]},
+        {"id": "high", "name": "Denkstufe hoch (gründlicher)", "kennung": "reasoning_effort:high", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"high\"}", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"]}
+      ],
+      "bedarf_je_karte_mib": 23000,
+      "bedarf_hinweis": "Gemessen 30.10.2026 auf der RTX 3090 FE (128K, q8-Cache, MTP, Bildteil im Arbeitsspeicher): 22.716 MiB nach dem Start, 22.760 MiB nach 72K Token Einlesen und einem Bild; keine Auslagerung in den Arbeitsspeicher (Shared 402–444 MiB = Grundwert).",
+      "karten_grund": "30.10.2026 (Sascha: „Ja, bauen lassen“): fest auf der FE (Karte 0, ohne Monitor). Auf der Suprim mit Monitor (Windows ~2 GiB) passen 128K nicht. Kommt der Monitor an die FE, muss der Kontext kleiner werden.",
+      "mtp_grund": "Die Unsloth-Datei enthält den MTP-Kopf (blk.64.nextn); draft-mtp mit 3 Vorschlägen wie bei qwen27-abl. Gemessen auf der FE: Schreiben 54,6 / 54,6 / 53,5 / 41,9 Token/s (kurz / nach 8K / 34K / 72K), Einlesen 1.356 / 1.210 / 994 Token/s; NInfer 52,8 / 55,8 / 52,3 / 46,0 und 907 / 824 / 706.",
+      "startzeit_max_s": 180
+    },
+    {
       "id": "lightonocr",
       "art": "llamacpp",
       "gruppe": "Texterkennung",

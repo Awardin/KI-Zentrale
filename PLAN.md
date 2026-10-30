@@ -3095,6 +3095,42 @@ gegen die Hub-Angaben geprüft, `C:\LLM\models\Qwen3.8-27B-abliterated\`.
   passt auch so nicht. Bedarf bleibt 19.700 MiB. DSH-Anbieter auf 120K / 24.576 Antwort-Token (Verdichtung bei ~80 %).
   Live über die Zentrale mit „hoch“ gestartet: Anzeige „Denkstufe hoch (gründlicher) · Port 8105 · RTX 3080“, 19.478 MiB;
   Prompt-Aufgabe 35 s, 1.030 Denk-Wörter, bis zum Ende gedacht (`stop`), 75,5 tok/s. Belege `kontext_max_*.json`.
+- **30.10.2026: auf der RTX 3090 FE gegen NInfer gemessen** (Sascha: „Ja, messen“; Frage nach etwas Schnellerem als
+  NInfer auf einer 3090). Dasselbe IQ4_XS mit MTP 3, 128K, Bildteil auf der Karte, von Hand auf Port 8199 (Platz
+  angemeldet); NInfer 1 über die Zentrale, danach gestoppt. Gleiche Proben (`vergleich_3090.py`), Token/s:
+
+  | Probe | Einlesen llama.cpp / NInfer | Schreiben llama.cpp / NInfer |
+  |---|---|---|
+  | kurz, 500 Token | – | 56,4 / 52,8 |
+  | Zusammenfassung nach 8K | 1.383 / 907 | 61,5 / 55,8 |
+  | nach 34K | 1.238 / 824 | 55,3 / 52,3 |
+  | nach 72K (gesamt 82 / 112 s) | 1.018 / 706 | 44,0 / 46,0 |
+  | Patiententext | – | 56,9 / 50,4 |
+  | Denken high / low | – | 79,6 / 79,7 · low nur llama.cpp 94,5 |
+
+  Speicher 21.052 MiB (samt Bildteil) gegen 22.286 MiB. FE bis 343 W / 80 °C bzw. 345 W / 86 °C (Gehäuselüfter von Hand
+  voll). Qualität je eine Probe: beide brauchbar, beide mit Sprachfehlern, nicht belastbar. **Ergebnis:** llama.cpp liest
+  45–50 % schneller ein, schreibt 5–13 % schneller, nach 72K und beim Denken gleich; dazu Denkstufe, Bilder bei 128K,
+  weniger Speicher. NInfer kann Bilder nur mit `--vision` (im Eintrag aus; getestetes 3090-Profil laut
+  `run-qwen38-vision.bat` nur 32K). Noch nicht in die Zentrale übernommen (Saschas Entscheidung).
+- **Dazu Unsloth UD-Q4_K_XL** (nicht unzensiert; Sascha: „Erst Unsloth-Q4 testen“): auf Auftrag geladen nach
+  `C:\LLM\models\Qwen3.8-27B\` (17,56 GB, SHA-256 = Hub, MTP-Kopf in der Datei). 128K auf der FE nur mit Bildteil im
+  Arbeitsspeicher: 22.760 MiB. Schreiben 54,6 / 54,6 / 53,5 / 41,9 Token/s (kurz / nach 8K / 34K / 72K), Patiententext
+  53,0, Denken high 77,9; Einlesen 1.356 / 1.210 / 994 – also 3–11 % langsamer beim Schreiben als das IQ4_XS, so schnell
+  wie NInfer, Einlesen wie IQ4_XS. Bild 9,6 s bis zur ersten Antwort. Patiententext in der einen Probe der beste
+  (Warnzeichen vollständig); Bild bis auf „offenes Fenster“ richtig. Lauf überschnitt sich mit der FanControl-Kalibrierung
+  der Lüfter-Session (Temperaturen nicht vergleichbar). Details im Nachtrag der `auswertung.md`.
+- **Eintrag `qwen27-unsloth` gebaut** (Sascha: „Ja, bauen lassen“). Spec von Claude, gebaut von Codex Terra (max) im
+  Worktree `C:\Worktrees\ki-zentrale-qwen27-unsloth` (Branch `ki-zentrale/qwen27-unsloth-20261030`, nicht committet),
+  2,5 min, keine Nachbesserung, keine Abweichung: nur `config.json` (Port 8106, `feste_karte` 0, 128K,
+  `--no-mmproj-offload`, MTP 3, Varianten low/high mit `kennung`, Bedarf 23.000 MiB) und Test
+  `test_unsloth_q4_fest_auf_der_fe` + `test_ports_der_eintraege_sind_eindeutig`; kein Python-Modul geändert. Diff von
+  Claude gelesen, Tests selbst gefahren (Zentrale 188 OK), per `git apply` in `main` übernommen. **Live:** Zentrale neu
+  gestartet; Plan „RTX 3090 FE, 23.000 MiB, genug Platz“; bereit nach ~12 s, 22.716 MiB, Anzeige „Denkstufe niedrig
+  (schneller) · Port 8106 · RTX 3090 FE“; Text „OK“ in 0,5 s, Bild 11,2 s (erstes Bild, richtig: Leseplatz, Tee, Laub vor
+  dem Fenster), danach 22.756 MiB; über die Zentrale beendet, Port frei. DSH-Anbieter „Qwen 27B Q4 – FE (128K)“
+  (`qwen27-unsloth-fe`, 128K, Antwort 26.214) in `~\.dsh\profiles\desktop\cordis.patch.yml`. Belege
+  `Projekte\Lokale-Wissensextraktion\nachweise\2026-10-30-qwen27-3090-vergleich\` (`auswertung.md`).
 
 ## Test 29.10.2026: H3-„Realismus-Rezept“ aus einem YouTube-Kommentar (abgebrochen; Befund: DMAD nicht für Sprache)
 

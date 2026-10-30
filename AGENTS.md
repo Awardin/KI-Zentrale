@@ -124,6 +124,10 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Noch nicht gestartet und nicht gemessen; PLAN.md, 29.10.2026.
 - **Zwei NInfer** (29.10.2026, Auftrag Sascha): `ninfer` fest auf der FE (128K, Port 8080) und `ninfer-2` fest auf der
   Suprim (96K, Port 8081), Feld `feste_karte`; in DSH „NInfer 1 – FE“ und „NInfer 2 – Suprim“. PLAN.md, 29.10.2026.
+- **Qwen 27B Unsloth Q4 auf der FE** (30.10.2026, Auftrag Sascha, gebaut von Codex Terra): Eintrag `qwen27-unsloth`
+  (Art `llamacpp`, Port 8106, UD-Q4_K_XL mit MTP, 128K, Bildteil im Arbeitsspeicher, Denkstufe low/high, `feste_karte` 0,
+  Bedarf 23.000 MiB), in DSH „Qwen 27B Q4 – FE (128K)“. Gegen NInfer gemessen: Einlesen 45–50 % schneller, Schreiben
+  gleich; für Wissensarbeit auf einer 3090 vorgesehen. PLAN.md, 30.10.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
