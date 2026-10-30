@@ -3069,6 +3069,32 @@ gegen die Hub-Angaben geprüft, `C:\LLM\models\Qwen3.8-27B-abliterated\`.
   Patiententext 38,6 → 48,7; Bild 38,4 → 48,7 tok/s), Einlesen ~6 % langsamer (1.298 → 1.215). Speicher 19.560 →
   19.684 MiB (frei ~0,8 GiB, 34K-Lauf ohne Fehler) → Bedarf 19.700 MiB. Bleibt eingeschaltet. Belege
   `test_3080_ohne_mtp.json` / `test_3080_mit_mtp.json`.
+- **Denkstufe „low“ als Standard** (Video IchBinFabian: Qwen 3.8 denkt ab Werk auf „high“, Sonnensystem 42 → 4 min;
+  Sascha „1 und 2“): `--chat-template-kwargs {"reasoning_effort":"low"}`, Budget auf 4.096 als Notbremse. Prompt-Aufgabe
+  (Joggerin im Regen, Denken an): low 25,7 s / 686 Denk-Wörter, high 29,3 s / 982 – bei kurzen Aufgaben kleiner
+  Unterschied; beim Denken schreibt das Modell mit MTP 77–90 tok/s. **MTP mit 4 Vorschlägen** geprüft: kein Gewinn gegen
+  3 (A 46,9 statt 51,3, nach 34K 47,4 statt 44,9), Speicher 19.836 statt 19.684 MiB → zurück auf 3. `denken.json`,
+  `test_3080_mtp4.json`.
+- **30.10.2026: Denkstufe beim Starten wählbar, kein Budget, 120K** (Sascha: „Schalter … ob ich low oder high verwende.
+  Das Denkkontingent sollte nicht eingeschränkt werden … max. Kontextstufe für die 3080“). Eintrag mit `varianten`
+  „Denkstufe niedrig (schneller)“ (Standard) und „Denkstufe hoch (gründlicher)“ – Auswahl „Starten mit“ in der Zentrale;
+  `--reasoning-budget` entfernt. Die laufende Stufe liest die Zentrale aus der Kommandozeile (neues Variantenfeld
+  `kennung`, z. B. `reasoning_effort:high`; `erfassung.py`, Anzeige im Detail), Test `test_denkstufe_waehlbar_und_erkannt`.
+  **Größter Kontext** (`kontext_max.py`, Kontext je zu 90 % mit PLAN.md+STUDIO.md gefüllt, Windows-Zähler je Prozess
+  „eigener“ und „ausgelagerter“ Grafikspeicher):
+
+  | Kontext | Bildteil | Speicher nach Füllen | ausgelagert | Schreiben am Ende | Bild |
+  |---|---|---|---|---|---|
+  | 96K | Karte | 19.664 MiB | – (Grundwert ~380) | 31–36 tok/s | 2,8 s |
+  | 112K | Karte | 20.234 MiB (Karte voll) | ja | – | – |
+  | 128K | Karte | 20.238 MiB (Karte voll) | +840 MiB | 24–29 tok/s | – |
+  | 112K | Prozessor | 19.172 MiB | – | 28,8 tok/s | 7,2 s |
+  | 120K | Prozessor | 19.526 MiB | – | 30,0 tok/s | 6,7 s |
+
+  → **120K mit `--no-mmproj-offload`** (Bildteil im Arbeitsspeicher, ~4 s mehr je Bild, Schreiben unverändert); 128K
+  passt auch so nicht. Bedarf bleibt 19.700 MiB. DSH-Anbieter auf 120K / 24.576 Antwort-Token (Verdichtung bei ~80 %).
+  Live über die Zentrale mit „hoch“ gestartet: Anzeige „Denkstufe hoch (gründlicher) · Port 8105 · RTX 3080“, 19.478 MiB;
+  Prompt-Aufgabe 35 s, 1.030 Denk-Wörter, bis zum Ende gedacht (`stop`), 75,5 tok/s. Belege `kontext_max_*.json`.
 
 ## Test 29.10.2026: H3-„Realismus-Rezept“ aus einem YouTube-Kommentar (abgebrochen; Befund: DMAD nicht für Sprache)
 

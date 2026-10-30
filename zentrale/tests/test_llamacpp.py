@@ -186,6 +186,34 @@ class LlamaCpp(unittest.TestCase):
         z._schritte_ausfuehren(['beenden:lightonocr'])
         self.assertEqual(z.laufend, {})
 
+    def test_denkstufe_waehlbar_und_erkannt(self):
+        """Qwen 27B unzensiert (30.10.2026): Denkstufe low/high als Startvariante, kein Denkbudget, laufende Stufe
+        aus der Kommandozeile."""
+        q = self.erf.llamacpp['qwen27-abl']
+        self.assertEqual([(v['id'], v.get('standard', False)) for v in q['varianten']], [('low', True), ('high', False)])
+        for v in q['varianten']:
+            self.assertNotIn('--reasoning-budget', v['argumente'])
+            self.assertEqual(v['argumente'][v['argumente'].index('-c') + 1], '122880')
+        self.erf.messen.return_value['dienste']['qwen27-abl'] = {'zustand': 'aus'}
+        self.starte_losgeloest.return_value = Mock(pid=41, poll=Mock(return_value=None))
+        self.antwort.return_value = {'status': 'ok'}
+        with patch('zentrale.aktionen.time.sleep'):
+            self.akt.starten('qwen27-abl', karte=2, variante='high')
+        args = self.starte_losgeloest.call_args.args[0]
+        self.assertEqual(args[args.index('--chat-template-kwargs') + 1], '{"reasoning_effort":"high"}')
+        # So steht das JSON-Argument in der Windows-Kommandozeile.
+        self.procs[35] = (0, 'llama-server.exe')
+        self.infos[35] = (q['programm'], f'"{q["programm"]}" -m "{q["modelldatei"]}" --port 8105 '
+                                         '--chat-template-kwargs "{\\"reasoning_effort\\":\\"high\\"}"')
+        self.health.return_value = {'status': 'ok'}
+        s = self.erf._dienste(self.procs, {8105: 35})['qwen27-abl']
+        self.assertEqual((s['zustand'], s['variante']), ('bereit', 'high'))
+        z = Zentrale.__new__(Zentrale)
+        z.cfg = dict(self.cfg, eintraege=[q])
+        z.erf, z.akt, z.laufend = self.erf, self.akt, {}
+        self.assertEqual(z._zustaende({'dienste': {'qwen27-abl': s}})['qwen27-abl']['detail'],
+                         'Denkstufe hoch (gründlicher) · Port 8105')
+
 
 class KartenlisteServer(unittest.TestCase):
     def setUp(self):

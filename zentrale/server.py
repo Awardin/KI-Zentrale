@@ -171,7 +171,8 @@ class Zentrale:
                 zustand = s['zustand']
                 if zustand == 'bereit':
                     karte = self._karte_von(roh, 'llamacpp:' + e['id'])
-                    detail = f"Port {e['port']}" + (f' · {karte}' if karte else '')
+                    v = next((v for v in e.get('varianten') or [] if v['id'] == s.get('variante')), None)
+                    detail = (f"{v['name']} · " if v else '') + f"Port {e['port']}" + (f' · {karte}' if karte else '')
                 elif zustand == 'fremd':
                     detail = f"Port {e['port']} ist von {s['fremd']} belegt."
             elif e['art'] == 'polystrata':

@@ -372,6 +372,11 @@ class Erfassung:
             if pid is not None:
                 if self.ist_llamacpp(pid, procs) == eid:
                     s['zustand'] = 'startet'
+                    if e.get('varianten'):
+                        # Laufende Variante aus der Kommandozeile (`kennung`, z. B. reasoning_effort:low).
+                        cmd = self.info(pid, procs[pid][1])['cmd'].replace('"', '').replace('\\', '')
+                        s['variante'] = next((v['id'] for v in e['varianten']
+                                              if v.get('kennung') and v['kennung'].lower() in cmd), None)
                     try:
                         if (http_json(f"http://127.0.0.1:{e['port']}/health", timeout=1.0) or {}).get('status') == 'ok':
                             s['zustand'] = 'bereit'
