@@ -37,14 +37,21 @@ class Auswahl(unittest.TestCase):
                          [('256k', True), ('32k', False)])
         self.assertNotIn('varianten', E['ornith-q5'])  # Hermes fragt Q5 ohne Optionen an: fest 128K
         s = {v['id']: v for v in E['flash-next-strata']['varianten']}
-        self.assertTrue(s['128k']['konfig'].endswith('strata-iq3_xxs-2gpu-128k.json') and s['128k'].get('standard'))
+        self.assertTrue(s['128k']['konfig'].endswith('strata-iq3_xxs-2gpu-128k.json'))
+        # Seit 01.11.2026 ist Q4 Standard (weniger Arbeitsspeicher als IQ3_XXS, Wunsch Sascha).
+        self.assertEqual([v['id'] for v in E['flash-next-strata']['varianten'] if v.get('standard')], ['q4'])
         self.assertTrue(s['256k']['konfig'].endswith('strata-iq3_xxs-2gpu-256k.json'))
         # Q4 (16.10.2026): eigene Strata-Einstellung, weniger RAM-Bedarf als IQ3_XXS (Rahmen 32 GiB statt alle Experten).
         q4 = planung.variante(E['flash-next-strata'], 'q4')
         self.assertTrue(q4['konfig'].endswith('strata-unsloth-ud-iq4_xs-2gpu-128k.json'))
         self.assertEqual((q4['ram_bedarf_gib'], q4['kontext'], q4['modell']),
                          (40, 131072, 'qwen3.8-flash-next-unsloth-ud-iq4_xs'))
-        self.assertEqual(planung.variante(E['flash-next-strata'])['ram_bedarf_gib'], 42)
+        self.assertEqual(planung.variante(E['flash-next-strata'])['ram_bedarf_gib'], 40)
+        self.assertEqual(planung.variante(E['flash-next-strata'], '128k')['ram_bedarf_gib'], 42)
+        # Q4 mit 256K (01.11.2026): eigene Einstellung, Kontextspeicher im RAM (--kv-resident), Bilder bleiben.
+        q4_256 = planung.variante(E['flash-next-strata'], 'q4-256k')
+        self.assertTrue(q4_256['konfig'].endswith('strata-unsloth-ud-iq4_xs-2gpu-256k.json'))
+        self.assertEqual((q4_256['kontext'], q4_256['modell']), (262144, 'qwen3.8-flash-next-unsloth-ud-iq4_xs'))
         # Jede Strata-Variante nennt Modell und Kontext, damit die Anzeige die laufende Fassung erkennt.
         paare = [(v['modell'], v['kontext']) for v in E['flash-next-strata']['varianten']]
         self.assertEqual(len(paare), len(set(paare)))
@@ -93,7 +100,8 @@ class Server(unittest.TestCase):
         self.assertEqual([(v['id'], v['kontext'], v['bedarf_gesamt_mib']) for v in e['varianten']],
                          [('256k', 262144, 26500), ('32k', 32768, 23000)])
         s = next(x for x in self.z.konfig()['eintraege'] if x['id'] == 'flash-next-strata')
-        self.assertEqual([(v['id'], v['kontext']) for v in s['varianten']], [('128k', 131072), ('256k', 262144), ('q4', 131072)])
+        self.assertEqual([(v['id'], v['kontext']) for v in s['varianten']],
+                         [('128k', 131072), ('256k', 262144), ('q4', 131072), ('q4-256k', 262144)])
         self.assertNotIn('konfig', s['varianten'][0])  # Pfade bleiben im Dienst
 
 

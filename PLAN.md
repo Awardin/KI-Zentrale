@@ -3169,7 +3169,234 @@ Turbo, `video169`), Sprech-Prompt Therapeutin, Realism-LoRA und schnelle Aufmerk
 - Ungeprüft: höhere Auflösung, Whisper, Szenenfolge/Weiterführen mit Sprache (rechnen mit Turbo-LoRA bzw. 8 Schritten,
   nicht DMAD). Suprim-Videotest (Video ganz auf der Suprim trotz Ultrawide-Monitor) vorbereitet, nicht gerechnet.
 
+## Vorgemerkt für 31.10.2026: zwei Studio-Tests (Dateien geladen, nichts gerechnet)
+
+Auftrag Sascha 30.10.2026: „Downloaden aber nicht starten. Dieses Test und das Video vorher beide festhalten. Machen
+wir morgen.“ Vor dem Rechnen: FanControl erreicht die Grafikkarten seit dem Abschalten der 3080 nicht mehr (Notreserve
+über die Fühler der Hauptplatine) – erst PC neu starten oder Gehäuselüfter von Hand hoch. Dauer vorher bestätigen
+lassen (Läufe über ~15 min), erst ein Clip, dann fragen.
+
+Dateien (Download 30.10.2026, je SHA-256 gegen Hugging Face geprüft, erst danach umbenannt; Ordner `ComfyUI\models`):
+
+| Datei | Ordner | Größe | Test |
+|---|---|---|---|
+| `open_h3_regenerate_2k_lora.safetensors` | `loras` | 12,45 GB | A |
+| `minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors` | `latent_upscale_models` | 0,69 GB | A |
+| `sharp_curve_branches.safetensors`, `lora_config.json`, `module_ranks.json`, `MERGE_VERIFY.json`, README, NOTICE, Lizenzen | `open_h3_regenerate` (eigener Ordner, ComfyUI liest ihn nicht) | 1,24 GB | A |
+| `Minimax-h3_Singularity_ref2va_v2_pruned_int8.safetensors` | `diffusion_models` | 20,97 GB | B |
+
+### Test A: Open-H3-Regenerate-2K – Videos hochskalieren
+
+Quelle: YouTube `T98RBlMNwhY` (AIQUEST, 30.10.2026), Modellseite `Efficient-Large-Model/Open-H3-Regenerate-2K`,
+Projektseite `nvlabs.github.io/Sana/Open-H3-Regenerate-2K`. Schließt die Lücke „Video-Hochskalieren fehlt dem Studio“
+(Bewertung 27.10.2026, „Generate 4K AI Videos on a 6GB GPU?“), diesmal aus vertrauenswürdiger Quelle (NVIDIA).
+
+- **Was es ist:** eine Refiner-LoRA (auf scharfen Clips und verschlechterten Kopien trainiert, H3 bleibt eingefroren),
+  zusammengeführt mit LightX2V FL2VA Turbo v1.2 und LMS Sharp (Rang 576, 312 Schichten, FP32). Dazu 50 „Sharp“-Zweige
+  (AdaLN), die eine 8-D-Zeitkurve aus `adaln_t_table` lesen – laut `lora_config.json` aus genau unserem
+  `minimax_h3_ref2va_pruned_int8_convrot` (Comfy-Org). Ablauf: Entwurf kodieren → Latent mit dem 3D-Conv-Hochskalierer
+  auf die Zielgröße → auf σ 0,909 neu verrauschen → 3 Euler-Schritte (0,909 → 0,857 → 0,667 → 0), CFG 1 → dekodieren.
+  Ziel 768p, 1080p, 2K oder 4K; 5–15 s in einem Durchgang. Lizenz wie H3.
+- **Angaben:** 5 s auf 2K in 22 s (B200, optimiert) bzw. 87 s (Standard); Blindtest 87 % für die offene Fassung gegen
+  die MiniMax-API. Im Video (2 × T4, 2 Schritte „Fast“): 720p 5–7 min, 1080p 13–20 min, 2K über 30 min. H3-Entwürfe
+  deutlich sauberer (Gesichter, Fernaufnahme), echtes unscharfes Video nur mäßig; erfindet Details (Flecken im Fell).
+- **Nicht geladen:** `vae_fast` (6,5 GB, schneller Decoder aus StreamRender-H3, vermutlich nicht mit Kernknoten) und
+  `base_model/` (haben wir in Comfy-Form).
+- **Vor dem Rechnen klären:** Lädt ComfyUI 0.37 die LoRA (Schlüsselformat) auf unserem INT8-FL2VA-Modell? Lassen sich
+  die Sharp-Zweige mit Kernknoten nutzen, oder fehlen sie? Latent-Hochskalierer über `LatentUpscaleModelLoader` (den
+  Ordner kennt 0.37) oder Bildweg (fertiges Video vergrößern und neu kodieren – für Studio-Videos naheliegend)? Was
+  passiert mit dem Ton? Passt 1080p auf eine 3090?
+- **Testplan:** zwei vorhandene Studio-Videos 960 × 544 auf 1080p, 3 Schritte – eine Sprechszene in der Halbtotale
+  (etwa `Video-Real-B-…` vom 29.10. in „Werkstatt-Abnahme“) und ein Raum ohne Personen. Prüfen: Gesicht wie im
+  Original, Lippen synchron, erfundene Details, Zeit und Speicher auf der Suprim.
+
+### Test B: Singularity V2 gegen unser H3
+
+Quelle: YouTube `MeedlTF1S4c` (Viper AI Vault, 30.10.2026): Singularity V2 und H3, beide gekürzt in 8 Bit (21 GB), auf
+einer 3090; 5 Szenen mit gleichem Startbild, Prompt und Nummer, 12 s, 1376 × 768, 8 Schritte mit der 4-Schritt-Turbo-LoRA.
+Ergebnis nach erfüllten Prompt-Aktionen: Singularity 4, H3 2 (Stockduell, Samurai, Pantomime gewonnen, Feuerdrache
+verloren, Rennen gleich). Tempo gleich (Median 21:27 / 21:09 min je Clip), Spitze ~24 GB; W4A8 (11,8 GB) spart nur
+Download. Kauderwelsch in Sprechpausen (Hugging-Face-Diskussion 38: ohne Turbo, ungekürzt, mehr Schritte) nicht
+nachgestellt. Je ein Lauf, laut Autor kein Benchmark.
+
+- **Am 04.10.2026 abgelehnt** (Community-Mischung, nur Werbeangaben; „Nochmal“ alter Videos wäre nicht mehr gleich). Neu
+  ist ein unabhängiger Vergleich. Eine Übernahme ginge nur für neue Aufträge (wie bei INT8); alte Videos rechnen
+  „Nochmal“ weiter mit dem bisherigen Modell.
+- **Modellkarte:** Fusion aus ref, fl und „b25-49“, für Text, Bild, Referenz und Video zu Video; weniger Hautglanz,
+  Gesichter in der Totale, Action, Kamera, Prompttreue (Werbeangaben). Lizenzangabe Apache-2.0; als H3-Ableger gilt
+  die H3-Lizenz.
+- **Testplan** (960 × 544, 5 s, gleiche Nummer, Singularity statt `fl2va` bzw. `ref2va`), etwa 20 min GPU:
+  1. Sprechszene mit „Beste“ (20 Schritte ohne Turbo – genau die Lage aus Diskussion 38): Pausen anhören, Whisper.
+  2. Hintergrund ohne Sprache mit DMAD: wirkt DMAD auf dem Finetune noch?
+  3. Referenz-Video mit 8 Schritten und PDD-LoRA.
+
+## Qwen3.5-4B-3D-Coder in der Zentrale, getestet und mit dem 27B verglichen (01.11.2026)
+
+Auftrag Sascha 01.11.2026: „Such mal das Modell und lad es runter.“ Anlass: YouTube `7u129MEZ6-0` (Ray Codes, 29.10.2026)
+und `1J9vV8QY8WM` (Shaown Ships AI, 01.11.2026).
+
+- **Was es ist:** unabhängiges Finetune von Qwen3.5-4B durch CCORE (`ccore/Qwen3.5-4B-3D-Coder`, keine offizielle
+  Qwen-Fassung, „early preview“, Training läuft weiter). Schreibt interaktive Three.js-Szenen als eine HTML-Datei, laut
+  Autor auch allgemein brauchbar für Code. Apache 2.0; Trainingsdaten `ccore/ThreeJS-3D-Scenes` (MIT, 4.146 Beispiele
+  mit Denkspuren). Stand der Gewichte: Checkpoint 27.10.2026, Repo-Commit `196c03f` (30.10.2026).
+- **Dateien** in `C:\LLM\models\Qwen3.5-4B-3D-Coder\` (SHA-256 gegen Hugging Face geprüft):
+
+  | Datei | Größe | SHA-256 (Anfang) |
+  |---|---|---|
+  | `Qwen3.5-4B-3D-Coder-Q8_0.gguf` | 4,48 GB | `c30b0262…` |
+  | `mmproj-Qwen3.5-4B-BF16.gguf` (Bildteil, unverändert aus `lmstudio-community/Qwen3.5-4B-GGUF`) | 0,68 GB | `ae08d9d7…` |
+  | `Qwen3.5-4B-3D-Coder_Technical_Report.pdf` | 1,3 MB | `49758364…` |
+
+  Dazu README, LICENSE, `chat_template.jinja`. Nicht geladen: Q4_K_M (2,7 GB; bei 20/24 GB je Karte kein Grund für die
+  gröbere Fassung) und die FP16-Safetensors (9 GB).
+- **Download-Befund:** Hauptchat und ein Seiten-Chat haben gleichzeitig in dieselbe Q8_0-Datei geladen → 9,7 MB zu groß,
+  Prüfsumme falsch. Beide neu geladen (einmal als `.part`), beide Ergebnisse richtig, das doppelte gelöscht. Lehre: vor
+  einem Download prüfen, ob schon einer in den Ordner läuft; immer erst `.part`, prüfen, dann umbenennen.
+- **Einstellungen laut Modellkarte:** Temperatur 0,6–0,8, Top-P 0,90–0,95, Top-K 20–40, Wiederholungsstrafe 1,0; MTP aus
+  (in LM Studio sonst Endlosschleife). Systemprompt: nur das Three.js-Kernmodul 0.160.0 von cdnjs, keine Addons,
+  Kamerasteuerung selbst schreiben. Getestet mit llama.cpp b11889, 64K Kontext, q8-Cache, `--parallel 1` (hier liegt
+  b11838). Bekannter Fehler: doppelt deklarierte Variablen (JS-Fehler; ein Durchgang mit Suchen/Ersetzen hilft).
+  Keine Denkstufen: die Vorlage kennt nur `enable_thinking` an/aus (an = Standard).
+- **Angaben aus den Videos (ungeprüft):** 95 % „strukturelle Genauigkeit“, ganze Szene in 8–30 s. In deren Test: Straße
+  endet im Nichts, Asteroid nur ein Kristall, Unterwasserlicht zu hell – sonst stimmige, bedienbare Szenen.
+- **Herkunft laut technischem Bericht:** Trainingsszenen von MiniMax M3.1 Flash erzeugt (DeepSeek-Daten früh verworfen).
+  Stil wie OpenAI (Saschas Eindruck „sieht aus wie Sol“); in einer Denkspur steht wörtlich „Desired oververbosity 5“ –
+  vermutlich über MiniMax geerbt, nicht belegt.
+- **Zentrale-Eintrag** `qwen35-3d-coder` (Sascha: „Ja, Eintrag + Test“): Art `llamacpp`, llama.cpp b11838, Port 8107,
+  `karten` RTX 3080 vor RTX 3090, Bildteil auf der Karte, q8-Cache, Sampling der Modellkarte als Servervorgabe
+  (0,7 / 0,95 / 20 / 1,0), kein MTP. Kontext erst 64K, dann 128K (Sascha: „ist doch genug Platz da“). Test in
+  `zentrale\tests\test_llamacpp.py`; 189 + 225 Tests grün.
+- **Gemessen auf der Suprim** (RTX 3080 war aus, FE unberührt): bereit nach 4–5 s; 64K ~7.060 MiB nach dem Start, Spitze
+  ~7.400; 128K ~8.340, Spitze ~8.700 → Bedarf 9.000 MiB. Schreiben 103–121 Token/s, Einlesen kurzer Prompts
+  550–1.780 Token/s. Auf der 3080 noch nicht gemessen (erwartet etwas langsamer, passt mit viel Luft).
+- **Testszenen** (Systemprompt der Modellkarte; `C:\Workstation\Arbeitsmaterial\3D-Coder-Test\`, je `.html`, `.json`,
+  `.antwort.md` mit Denken):
+
+  | Lauf | Zeit / Token | Ergebnis |
+  |---|---|---|
+  | Turm (Beispiel des Autors) | 186 s / 22.453 | läuft fehlerfrei, Radar und Leuchtfeuer drehen; Glaskabine steht auf Stelzen neben dem Turm statt darauf |
+  | Hochstraße | 237 s / 27.823 | läuft, Doppeldeck mit Schild; Startansicht steckt in einem Hochhaus, Autos laufen ohne Rücksprung (nach ~10 s alle unsichtbar), je zwei Spuren liegen übereinander |
+  | Praxisraum (Voxel) 1 | 284 s / 32.768 | **kein HTML**: Endlosschleife im Denken (eine Zeile 1.207-mal) |
+  | Praxisraum 2 | 158 s / 18.317 | stimmiger Raum (Liege, Lampe, Fenster mit Pflanzen, Hanteln); Spiegel außen an der Wand, Gymnastikball ein Würfel |
+  | Praxisraum 3, `presence_penalty` 1,5 | 299 s / 32.768 | **kein HTML**: keine Schleife, aber Code im Denken ausgeschrieben, Grenze kurz vor der Antwort |
+  | Praxisraum 4, 128K, 65K Antwortgrenze | 634 s / 65.536 | **kein HTML**: Endlosschleife (Zeilenblock 76-mal) |
+
+  Ergebnis: 3 von 6 Läufen liefern eine Szene, alle drei ohne JS-Fehler und bedienbar, jede mit sichtbaren Logikfehlern.
+  Mehr Platz hilft gegen die Schleifen nicht; die Wiederholungsstrafe auch nicht erkennbar. Brauchbar für schnelle
+  Entwürfe mit 1–2 Wiederholungen, nicht verlässlich.
+- **Vergleich mit Qwen3.8 27B** (NInfer 2 auf der Suprim, Sascha: „lass mal die FE in Ruhe“; Unsloth Q4 ist fest auf der
+  FE und passt mit 128K nicht neben den Monitor), Hochstraße mit identischem Prompt: 785 s / 55.394 Token (127.000 Zeichen
+  Denken), 71 Token/s, Spitze 23.680 MiB, nur das Kernmodul, keine JS-Fehler. Gute Startansicht über den ganzen
+  Straßenzug, zwei Decks auf Pfeilern, Autos auf beiden Decks auch nach 25 s, Dachgärten und Balkone; einziger Fehler:
+  ferne Skyline-Blöcke wirken schwebend (Boden endet vorher). **Das 27B löst die Aufgabe deutlich sauberer, braucht aber
+  gut dreimal so lang und fast dreimal so viel Grafikspeicher.** Nur eine Szene verglichen.
+- **Vergleich mit Flash-Next** (Strata, beide 3090, Sascha: „starte mal und mache den gleichen prompt“), Hochstraße mit
+  identischem Prompt, 65.536 Token Antwortgrenze:
+  - **IQ3_XXS** (128K, Standard): bereit nach 34 s, 447 s / 57.688 Token (163.000 Zeichen Denken), 130 Token/s, keine
+    JS-Fehler. Der dichteste Straßenzug: zwei echte Decks (10 und 20 m) mit eigenen Pfeilern, viele Autos auf mehreren
+    Spuren, die richtig im Kreis fahren, Gehwegbäume, Dachgärten, Tunnelmund im Gebäude an beiden Enden. Schwächen:
+    Startansicht zwischen den Türmen, Stadt auf einer schwebenden Platte, keine Ansichtsknöpfe.
+  - **Q4** (UD-IQ4_XS, 128K): bereit nach 43 s, RAM frei 9,9 GB. 713 s / 65.536 Token, 92 Token/s, **kein fertiges
+    HTML**: keine Schleife (1.024 von 1.038 Denkzeilen verschieden), aber erst ein ganzer Entwurf im Denken (158.000
+    Zeichen), dann eine aufwendigere Szene (Schilderbrücken „EXPWY E1“), abgeschnitten nach 39.000 Zeichen Code.
+  - Last dabei (Q4-Lauf): FE 83 °C / 187 W / 56 %, Suprim 63 °C / 271 W / 45 % – deutlich ruhiger als ein dichtes 27B
+    allein auf einer Karte (Saschas Beobachtung). Die FE ist bei 187 W auffällig warm (FanControl ohne GPU-Werte seit
+    dem Abschalten der 3080?).
+  - Rangfolge bei dieser Szene: Flash-Next IQ3_XXS ≈ 27B > 4B; Flash-Next ist dabei am schnellsten fertig (7,5 min).
+
+## Arbeitsspeicher von Strata nachgemessen (01.11.2026)
+
+Anlass: Sascha hat nach dem Schließen anderer Programme oft nur ~45 GiB frei und fragte, ob die RAM-Prüfung (IQ3 42,
+Q4 40 GiB) 1–2 GiB zu streng ist. Gemessen über die Zentrale (verfügbar = `ullAvailPhys`):
+
+| Fassung | verfügbar vorher | verfügbar geladen | strata.exe Arbeitssatz | Prüfung |
+|---|---|---|---|---|
+| Q4 (`--resident-budget-gib 32`) | 48,5 GiB | 8,7–9,9 GiB | 35,8 GiB | 40 GiB |
+| IQ3_XXS 128K (ohne Rahmen) | 48,0 GiB | 3,7 GiB | 44,9 GiB | 42 GiB |
+
+Befund: IQ3 lädt ohne Rahmen alle Experten fest in den RAM („pinned arena“, Strata-Bench
+`bench\results\2026-10-01-iq4xs-64gb`), obwohl 84 % davon auf den Karten liegen; die Prüfung mit 42 GiB liegt schon unter
+dem echten Bedarf. Senken wäre falsch. Hebel stattdessen: ein Rahmen wie bei Q4 (Engine kann ihn seit 0.1.40 auch mit zwei
+Karten). Ungetestet für IQ3: RAM-Bedarf und Tempo mit Rahmen.
+
+**Entscheidung (Sascha: „ja mach das bitte, dann könnte ich es auf jeden Fall häufiger nutzen“): Q4 ist Standard.**
+- `config.json`: `standard` von `128k` zu `q4`; IQ3-Varianten heißen jetzt „IQ3_XXS · schneller · 128K · mit Bildern“ und
+  „IQ3_XXS · 256K · ohne Bilder“ (vorher „128K Kontext · …“, das passte auch auf Q4). Untertitel und `varianten_grund`
+  nachgezogen. Tests angepasst (Standard, RAM-Meldung 40,0 GiB, IQ3-Starttests mit `variante='128k'`): 189 + 225 grün.
+- Vorher geprüft: DSH Desktop und Headless (`.dsh\profiles\*\cordis.patch.yml`) und Hermes (`config.yaml`) schicken
+  `qwen3.8-flash-next-iq3_xxs`, 128K, Bilder; Chat-App kennt beide Namen; `recherche-lokal` startet schon mit
+  `variante: 'q4'` und Namen `qwen3.8-flash-next`; `watch`-Rohfassung nutzt den Q4-Namen. Keine Änderung dort nötig.
+- Live: Zentrale neu gestartet, Start ohne Variante → Q4 (bereit nach 45 s, verfügbar 48,7 → 8,2 GiB). Anfrage mit dem
+  DSH-Namen `…iq3_xxs` und mit dem Q4-Namen: beide beantwortet von Q4, richtig.
+- Die 128K sind eine Einstellung (`--max-context 131072` in `strata-unsloth-ud-iq4_xs-2gpu-128k.json`), keine Grenze des
+  Modells (256K gibt es mit IQ3). Q4 mit 256K ist nicht eingerichtet und nicht gemessen (Sascha hätte gern 128K/256K
+  zur Wahl).
+
+**Startoption „Q4 · 256K · mit Bildern“ (Sascha: „Ja, einrichten“).** Neue Strata-Einstellung
+`C:\LLM\runtimes\Strata\strata-unsloth-ud-iq4_xs-2gpu-256k.json` = Kopie der Q4-128K-Datei mit `--max-context 262144`
+und eigener Logdatei. Laut Strata-Doku (`docs\BATCHING.md`) hält `--kv-resident 32768` nur ein 32K-Fenster des
+Kontextspeichers auf der Karte, der ganze Kontextspeicher liegt im RAM (~1,6 GB je 128K) – Grafikspeicher gleich,
+Bilder bleiben. Variante `q4-256k` in `config.json` (`ram_bedarf_gib` 42), Test in `test_varianten.py`; 189 Tests grün.
+Gemessen: bereit, `max_context` 262.144, Bilder an; strata.exe 35,5 GiB; Grafikspeicher 23,4 + 23,5–23,9 GiB; RAM
+verfügbar während langer Läufe mindestens 5,8–6,9 GiB (einmal 3,6 GiB, während 3D-Seiten im Browser liefen);
+96–119 Token/s. Eine Hochstraßen-Szene mit 90.546 Ausgabe-Token lief durch (mit 128K vorher abgeschnitten).
+
+## Prompt-Iteration: Flash-Next Q4 · 256K repariert und verbessert seine Szene selbst (01.11.2026)
+
+Auftrag Sascha: Hochstraße mit Q4 256K neu bauen; Fehler soll das Modell selbst finden (Hinweise nur bei Bedarf),
+dann bis zu 5 Durchgänge, die die Optik nur per Prompt verbessern; Prompt und Ergebnis jeweils festhalten (als Ziel
+gesetzt: fertig nach 5 Durchgängen oder wenn nur Unbrauchbares kommt). Vollständiger Verlauf mit allen Prompts im
+Wortlaut, Messwerten und Bildern: `C:\Workstation\Arbeitsmaterial\3D-Coder-Test\VERLAUF.md` (Prompts in `prompts\`,
+Bilder in `bilder\`, Endstand `hochstrasse-q4_endstand.html`). Skripte nur im Sitzungs-Scratchpad.
+
+- Erstfassung (909 s, 90.546 Token) startete nicht: drei Fehler (Name aus anderer Funktion, Schleifenvariable =
+  Liste, Objekt ohne Material). **Selbstkorrektur nur mit dem Symptom** „hängt im Ladebildschirm“: läuft (771 s).
+- 5 Verbesserungen (337–613 s je Runde): heller Tag, Startansicht, kompakter Text; Stein- und Glasfassaden, Läden mit
+  Markisen, Fußgänger; Umgebung, Straßenkamera, Höhenanzeige, Laternen; Straßenraster, Schatten unter den Decks,
+  Ampeln, Ladenschilder, Kontaktschatten; freie Straßenkamera, Bildrate zurück auf 60 (Luft), Cinema Tour.
+- Hilfe gebraucht: einmal eine Fehlermeldung im Wortlaut (NaN), einmal Ursache + Fundstelle (Nebel/Bodenfläche,
+  Kamera `VIEWS.floor` – allgemein formuliert scheiterte das zweimal), einmal nur die selbst angezeigte Fehlermeldung
+  nach einem Absturz in V4. Rechenzeit gesamt ≈ 69 min.
+- Lehren: Selbstreparatur funktioniert gut, wenn das Modell sein eigenes Ergebnis zurückbekommt (nur letzte Fassung
+  mitschicken, Kontext 24–28K). Konkrete Fundstellen wirken sofort, allgemeine Wünsche bei Kamera/Licht nicht. Beim
+  Prüfen die Kamerafahrt abwarten (Vorschaufenster im Hintergrund ist gedrosselt, ~20 s) – zwei meiner Befunde waren
+  sonst falsch.
+
+## Prompt-Iteration 2: Arche-Noah-Simulation mit Flash-Next Q4 · 256K (01.11.2026)
+
+Auftrag Sascha (als Ziel): nach der Hochstraße neuer Prompt „Arche Noah Simulation“, wieder 5 Durchgänge, gleicher
+Ablauf. Verlauf mit allen Prompts, Messwerten und Bildern: `C:\Workstation\Arbeitsmaterial\3D-Coder-Test\arche-noah\
+VERLAUF.md` (Prompts `prompts\`, Bilder `bilder\`, Endstand `arche_endstand.html`).
+
+- Erstfassung (668 s, 66.315 Token): schwarzer Bildschirm. Lauffähig erst nach drei Reparaturen: ohne Hinweis
+  (Oberfläche erschien), mit Fehlermeldung (doppelte Variable), mit Shader-Meldung + Symptom (Wasser unsichtbar,
+  Bord-Zähler 0).
+- 5 Verbesserungen (506–655 s): Plankendach, größere Tiere, Pfützen; Regenbogen und Kamera (nach Ursache + Werten),
+  Arche auf Gestell, Noahs Familie; helles Holz, Wellen mit Schaum, Laternenlicht, gefleckte Giraffen; Land ganz unter
+  Wasser, Rampe eingezogen, Tiere ziehen aus (nach Absturz in V4 mit Fehlermeldungen selbst repariert); Blitzstrahl,
+  grasende Tiere, Sonnenstrahlen, Schlussvers „I do set my bow in the cloud – Genesis 9:13“ (in V5 brach ab „The
+  Covenant“ jedes Bild an den Sonnenstrahlen ab – abgefangen, nur in Echtzeit sichtbar –, mit der Meldung selbst
+  repariert; danach ganze Simulation in Echtzeit fehlerfrei, Schlussvers erscheint). Endstand von Sascha abgenommen
+  (01.11.2026).
+- Rechenzeit ≈ 92 min. Lehren wie bei der Hochstraße; dazu: Fehler, die erst zu einem bestimmten Zeitpunkt auftreten
+  (Blitz, Sonnenstrahlen), und in `try/catch` abgefangene Fehler sieht man nur, wenn man die Stelle wirklich laufen
+  lässt. Verlässliche Prüfung: Edge headless mit eigenem Profil über die DevTools-Schnittstelle (Node aus
+  `C:\LLM\runtimes\node-v24.22.0-win-x64`), ganze Simulation bei 4×, alle Konsolenmeldungen mitschreiben – das
+  Vorschaufenster im Hintergrund zeichnet kaum.
+- RAM: Während Flash-Next rechnet und 3D-Seiten im Browser offen sind, fiel der verfügbare Arbeitsspeicher bis auf
+  2,7 GiB und die Suprim auf 24,2 GiB – Vorschau-Tab während der Rechnung auf eine leere Seite stellen.
+- **Ideen für die Praxis** (an Sascha, nicht gebaut): Heimübung als drehbare 3D-Animation zum Mitgeben, vereinfachtes
+  Erklärmodell (LWS, Knie) fürs Tablet, Praxis-/Trainingsfläche als Voxel-Rundgang. Bei Bewegung und Anatomie ist der 4B
+  am schwächsten; schematisch bleiben und prüfen.
+
 ## Offen
+
+- **Qwen3.5-4B-3D-Coder** (01.11.2026): Eintrag `qwen35-3d-coder`, getestet auf der Suprim (Abschnitt direkt oben).
+  Offen: Messung auf der RTX 3080, sobald sie wieder an ist; ggf. Startvariante „Denken aus“ prüfen (schneller, weniger
+  Schleifen?).
+
+- **Vorgemerkt für 31.10.2026:** Test A (Open-H3-Regenerate-2K) und Test B (Singularity V2), Abschnitt direkt oben.
+  Dateien geladen, nichts gerechnet.
 
 - **Zwei RTX 3090 seit 14.10.2026** (Stufe 6): Ein-Karten-Einstellung abgelöst, freie Kartenwahl, Strata gemessen. Offen:
   Möglich (nur auf Auftrag): Monitor an die Intel-Grafik, dann könnte die Reserve der FE kleiner werden

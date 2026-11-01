@@ -199,8 +199,9 @@ class Strata(unittest.TestCase):
         self.freier_arbeitsspeicher_mib.return_value = 35.25 * 1024
         with self.assertRaises(Fehler) as ex:
             self.akt.starten(self.e['id'])
+        # Ohne Variante startet der Standard Q4 (Prüfung 40 GiB).
         self.assertEqual(str(ex.exception), 'Zu wenig freier Arbeitsspeicher: 35,2 GiB frei, '
-                         'Strata braucht etwa 42,0 GiB. Bitte große Programme schließen.')
+                         'Strata braucht etwa 40,0 GiB. Bitte große Programme schließen.')
         self.starte_losgeloest.assert_not_called()
 
     def test_start_bereit_oder_fremd_startet_nicht(self):
@@ -212,11 +213,12 @@ class Strata(unittest.TestCase):
         self.starte_losgeloest.assert_not_called()
 
     def test_fehlende_startdateien_werden_genannt(self):
+        # IQ3_XXS 128K nutzt die Einstellung des Eintrags selbst (Standard ist seit 01.11.2026 Q4).
         for feld in ('python', 'server_skript', 'engine', 'konfig'):
             with self.subTest(feld=feld):
                 self.datei.side_effect = lambda p: p != self.e[feld]
                 with self.assertRaises(Fehler) as ex:
-                    self.akt.starten(self.e['id'])
+                    self.akt.starten(self.e['id'], variante='128k')
                 self.assertEqual(str(ex.exception), 'Datei fehlt: ' + self.e[feld])
         self.starte_losgeloest.assert_not_called()
 
@@ -224,7 +226,7 @@ class Strata(unittest.TestCase):
         self.starte_losgeloest.return_value = Mock(pid=30, poll=Mock(return_value=None))
         self.antwort.side_effect = [{'loaded': False}, {'loaded': True, 'max_context': 131072}]
         with patch('zentrale.aktionen.time.sleep'):
-            meldung = self.akt.starten(self.e['id'])
+            meldung = self.akt.starten(self.e['id'], variante='128k')
         self.assertIn('Kontext 131.072', meldung)
         args, kwargs = self.starte_losgeloest.call_args
         self.assertEqual(args[0], [self.e['python'], self.e['server_skript'], '--engine', 'strata',
@@ -309,7 +311,7 @@ class Strata(unittest.TestCase):
         self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'],
                          'Q4 · genauer, etwas langsamer · 128K · mit Bildern · Port 8095')
         roh['dienste']['strata'].update(modell='qwen3.8-flash-next-iq3_xxs', kontext=262144)
-        self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'], '256K Kontext · ohne Bilder · Port 8095')
+        self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'], 'IQ3_XXS · 256K · ohne Bilder · Port 8095')
         roh['dienste']['strata'].update(modell='anderes-modell', kontext=131072)
         self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'], 'Kontext 131.072 · Port 8095')
         roh['dienste']['strata'] = {'zustand': 'bereit', 'kontext': 131072, 'fremd': None}

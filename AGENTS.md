@@ -15,7 +15,8 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
 (`C:\Workstation\Skills\aktiv\atelier`); nie direkt an die Ports.
 
 - **Modellzentrale** (`zentrale\`, Port 3894): fertig und abgenommen am 23.09.2026. Seit 05.10.2026 mit Eintrag
-  „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, IQ3_XXS 128K auf beiden Karten, RAM-Prüfung 42 GiB;
+  „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, beide Karten; seit 01.11.2026 Standard Q4 128K mit Bildern,
+  RAM-Prüfung 40 GiB, dazu Q4 256K mit Bildern und IQ3_XXS 128K/256K, RAM-Prüfung je 42 GiB;
   [SPEC-strata.md](SPEC-strata.md), Abnahme in PLAN.md). Seit 18.10.2026 startet Strata mit `--fit-max-tokens`
   (`fit_max_tokens` im Eintrag): zu große `max_tokens` werden auf den Restplatz gekürzt statt mit 400 abgelehnt (DSH).
 - **Werkstatt** (`werkstatt\`, Port 3895): fertig und abgenommen am 23.09.2026 – Transkription,
@@ -128,6 +129,9 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   (Art `llamacpp`, Port 8106, UD-Q4_K_XL mit MTP, 128K, Bildteil im Arbeitsspeicher, Denkstufe low/high, `feste_karte` 0,
   Bedarf 23.000 MiB), in DSH „Qwen 27B Q4 – FE (128K)“. Gegen NInfer gemessen: Einlesen 45–50 % schneller, Schreiben
   gleich; für Wissensarbeit auf einer 3090 vorgesehen. PLAN.md, 30.10.2026.
+- **Qwen3.5 4B 3D-Coder** (01.11.2026, Auftrag Sascha): Eintrag `qwen35-3d-coder` (Art `llamacpp`, Port 8107, CCORE-Finetune
+  Q8_0 + Bildteil, 128K, Sampling der Modellkarte, kein MTP, RTX 3080 vor RTX 3090, Bedarf 9.000 MiB). Schreibt
+  Three.js-Szenen als eine HTML-Datei; neigt zu Denkschleifen. Test und Vergleich mit dem 27B: PLAN.md, 01.11.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,

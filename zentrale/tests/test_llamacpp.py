@@ -269,6 +269,30 @@ class LlamaCpp(unittest.TestCase):
         ohne_feste_karte.pop('feste_karte')
         self.assertEqual(planung.karte_waehlen(karten, [], ohne_feste_karte, 768), (1, None))
 
+    def test_3d_coder_nebenkarte_und_vorgaben(self):
+        """Qwen3.5 4B 3D-Coder (01.11.2026): RTX 3080 vor RTX 3090, 128K mit Bildteil, Sampling der Modellkarte, kein MTP."""
+        q = self.erf.llamacpp['qwen35-3d-coder']
+        self.assertEqual((q['art'], q['port'], q['karten']), ('llamacpp', 8107, ['RTX 3080', 'RTX 3090']))
+        self.assertNotIn('feste_karte', q)
+        self.assertEqual(q['modelldatei'], r'C:\LLM\models\Qwen3.5-4B-3D-Coder\Qwen3.5-4B-3D-Coder-Q8_0.gguf')
+        self.assertEqual(q['mmproj'], r'C:\LLM\models\Qwen3.5-4B-3D-Coder\mmproj-Qwen3.5-4B-BF16.gguf')
+        argumente = q['argumente']
+        for flag, wert in (('-c', '131072'), ('--temp', '0.7'), ('--top-p', '0.95'), ('--top-k', '20'),
+                           ('--repeat-penalty', '1.0')):
+            self.assertEqual(argumente[argumente.index(flag) + 1], wert)
+        self.assertNotIn('--spec-type', argumente)
+        self.assertNotIn('--chat-template-kwargs', argumente)
+
+        self.erf.messen.return_value['dienste']['qwen35-3d-coder'] = {'zustand': 'aus'}
+        self.starte_losgeloest.return_value = Mock(pid=42, poll=Mock(return_value=None))
+        self.antwort.return_value = {'status': 'ok'}
+        with patch('zentrale.aktionen.time.sleep'):
+            self.akt.starten('qwen35-3d-coder', karte=1)
+        argv, env = self.starte_losgeloest.call_args.args[0], self.starte_losgeloest.call_args.args[2]
+        self.assertEqual(env['CUDA_VISIBLE_DEVICES'], '1')
+        for flag, wert in (('--mmproj', q['mmproj']), ('--alias', 'qwen3.5-4b-3d-coder-q8'), ('--port', '8107')):
+            self.assertEqual(argv[argv.index(flag) + 1], wert)
+
     def test_ports_der_eintraege_sind_eindeutig(self):
         ports = [e['port'] for e in self.cfg['eintraege'] if 'port' in e]
         self.assertEqual(len(ports), len(set(ports)))

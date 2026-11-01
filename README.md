@@ -102,7 +102,10 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
 - **Feste Karten** (`bedarf_mib`): Strata braucht beide Karten.
 - **Varianten** (`varianten`, seit 14.10.2026): Unter dem Eintrag steht eine Auswahl „Laden mit“ bzw. „Starten mit“,
   solange er aus ist; der Bedarf darunter wechselt mit. Ornith Q4: 256K Kontext (Standard, 26,5 GiB) oder 32K
-  (22,5 GiB, gemessen). Strata: 128K mit Bildern (Standard) oder 256K ohne Bilder (Einstellung
+  (22,5 GiB, gemessen). Strata: seit 01.11.2026 **Q4 als Standard** (belegt 35,8 statt 44,9 GiB Arbeitsspeicher,
+  startet also auch mit ~45 GiB frei mit Luft; DSH, Hermes und Skills laufen unverändert, Strata nimmt jeden
+  Modellnamen an), dazu **Q4 · 256K mit Bildern** (`strata-unsloth-ud-iq4_xs-2gpu-256k.json`, Kontextspeicher im RAM,
+  RAM-Prüfung 42 GiB, gemessen 96–119 Token/s), daneben IQ3_XXS 128K mit Bildern (schneller) oder IQ3_XXS 256K ohne Bilder (Einstellung
   `strata-iq3_xxs-2gpu-256k.json`, geprüft 14.10.2026: 79 % der Experten auf den Karten, 95–106 Token/s) oder
   **Q4** (seit 16.10.2026: Unsloth UD-IQ4_XS, genauer, 128K mit Bildern, `strata-unsloth-ud-iq4_xs-2gpu-128k.json`,
   32 GiB RAM-Rahmen, RAM-Prüfung 40 GiB; braucht die feste Auslagerungsdatei 64 GB, gemessen 89–98 Token/s Text,
@@ -376,6 +379,7 @@ nicht direkt. Kurzüberblick der Schnittstellen, nur `127.0.0.1`:
 | Ornith 1.5 Q4 | Ollama `ornith-1.5:35b`, verteilt | 14.10.2026: 14.051 + 12.411 MiB bei 256K Kontext (Ollama wählt ihn nach dem Grafikspeicher; mit 3090 + 3080 waren es 32K, 13,0 + 9,4 GiB) |
 | Qwen3.8 Flash-Next · Strata, IQ3_XXS, 128K, Bilder | eigener Server, Port 8095, beide Karten | Strata-Code v0.2.1.3 mit Engine 0.1.45.3 (seit 20.10.2026; Monitor an der Suprim, Reserven 700 / 1.800 MiB): 23.361 (FE) + 23.358 MiB (Suprim), 84 % der Experten auf den Karten, 115–117 Token/s Text, 159–179 Code, 70K 3.895 Token/s, Bild 1,6 s; Q4 86–93 / 100–117 / 2.673. Gleich gemessen: Engine 0.1.46 106–116 / 134–160 / 3.745–3.752 (Q4 82–85 / 89–112 / 2.570), alte Engine 0.1.45 104–105 / 133–151 / 3.858 (Q4 72–81 / 83–98 / 2.531). Strata 0.1.45 (18.10.2026; Monitor an der FE: 106–116 Token/s Text, 142–158 Code, 70K 3.863 Token/s). Strata 0.1.44.1 (14.10.2026): 23.382 (FE) + 22.324 MiB (Suprim, 1 GiB Luft für Windows), 84 % der Experten auf den Karten, 112–113 Token/s Text, 145–162 Code, Prompt 3.675 Token/s; Bedarf 23.400 + 22.000 MiB (vorher mit 3080: 23.359 + 19.299 MiB) |
 | Ornith 1.5 · PolyStrata (Q4_K_M aus Ollama, 128K, Bilder) | PolyStrata 0.1.45-poly.1 (`strata-poly`), Port 8097, eine RTX 3090 | 18.10.2026: 23.329 MiB auf der Suprim, alle Experten auf der Karte, 182 Token/s Text, 200–211 Code, 70K-Prompt 2.393 Token/s; Bedarf 23.000 MiB, RAM-Prüfung 24 GiB |
+| Qwen3.5 4B · 3D-Coder (CCORE-Finetune, Q8_0, Bilder), 128K | llama.cpp b11838, Port 8107, RTX 3080, sonst eine RTX 3090 | 01.11.2026 auf der Suprim: ~8.340 MiB nach dem Start, Spitze ~8.700 MiB; 103–121 Token/s; Bedarf 9.000 MiB. Nur für Three.js-Szenen (eine HTML-Datei); Sampling der Modellkarte als Servervorgabe, Denken an, kein MTP. Neigt zu Denkschleifen – Szene notfalls neu rechnen (PLAN.md, 01.11.2026) |
 | LightOnOCR-3 · Texterkennung (4B, Q4_K_M, Bilder) | llama.cpp b10754, Port 8096, eine RTX 3090 | 4.311–4.535 MiB, gemessen 11.10.2026 (14.10.2026: 4.350 MiB auf der Suprim); Bedarf 4.700 MiB |
 | ComfyUI (Bild & Video; 2Wild stillgelegt) | Port 8188, Ausgabe nach `Arbeitsmaterial\Studio` | im Leerlauf 0,4 GiB, nach einem Qwen-Bild 14,5 GiB |
 | DSH Desktop | Programm | keine nennenswerte |
