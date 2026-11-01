@@ -19,7 +19,7 @@ import urllib.request
 
 from gemeinsam import winapi
 
-from . import anweisungen, watch_lauf
+from . import anweisungen, pruefung, watch_lauf
 
 _OHNE_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 _NETZ = urllib.request.build_opener()
@@ -28,6 +28,8 @@ LOCALAPPDATA = os.environ.get('LOCALAPPDATA', os.path.join(HOME, 'AppData', 'Loc
 APPDATA = os.environ.get('APPDATA', os.path.join(HOME, 'AppData', 'Roaming'))
 STUFEN_TEXT = {'none': 'ohne Nachdenken', 'low': 'niedrig', 'medium': 'mittel', 'high': 'hoch', 'xhigh': 'sehr hoch',
                'max': 'maximal', 'ultra': 'ultra'}
+# Antwortgrenze der lokalen Modelle: Denkteil und Zusammenfassung müssen zusammen hineinpassen.
+LOKAL_MAX_TOKENS = 32768
 
 
 def _json_datei(pfad):
@@ -445,12 +447,50 @@ class DeepSeek(Anbieter):
         return {'text': text, 'kosten_usd': kosten, 'tokens': n.get('total_tokens')}
 
 
+def _lokaler_text(text, abgeschnitten):
+    """Entfernt den Denkteil. Ein offener Denkteil oder ein leerer Text ergibt keine Zusammenfassung."""
+    text = re.sub(r'<think>.*?</think>\s*', '', text or '', flags=re.S)
+    if '<think>' in text or (abgeschnitten and not text.strip()):
+        raise RuntimeError('Das Modell hat die Antwortgrenze schon beim Nachdenken verbraucht; es ist keine '
+                           'Zusammenfassung entstanden. Mit „Wiederholen“ neu versuchen.')
+    if not text.strip():
+        raise RuntimeError('Das Modell hat keinen Text geliefert.')
+    if abgeschnitten:
+        text += '\n\n[Hinweis der Werkstatt: Die Antwort wurde an der Längengrenze abgeschnitten.]'
+    return text
+
+
 class Lokal(Anbieter):
     schluessel, name, cloud = 'lokal', 'Lokal', None
 
     def _eintraege(self):
         d = _json_datei(self.cfg['zentrale_config']) or {}
-        return {e['id']: e for e in d.get('eintraege', []) if e['art'] in ('ollama', 'ninfer')}, d.get('ollama', {})
+        return ({e['id']: e for e in d.get('eintraege', [])
+                 if e['art'] in ('ollama', 'ninfer', 'strata', 'polystrata')}, d.get('ollama', {}))
+
+    @staticmethod
+    def _kennungen(e):
+        """Modellkennungen, unter denen die Zentrale einen Eintrag am OpenAI-Port geladen haben kann."""
+        if e['art'] == 'strata':
+            return {x for x in [v.get('modell') for v in e.get('varianten') or []] + [e.get('modell')] if x}
+        if e['art'] == 'polystrata':
+            return {e['modell']} if e.get('modell') else set()
+        return {e['modell_id']} if e.get('modell_id') else set()
+
+    def _modelle(self, port):
+        """Kennungen laut /v1/models; leer, wenn der Port nicht antwortet oder nichts geladen ist."""
+        try:
+            with _OHNE_PROXY.open(f'http://127.0.0.1:{port}/v1/models', timeout=3) as r:
+                return [m.get('id') for m in json.load(r).get('data', []) if m.get('id')]
+        except Exception:
+            return []
+
+    def _tatsaechliches_modell(self, e):
+        """Die gerade geladene Kennung; die Werkstatt lädt nie selbst ein Modell (Regel aus AGENTS.md)."""
+        for kennung in self._modelle(e['port']):
+            if kennung in self._kennungen(e):
+                return kennung
+        raise RuntimeError(f"{e['name']} ist nicht geladen. Bitte in der Modellzentrale laden.")
 
     def _ollama_kontexte(self, ollama):
         """{Tag: Kontext} der gerade geladenen Ollama-Modelle laut /api/ps (frisch, leer wenn Ollama aus ist)."""
@@ -485,7 +525,7 @@ class Lokal(Anbieter):
                 v = next((x for x in e['varianten'] if x.get('standard')), e['varianten'][0])
                 kontext = (v.get('ollama_optionen') or {}).get('num_ctx') or v.get('kontext')
             if not kontext:
-                k = re.search(r'(\d+)K Kontext', e.get('untertitel', ''))
+                k = re.search(r'(\d+)\s*K\b', e.get('untertitel', ''))
                 kontext = int(k.group(1)) * 1024 if k else None
             out.append({'modell': e['id'], 'name': e['name'], 'kontext': kontext,
                         'stufen': [], 'stufe_standard': None, 'beschreibung': e.get('wofuer', '')})
@@ -499,8 +539,7 @@ class Lokal(Anbieter):
             if e['art'] == 'ollama':
                 with _OHNE_PROXY.open(ollama.get('url', 'http://127.0.0.1:11434') + '/api/ps', timeout=3) as r:
                     return any((m.get('name') or m.get('model')) == e['tag'] for m in json.load(r).get('models', []))
-            with _OHNE_PROXY.open(f"http://127.0.0.1:{e['port']}/v1/models", timeout=3) as r:
-                return e['modell_id'] in [m.get('id') for m in json.load(r).get('data', [])]
+            return bool(set(self._modelle(e['port'])) & self._kennungen(e))
         except Exception:
             return False
 
@@ -525,16 +564,22 @@ class Lokal(Anbieter):
             a = ollama_senden(ollama.get('url', 'http://127.0.0.1:11434') + '/api/chat', daten, lauf.http, lauf.melden)
             text = (a.get('message') or {}).get('content') or ''
             tokens = (a.get('prompt_eval_count') or 0) + (a.get('eval_count') or 0) or None
+            abgeschnitten = a.get('done_reason') == 'length'
         else:
-            daten = {'model': e['modell_id'], 'messages': [{'role': 'user', 'content': prompt}], 'stream': False,
-                     'max_tokens': 8192}
+            modell = e['modell_id'] if e['art'] == 'ninfer' else self._tatsaechliches_modell(e)
+            daten = {'model': modell, 'messages': [{'role': 'user', 'content': prompt}], 'stream': False,
+                     'max_tokens': LOKAL_MAX_TOKENS}
             anfrage = urllib.request.Request(f"http://127.0.0.1:{e['port']}/v1/chat/completions",
                                              json.dumps(daten).encode('utf-8'), {'Content-Type': 'application/json'})
             a = lauf.http(lambda: _OHNE_PROXY.open(anfrage, timeout=3600))
-            text = a['choices'][0]['message'].get('content') or ''
+            wahl = a['choices'][0]
+            text = wahl['message'].get('content') or ''
             tokens = (a.get('usage') or {}).get('total_tokens')
-        text = re.sub(r'<think>.*?</think>\s*', '', text, flags=re.S)
-        return {'text': text, 'tokens': tokens}
+            abgeschnitten = wahl.get('finish_reason') == 'length'
+        ergebnis = {'text': _lokaler_text(text, abgeschnitten), 'tokens': tokens}
+        if e['art'] in ('strata', 'polystrata'):
+            ergebnis['modell_tatsaechlich'] = modell
+        return ergebnis
 
 
 def ollama_senden(url, daten, oeffnen=None, melden=None, timeout=3600):
@@ -655,7 +700,8 @@ class _Abbruch(Exception):
 
 
 FELDER = ('id', 'transkript', 'ordner', 'titel', 'auswerter', 'anweisung', 'frage', 'zustand', 'meldung', 'datei',
-          'erstellt', 'begonnen', 'beendet', 'dauer_s', 'kosten_usd', 'tokens', 'cloud', 'modell_tatsaechlich')
+          'erstellt', 'begonnen', 'beendet', 'dauer_s', 'kosten_usd', 'tokens', 'cloud', 'modell_tatsaechlich',
+          'pruefung')
 
 
 class Auswertungen:
@@ -800,7 +846,10 @@ class Auswertungen:
                 info = self.profil_info(p)
                 for anw in gewaehlt:
                     geschaetzt = (laenge + len(anw['text']) + 600) / 3.0  # vorsichtig: gut 3 Zeichen je Token
-                    if info.get('kontext') and geschaetzt > info['kontext'] * 0.85:
+                    # Platz für Denkteil und Antwort freihalten: höchstens ein Viertel des Kontexts, aber nie mehr
+                    # als die Antwortgrenze der lokalen Modelle.
+                    reserve = min(LOKAL_MAX_TOKENS, info['kontext'] // 4) if info.get('kontext') else 0
+                    if info.get('kontext') and geschaetzt + reserve > info['kontext']:
                         abgelehnt.append(f"{p['name']}: Das Transkript ist zu lang für {info['kontext']:,} Token Kontext."
                                          .replace(',', '.'))
                         continue
@@ -890,8 +939,14 @@ class Auswertungen:
             raise RuntimeError(f"Die Anweisung „{a['anweisung']['name']}“ steht nicht mehr in der Promptsammlung.")
         with open(os.path.join(a['transkript'], 'transcript-timestamps.txt'), encoding='utf-8') as f:
             transkript = f.read()
+        try:
+            with open(os.path.join(a['transkript'], 'transcript.txt'), encoding='utf-8') as f:
+                wortbasis = f.read()  # ohne Zeitmarken; daraus folgt der Zielumfang
+        except OSError:
+            wortbasis = transkript
         werte = {'Titel': a['titel'], 'Quelle': a.get('quelle') or a['titel'],
-                 'Dauer': _dauer(a.get('dauer')), 'Frage': a.get('frage') or ''}
+                 'Dauer': _dauer(a.get('dauer')), 'Frage': a.get('frage') or '',
+                 'Zielumfang': anweisungen.zielumfang(wortbasis)}
         rahmen = (sammlung.get('rahmen') or {}).get('text', '')
         prompt = anweisungen.zusammenbauen(rahmen, anw['text'], werte, transkript)
         a['anweisung']['stand'] = anw['stand']
@@ -902,6 +957,9 @@ class Auswertungen:
         text = (ergebnis.get('text') or '').strip()
         if not text:
             raise RuntimeError('Das Modell hat keinen Text geliefert.')
+        pruef = pruefung.nachpruefen(text, transkript, not anw.get('frage'))
+        text = text + '\n\n' + pruef['block']
+        a['pruefung'] = pruef['kurz']
         a['datei'] = self._ablegen(a, text, ergebnis, time.time() - a['begonnen'])
         a.update(zustand='fertig', meldung='', kosten_usd=ergebnis.get('kosten_usd'), tokens=ergebnis.get('tokens'),
                  modell_tatsaechlich=ergebnis.get('modell_tatsaechlich'))
@@ -936,6 +994,8 @@ class Auswertungen:
             kopf.append(f"tokens: {ergebnis['tokens']}")
         if ergebnis.get('kosten_usd') is not None:
             kopf.append(f"kosten_usd: {ergebnis['kosten_usd']}")
+        if a.get('pruefung'):
+            kopf.append(f"pruefung: {json.dumps(a['pruefung'], ensure_ascii=False)}")
         kopf += ['status: Entwurf, automatisch erstellt, nicht geprüft', '---', '']
         with open(pfad, 'w', encoding='utf-8') as f:
             f.write('\n'.join(kopf) + '\n' + text + '\n')

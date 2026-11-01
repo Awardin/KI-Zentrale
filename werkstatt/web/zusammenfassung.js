@@ -199,6 +199,7 @@ function fassungStatus(f) {
   if (f.zustand === 'laeuft') return `Läuft seit ${dauer(f.sekunden)}${f.meldung ? ` · ${f.meldung}` : ''}`;
   if (f.zustand === 'fertig') {
     const teile = [`Fertig in ${dauer(f.dauer_s)}`];
+    if (f.pruefung) teile.push(`Prüfung: ${f.pruefung}`);
     if (f.tokens) teile.push(`${f.tokens.toLocaleString('de-DE')} Token`);
     if (f.kosten_usd != null) teile.push(`${f.kosten_usd.toLocaleString('de-DE', { maximumFractionDigits: 4 })} $`);
     return teile.join(' · ');

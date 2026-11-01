@@ -38,9 +38,10 @@ class Sammlung(unittest.TestCase):
         self.assertTrue(roh.endswith('## 4. ' + hinten))
         self.assertLess(roh.index(anweisungen.ABSCHNITT), roh.index('## 4. '))
         d = self.s.lesen()
-        self.assertEqual([a['name'] for a in d['anweisungen']], ['Kurzzusammenfassung', 'Ausführliche Analyse', 'Gezielte Frage'])
+        self.assertEqual([a['name'] for a in d['anweisungen']],
+                         ['Kurzzusammenfassung', 'Ausführliche Analyse', 'Gezielte Frage', 'Gegliederte Zusammenfassung'])
         self.assertTrue(d['rahmen']['text'].startswith('Dies ist eine eigenständige'))
-        self.assertEqual([a['frage'] for a in d['anweisungen']], [False, False, True])
+        self.assertEqual([a['frage'] for a in d['anweisungen']], [False, False, True, False])
 
     def test_bearbeiten_umbenennen_neu_loeschen(self):
         self.s.einrichten()
@@ -73,9 +74,38 @@ class Zusammenbauen(unittest.TestCase):
                                       {'Titel': 'Schulter', 'Frage': 'Wie oft?'}, '[00:00:01] Sag [Titel] nicht')
         self.assertEqual(p, 'Rahmen.\n\nTitel: Schulter\nFrage: Wie oft?\n[00:00:01] Sag [Titel] nicht')
 
+    def test_zielumfang_vor_und_nach_dem_transkript(self):
+        p = anweisungen.zusammenbauen('', 'Anfang [Zielumfang]\n[Transkript]\nRest [Zielumfang]',
+                                      {'Zielumfang': 'etwa 400 Wörter'},
+                                      '[00:00:01] [Titel] und [Zielumfang] bleiben')
+        self.assertEqual(p, 'Anfang etwa 400 Wörter\n[00:00:01] [Titel] und [Zielumfang] bleiben\n'
+                            'Rest etwa 400 Wörter')
+
     def test_ohne_platzhalter_wird_angehaengt(self):
         p = anweisungen.zusammenbauen('', 'Fasse zusammen.', {}, 'TEXT')
         self.assertTrue(p.endswith('Transkript mit Zeitmarken:\n\nTEXT'))
+
+
+class Zielumfang(unittest.TestCase):
+    def test_formel_und_format(self):
+        self.assertEqual(anweisungen.zielumfang('wort ' * 800), 'etwa 400 Wörter (rund 16 Stichpunkte)')
+        self.assertEqual(anweisungen.zielumfang('wort ' * 3300), 'etwa 1.000 Wörter (rund 40 Stichpunkte)')
+        self.assertEqual(anweisungen.zielumfang('wort ' * 20000), 'etwa 2.500 Wörter (rund 100 Stichpunkte)')
+
+    def test_zeitmarken_zaehlen_nicht_als_woerter(self):
+        self.assertEqual(anweisungen.zielumfang('[00:12:34] [12:34] ' + 'wort ' * 800),
+                         'etwa 400 Wörter (rund 16 Stichpunkte)')
+
+    def test_platzhalter_und_standardanweisung(self):
+        self.assertEqual(anweisungen.PLATZHALTER[-1], 'Transkript')
+        self.assertLess(anweisungen.PLATZHALTER.index('Zielumfang'), anweisungen.PLATZHALTER.index('Transkript'))
+        self.assertIn('[Zielumfang]', '\n'.join(anweisungen._EINLEITUNG))
+        texte = dict(anweisungen.STANDARD)
+        self.assertIn('Gegliederte Zusammenfassung', texte)
+        text = texte['Gegliederte Zusammenfassung']
+        self.assertEqual(anweisungen.text_pruefen(text), text)
+        self.assertIn('höchstens [Zielumfang]', text)
+        self.assertTrue(text.endswith('höchstens [Zielumfang].'))
 
 
 if __name__ == '__main__':
