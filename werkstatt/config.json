@@ -76,6 +76,11 @@
       "staerke": 1.0,
       "grund": "Elusarcas Detail-Enhancer für Qwen 2.1 (ai-toolkit, Rang 16, trainiert mit „enhance this image“), von Sascha am 24.09.2026 bereitgestellt (Video Ok Todd AI „Is this the Best New Lora for Enhancing an Image with Qwen Image 2.1?“, Workflow Ep33). Vergleich 24.09.2026, gleiche Nummer, 20 Schritte: Ein überbelichtetes 512²-Porträt bekam Belichtung, Hautstruktur und Falten zurück, ohne LoRA blieb es überbelichtet; die Wirkung kommt von der LoRA, nicht vom Text. Ein komprimiertes 688×384-Foto wurde etwas detailreicher. Bei einem sauberen KI-Bild mehr Schärfe, aber auch kleine Inhaltsänderungen (Grasstreifen im Weg). Mit Turbo gleich gut (33 statt 69 s)."
     },
+    "unzensiert": {
+      "lora": "qwen-image-2.1-uncensored-lora.safetensors",
+      "staerke": 1.0,
+      "grund": "Seit 03.11.2026 (Auftrag Sascha): LoRA aus abenzerps/Qwen-Image-2.1-Uncensored-Quantized (Hugging Face, Lizenz-Angabe qwen-research, 33,6 MB, Rang 16, SHA-256 00ee2cb7…4ca1 geprüft). Wirkung laut Karte undokumentiert; Vergleich mit/ohne in PLAN.md. Nur für neue Bilder auf Wunsch."
+    },
     "vorlage_zeit": {
       "fest": 0.94,
       "je_flaeche": 0.33,

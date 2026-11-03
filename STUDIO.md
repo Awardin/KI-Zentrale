@@ -487,6 +487,7 @@ hintereinander, Szene für Szene geprüft).
 |---|---|---|---|
 | Viggle Turbo v0.2.1, 6 Schritte, Rang 128 (`Qwen-Image-2.1-viggle-turbo-v0.2.1-6step-lora-r128.safetensors`) | alle Bildarten schneller (Neu, Bearbeiten, Verbessern, Freistellen) | Qualität „Turbo“ (`turbo: true`) | laut Modellkarte bei komplizierten Kompositionen gelegentlich doppelte Figuren; in unseren Tests nicht aufgetreten |
 | Elusarcas Detail-Enhancer, Rang 16 (`elusarcas-qwen2-1-detailer-v1.safetensors`) | **schwache Fotos** auffrischen: überbelichtet, unscharf, komprimiert. Stellt Belichtung, Hautstruktur, Falten, Haare wieder her | Häkchen „Details auffrischen“ beim Bearbeiten (`details: true`); Rezept „Foto auffrischen“. Geht mit Turbo | bei **sauberen** Bildern verändert sie Kleinigkeiten (Test: Grasstreifen im Weg, Gesicht retuschierter) – dort „Hochskalieren“ ohne LoRA nehmen. Mit dem offiziellen Turbo-Modell (11.10.2026, Hinweis aus dem Video „Is Qwen Image 2.1 Turbo Actually Good?“: ältere LoRAs übersättigen, Stärke ~0,68): keine Übersättigung – mittlere Sättigung höchstens ~1 Punkt vom Original (wie mit der Viggle-Turbo), schwaches Porträt sauber aufgefrischt, Raum sauberer als mit Viggle (die malte Kritzel auf die Wand); 0,68 am nächsten am Original, 1,0 etwas mehr Detail. Stärke bleibt 1,0; 13 statt 20–29 s. |
+| Unzensiert-LoRA, Rang 16 (`qwen-image-2.1-uncensored-lora.safetensors`, 34 MB, abenzerps/Qwen-Image-2.1-Uncensored-Quantized, Lizenz-Angabe qwen-research, SHA-256 00ee2cb7…4ca1 geprüft, seit 03.11.2026) | gedacht für freizügigere Motive | Häkchen „Unzensiert-LoRA“ bei neuen Bildern (`unzensiert: true`, Knoten 32); geht mit Turbo, INT8, schnell, durchsichtig, ausformulieren | **kaum Wirkung** (Test 03.11.2026): Qwen-Image 2.1 hat ohnehin keinen Filter, die Aktaufnahme kam schon ohne LoRA; mit LoRA bei Turbo und Standard nahezu dasselbe Bild (nur Kleinigkeiten wie Ärmellänge). Die LoRA ändert nur die Aufmerksamkeit in Block 0–31 und sehr schwach (Gewichtsänderung ~0,05 je Matrix). Wirkung undokumentiert; für normale Bilder nicht nötig |
 | MiniMax-H3 Turbo fl2v (8 Schritte) und ref2v (4 Schritte) | Videos schnell | automatisch bei ≤ 8 Schritten | bei 4 Schritten stark glänzende, orangefarbene Haut (Test 11.10.2026); dort rechnet für neue Aufträge DMAD |
 | DMAD full critic (`dmad_minimax_h3_4step_full_critic_comfyui.safetensors`, 1,96 GB, seit 11.10.2026) | **Videos aus Text bzw. Bild in 4 Schritten**: natürlichste Haut, saubere Bewegung, Sprache wortgenau | automatisch für neue Aufträge mit 4 Schritten („Schnell“, `dmad: true`); Sampler `lcm`, Verschiebung 12/2 (Kernknoten `MiniMaxH3SigmaShift`) | nur aus Text/Bild (nicht Referenz, Weiterführen, Szenenfolge); **nicht für Sprache**: Stimme hallt, Mundinneres falsch (Hörprobe 29.10.2026); Lizenz wie MiniMax-H3 |
 | Character-Swap-LoRA von Akatz Labs, Rang 16 (`h3_character_swap_pro4500_1000.safetensors`, 155 MB, seit 09.10.2026) | **Person im Video tauschen:** hält Raum, Licht und alle anderen Personen näher am Clip (Abweichung zum Original etwa 20–25 % kleiner als ohne) | Häkchen „Person tauschen“ bei „Video mit Referenz“ (`tauschen: true`), Vorschlag „Person tauschen“ setzt die englische Prompt-Vorlage des Autors | genau 1 Clip + 1 Bild; laut Autor kurze Clips ohne Schnitt; Mimik und Timing nicht verlässlich |
@@ -831,7 +832,7 @@ Am einfachsten über das Skript des Skills (`studio.py`, siehe Skill). Direkt:
 
 - `GET http://127.0.0.1:3895/api/studio` → `einstellungen` (`arten` = Arten, die der laufende Stand kennt; Formate,
   Stufen, `turbo_verfuegbar`,
-  `details_verfuegbar`, `schnell_verfuegbar`, `video_schnell_verfuegbar`, `durchsichtig_verfuegbar`, `int8_verfuegbar`,
+  `details_verfuegbar`, `unzensiert_verfuegbar`, `schnell_verfuegbar`, `video_schnell_verfuegbar`, `durchsichtig_verfuegbar`, `int8_verfuegbar`,
   `freistellen_schnell_verfuegbar`, `finden_verfuegbar`, `pose_verfuegbar`, `ausformulieren_verfuegbar`,
   `realismus_verfuegbar`,
   `ausformulieren_sekunden` …), `comfy` (`laeuft`, `ordner_ok`), `projekte`, `auftraege`. Die `…_verfuegbar`-Angaben
@@ -857,7 +858,8 @@ mitschicken; `schnell: true` seit 17.10.2026 auch für alle MiniMax-Videoarten e
 `vorlagen: [{"art": "bibliothek"|"datei", "pfad": "<Projekt>/<Datei>" | "C:\\…\\bild.jpg", "rolle": …}]`.
 Je Art zusätzlich: `bild` → `breite`, `hoehe`, `durchsichtig: true` (`prompt` = nur das Motiv) oder
 `ausformulieren: true` (`prompt` = kurzer Wunsch; Fehler, wenn nicht `ausformulieren_verfuegbar`; mit `durchsichtig`
-wirkungslos); `bearbeiten` → `groesse_von` (`vorlage`|`format`), `aufloesung`
+wirkungslos), dazu wahlweise `unzensiert: true` (Unzensiert-LoRA; Fehler, wenn nicht `unzensiert_verfuegbar`);
+`bearbeiten` → `groesse_von` (`vorlage`|`format`), `aufloesung`
 (1024|1440|2048), bei `format` `breite`/`hoehe`, `details: true`; `verbessern` → `maske` `{breite, hoehe, rle}`
 (Lauflängen, abwechselnd frei/markiert, beginnend mit frei, Bildgröße des Originals) **oder** `stelle` (Wort, bis
 100 Zeichen, etwa `"hand:2"`; SAM3 sucht beim Rechnen, findet es nichts, endet der Auftrag mit `fehler`), `staerke`

@@ -478,6 +478,8 @@ function formAnpassen() {
   const details = !$('#st-details-feld').hidden && $('#st-details').checked;
   $('#st-durchsichtig-feld').hidden = art !== 'bild' || !e.durchsichtig_verfuegbar;
   const freigestellt = !$('#st-durchsichtig-feld').hidden && $('#st-durchsichtig').checked;
+  $('#st-unzensiert-feld').hidden = art !== 'bild' || !e.unzensiert_verfuegbar;
+  const unzensiert = !$('#st-unzensiert-feld').hidden && $('#st-unzensiert').checked;
   // Ausformulieren nur für neue Bilder ohne durchsichtigen Hintergrund (der Rahmen-Prompt braucht die Beschreibung selbst).
   $('#st-ausformulieren-feld').hidden = art !== 'bild' || !e.ausformulieren_verfuegbar || freigestellt;
   const ausformulieren = !$('#st-ausformulieren-feld').hidden && $('#st-ausformulieren').checked;
@@ -585,6 +587,7 @@ function formAnpassen() {
     else if (art === 'bearbeiten') teile.push('neue Fläche in diesem Format, etwa für ein Charakterblatt oder eine Figur in neuer Szene; für kleine Änderungen „Wie Vorlage 1“');
     if (details) teile.push('mit Detail-LoRA: kann Kleinigkeiten verändern');
     if (freigestellt) teile.push('Motiv mit durchsichtigem Hintergrund (PNG); nur das Motiv beschreiben');
+    if (unzensiert) teile.push('mit Unzensiert-LoRA');
     if (ausformulieren) teile.push('ein Sprachmodell schreibt zuerst eine ausführliche Beschreibung (steht danach in der Großansicht); es erfindet gern Schrift – soll keine ins Bild, „ohne Schrift“ in den Wunsch schreiben');
   }
   if (!ausVorlage && art !== 'bearbeiten' && !weiter && f?.hinweis) teile.push(f.hinweis);
@@ -712,6 +715,7 @@ function vorschlagEinsetzen(name) {
   if (v.qualitaet) setze('#st-qualitaet', v.qualitaet, $('#st-qualitaet').value);
   ST.rezept = v.familie ? { name, familie: v.familie, raster: v.raster } : null;
   if (v.art === 'bearbeiten') $('#st-details').checked = !!v.details && !!EIN().details_verfuegbar;
+  if (v.art === 'bild') $('#st-unzensiert').checked = !!v.unzensiert && !!EIN().unzensiert_verfuegbar;
   formAnpassen();
   stMelden(v.hinweis || '', true);
   p.focus();
@@ -981,6 +985,7 @@ async function erstellen() {
     if (!$('#st-details-feld').hidden && $('#st-details').checked) daten.details = true;
   }
   if (art === 'bild' && !$('#st-durchsichtig-feld').hidden && $('#st-durchsichtig').checked) daten.durchsichtig = true;
+  if (art === 'bild' && !$('#st-unzensiert-feld').hidden && $('#st-unzensiert').checked) daten.unzensiert = true;
   if (art === 'bild' && !$('#st-ausformulieren-feld').hidden && $('#st-ausformulieren').checked) daten.ausformulieren = true;
   if (video && realismusAn()) daten.realismus = true;
   if (art === 'video_referenz' && tauschenAn()) daten.tauschen = true;
@@ -1216,7 +1221,7 @@ function auftragKachel(a) {
       : `${a.breite} × ${a.hoehe}${dauerText}`;
   const artText = a.art === 'video_weiter' && WEITER[a.modus] ? `${ART[a.art]} (${WEITER[a.modus].erledigt})` : ART[a.art] || a.art;
   k.meta.textContent = `${artText} · ${projektName(a.projekt)} · ${format} · ${a.qualitaet || `${a.schritte} Schritte`}`
-    + `${a.details ? ' · Details' : ''} · Nr. ${a.variation}`;
+    + `${a.details ? ' · Details' : ''}${a.unzensiert ? ' · Unzensiert' : ''} · Nr. ${a.variation}`;
   let text = a.meldung || '';
   let anteil = null;
   if (a.zustand === 'wartet') text = 'Wartet auf den vorherigen Auftrag.';
@@ -1278,7 +1283,7 @@ function eintragKachel(e) {
   k.prompt.textContent = text || (e.info ? 'ohne Prompt' : 'Wird gerade gespeichert …');
   k.prompt.classList.toggle('leise', !text);
   k.prompt.title = text || '';
-  k.meta.textContent = `${projektName(e.projekt)} · ${stDatum(e.zeit)}`;
+  k.meta.textContent = `${projektName(e.projekt)} · ${stDatum(e.zeit)}${i.art === 'bild' && i.unzensiert ? ' · Unzensiert' : ''}`;
   if (k.marke) k.marke.textContent = i.art === 'modell3d' ? '3D-Modell · Vorschau' : i.laenge_bilder ? `Video · ${sekundenVon(i.laenge_bilder)} s` : 'Video';
   k.flaeche.setAttribute('aria-label', i.art === 'freistellen' ? text
     : `${ART[i.art] || (e.medium === 'video' ? 'Video' : 'Bild')}: ${text || e.name}`);
@@ -1434,6 +1439,7 @@ async function wiederAnfrage(e, neueVariation) {
     turbo: !video && i.turbo === true ? true : undefined, // nur, wenn das Original mit Turbo entstand
     turbo_modell: !video && i.turbo_modell === true ? true : undefined, // offizielles Turbo-Modell (seit 11.10.2026)
     durchsichtig: i.art === 'bild' && i.durchsichtig === true ? true : undefined,
+    unzensiert: i.art === 'bild' && i.unzensiert === true ? true : undefined,
     schnell: i.schnell === true ? true : undefined, // ältere Bilder und Videos ohne sie bleiben bei „Nochmal“ gleich
     int8: !video && i.int8 === true ? true : undefined, // ebenso: nur, wenn das Original mit INT8 entstand
     verfahren: i.art === 'freistellen' && i.verfahren === 'schnell' ? 'schnell' : undefined,
@@ -1644,6 +1650,7 @@ async function mitAenderungen(e, ausformuliertNehmen = false) {
     $('#st-format').value = f ? f.id : 'eigen';
     if (!f) { $('#st-breite').value = i.breite; $('#st-hoehe').value = i.hoehe; }
   }
+  $('#st-unzensiert').checked = art === 'bild' && i.unzensiert === true;
   if (art === 'bild') {
     $('#st-durchsichtig').checked = i.durchsichtig === true;
     $('#st-ausformulieren').checked = i.ausformulieren === true;
@@ -1732,7 +1739,7 @@ function detailOeffnen(pfad) {
   if (i.laenge_bilder) zeile('Länge', `${sekundenVon(i.laenge_bilder)} s (${i.laenge_bilder} Bilder)`);
   const turbo = (istVideo(i.art) && i.schritte && i.schritte <= (VID()?.turbo_bis_schritte || 8)) || (!istVideo(i.art) && i.turbo)
     ? (!istVideo(i.art) && i.turbo_modell ? ', mit Turbo-Modell' : ', mit Turbo') : '';
-  const lora = `${i.acc8 ? ', mit 8-Schritt-LoRA' : i.dmad ? ', mit DMAD (4 Schritte)' : turbo}${i.details ? ', mit Detail-LoRA' : ''}${i.realismus ? ', mit Realism-LoRA' : ''}${i.tauschen ? ', Person getauscht' : ''}`;
+  const lora = `${i.acc8 ? ', mit 8-Schritt-LoRA' : i.dmad ? ', mit DMAD (4 Schritte)' : turbo}${i.details ? ', mit Detail-LoRA' : ''}${i.unzensiert ? ', mit Unzensiert-LoRA' : ''}${i.realismus ? ', mit Realism-LoRA' : ''}${i.tauschen ? ', Person getauscht' : ''}`;
   const ohneStufe = i.art === 'pose' || i.verfahren === 'schnell'; // ohne Qwen gerechnet: keine Qualitätsstufe
   zeile('Qualität', i.schritte && !ohneStufe ? (i.qualitaet ? `${i.qualitaet} (${i.schritte} Schritte${lora})` : `${i.schritte} Schritte${lora}`) : null);
   if (i.art === 'verbessern') {
@@ -1957,7 +1964,7 @@ $('#st-szene-dazu').addEventListener('click', () => {
   felder[felder.length - 1]?.focus();
 });
 for (const r of document.querySelectorAll('input[name="st-art"]')) r.addEventListener('change', () => { modusSetzen(); formAnpassen(); });
-for (const sel of ['#st-format', '#st-groesse', '#st-qualitaet', '#st-laenge', '#st-zufall', '#st-anzahl', '#st-breite', '#st-hoehe', '#st-projekt', '#st-staerke', '#st-details', '#st-durchsichtig', '#st-ausformulieren', '#st-realismus', '#st-tauschen', '#st-pruefen']) {
+for (const sel of ['#st-format', '#st-groesse', '#st-qualitaet', '#st-laenge', '#st-zufall', '#st-anzahl', '#st-breite', '#st-hoehe', '#st-projekt', '#st-staerke', '#st-details', '#st-durchsichtig', '#st-unzensiert', '#st-ausformulieren', '#st-realismus', '#st-tauschen', '#st-pruefen']) {
   $(sel).addEventListener('change', formAnpassen);
 }
 // Weiterführen: Die gewählte Länge gilt als Wunsch auch für andere Modi. Ein einzelner Clip wechselt beim Moduswechsel

@@ -33,6 +33,7 @@ S = {
                     'motiv_standard': 'the main subject', 'rest_bis': 0.4, 'schnell_modell': 'birefnet.safetensors'},
     'vorlage_zeit': {'fest': 0.94, 'je_flaeche': 0.33},
     'details': {'lora': 'detail.safetensors', 'staerke': 1.0},
+    'unzensiert': {'lora': 'qwen-image-2.1-uncensored-lora.safetensors', 'staerke': 1.0},
     'turbo': {'lora': 'turbo_qwen21.safetensors', 'staerke': 1.0, 'sigmas': [1.0, 0.9375, 0.875, 0.75, 0.5, 0.25],
               'mu_basis': 0.5, 'mu_max': 0.9, 'token_basis': 256, 'token_max': 8192, 'zeitfaktor': 1.4,
               'modell': 'qwen_image_turbo.safetensors', 'modell_aktiv': True,
@@ -276,6 +277,53 @@ class Details(unittest.TestCase):
         self.assertNotIn('25', studio.bild_graph(dict(EINSTELLUNG, art='bearbeiten'), S, 'x', ['v.png']))
         self.assertNotIn('25', studio.bild_graph(dict(EINSTELLUNG, details=True), S, 'x'))
         self.assertNotIn('details', studio.einstellungen_aus_graph(studio.bild_graph(dict(EINSTELLUNG, turbo=True), S, 'x')))
+
+
+class Unzensiert(unittest.TestCase):
+    def test_ablauf_und_kombinationen(self):
+        for optionen in ({}, {'turbo': True}, {'turbo': True, 'turbo_modell': True, 'int8': True},
+                         {'turbo': True, 'int8': True, 'schnell': True, 'durchsichtig': True},
+                         {'turbo': True, 'schnell': True, 'ausformulieren': True}):
+            with self.subTest(optionen=optionen):
+                e = dict(EINSTELLUNG, **optionen)
+                ohne = studio.bild_graph(e, S, 'x', system='System')
+                self.assertNotIn('32', ohne)
+                self.assertEqual(ohne, studio.bild_graph(dict(e, unzensiert=False), S, 'x', system='System'))
+                g = studio.bild_graph(dict(e, unzensiert=True), S, 'x', system='System')
+                vorgaenger = ['24', 0] if optionen.get('turbo') and not optionen.get('turbo_modell') else ['20', 0]
+                self.assertEqual(g['32'], {'class_type': 'LoraLoaderModelOnly', 'inputs': {
+                    'model': vorgaenger, 'lora_name': S['unzensiert']['lora'], 'strength_model': 1.0}})
+                nachfolger = '26' if optionen.get('schnell') else '7'
+                self.assertEqual(g[nachfolger]['inputs']['model'], ['32', 0])
+                if optionen.get('schnell'):
+                    self.assertEqual(g['7']['inputs']['model'], ['26', 0])
+                if optionen.get('turbo_modell'):
+                    self.assertEqual(g['1']['inputs']['unet_name'], S['turbo']['modell'])
+                elif optionen.get('int8'):
+                    self.assertEqual(g['1']['inputs']['unet_name'], S['modelle']['unet_int8'])
+                if optionen.get('durchsichtig'):
+                    self.assertIn('80', g)
+                if optionen.get('ausformulieren'):
+                    self.assertIn('62', g)
+                self.assertTrue(studio.einstellungen_aus_graph(g)['unzensiert'])
+                self.assertNotIn('details', studio.einstellungen_aus_graph(g))
+                g[nachfolger]['inputs']['model'] = vorgaenger
+                del g['32']
+                self.assertEqual(g, ohne)  # ohne LoRA bleibt der ganze Ablauf unverändert
+
+    def test_nur_neue_bilder_und_wiedererkennung(self):
+        e = dict(EINSTELLUNG, art='bearbeiten', details=True)
+        g = studio.bild_graph(e, S, 'x', ['v.png'])
+        self.assertEqual(g, studio.bild_graph(dict(e, unzensiert=True), S, 'x', ['v.png']))
+        self.assertNotIn('32', g)
+        self.assertTrue(studio.einstellungen_aus_graph(g)['details'])
+        self.assertNotIn('unzensiert', studio.einstellungen_aus_graph(g))
+        g = studio.bild_graph(dict(EINSTELLUNG, unzensiert=True), S, 'x')
+        g['32']['inputs']['lora_name'] = 'andere.safetensors'
+        self.assertNotIn('unzensiert', studio.einstellungen_aus_graph(g))
+        self.assertTrue(studio.einstellungen_aus_graph(g, unzensiert='andere.safetensors')['unzensiert'])
+        g['32']['class_type'] = 'AndererKnoten'
+        self.assertNotIn('unzensiert', studio.einstellungen_aus_graph(g, unzensiert='andere.safetensors'))
 
 
 class Durchsichtig(unittest.TestCase):
@@ -731,6 +779,11 @@ class Verbessern(unittest.TestCase):
         a, arb = studio.ausschnitt_berechnen(studio.maske_rahmen(m)[0], 64, 48, self.v)
         e = dict(EINSTELLUNG, art='verbessern', staerke=0.8, ausschnitt=a, arbeit=arb, negativ='')
         g = studio.verbessern_graph(e, S, 'Praxis/Verbessert', 'Praxis/Bild_00001_.png [output]', 'werkstatt_maske_x.png')
+        self.assertEqual(g['31']['class_type'], 'SetLatentNoiseMask')
+        self.assertNotIn('32', g)
+        self.assertEqual(g, studio.verbessern_graph(dict(e, unzensiert=True), S, 'Praxis/Verbessert',
+                                                   'Praxis/Bild_00001_.png [output]', 'werkstatt_maske_x.png'))
+        self.assertNotIn('unzensiert', studio.einstellungen_aus_graph(g))
         self.assertEqual(g['50']['inputs']['image'], 'Praxis/Bild_00001_.png [output]')
         self.assertEqual(g['51']['inputs'], {'image': 'werkstatt_maske_x.png', 'channel': 'red'})
         self.assertEqual(g['10']['inputs'], {'images': ['65', 0], 'filename_prefix': 'Praxis/Verbessert'})
@@ -1006,6 +1059,13 @@ class Bibliothek(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.alt + '.json'))
         self.assertEqual({p['name']: p['aus_2wild'] for p in b['projekte']}, {'Praxis': False, 'gencenter': True})
 
+    def test_unzensiert_aus_graph_in_bibliothek(self):
+        graph = studio.bild_graph(dict(EINSTELLUNG, unzensiert=True), S, 'gencenter/IMG')
+        png_bauen(self.alt, {'prompt': json.dumps(graph)})
+        info = self.s._info_bilden(self.alt, {})
+        self.assertEqual((info['art'], info['unzensiert']), ('bild', True))
+        self.assertNotIn('details', info)
+
     def test_frische_datei_wird_noch_nicht_beschrieben(self):
         frisch = os.path.join(self.wurzel, 'Praxis', 'Bild_00002_.png')
         png_bauen(frisch, {})
@@ -1214,6 +1274,40 @@ class Bibliothek(unittest.TestCase):
                 self.assertNotIn('details', self.s._finden(a['neu'][0]))
             code, a = self.s.erzeugen({'art': 'bearbeiten', 'prompt': 'x', 'vorlagen': v})
             self.assertNotIn('details', self.s._meta(self.s._finden(a['neu'][0])))
+
+    def test_unzensiert_pruefen(self):
+        bild = {'art': 'bild', 'prompt': 'x', 'breite': 1328, 'hoehe': 1328, 'unzensiert': True}
+        self.s.comfy_ordner = os.path.join(self.tmp.name, 'comfy')
+        with self.assertRaisesRegex(ValueError, '„Unzensiert-LoRA“ ist nicht eingerichtet: Die LoRA fehlt in ComfyUI\\.'):
+            self.s._pruefen(bild)
+        self.assertFalse(self.s.einstellungen()['unzensiert_verfuegbar'])
+        with mock.patch.object(self.s, 'comfy_zustand', return_value={'laeuft': True, 'ordner_ok': True}):
+            code, antwort = self.s.erzeugen(bild)
+            self.assertEqual((code, antwort['fehler']), (400, '„Unzensiert-LoRA“ ist nicht eingerichtet: Die LoRA fehlt in ComfyUI.'))
+            v = [{'art': 'bibliothek', 'pfad': 'Praxis/Bild_00001_.png', 'rolle': 'vorlage'}]
+            code, antwort = self.s.erzeugen({'art': 'bearbeiten', 'prompt': 'x', 'vorlagen': v, 'unzensiert': True})
+            j = self.s._finden(antwort['neu'][0])
+            self.assertEqual(code, 200)
+            self.assertNotIn('unzensiert', j)
+            self.assertNotIn('unzensiert', self.s._meta(j))
+            code, antwort = self.s.erzeugen({'art': 'video_text', 'prompt': 'x', 'breite': 960, 'hoehe': 544, 'unzensiert': True})
+            self.assertEqual(code, 200)
+            self.assertNotIn('unzensiert', self.s._finden(antwort['neu'][0]))
+            lora_ordner = os.path.join(self.s.comfy_ordner, 'models', 'loras')
+            os.makedirs(lora_ordner)
+            with open(os.path.join(lora_ordner, S['unzensiert']['lora']), 'wb'):
+                pass
+            self.assertTrue(self.s.einstellungen()['unzensiert_verfuegbar'])
+            code, antwort = self.s.erzeugen(bild)
+            j = self.s._finden(antwort['neu'][0])
+            self.assertEqual((code, j['unzensiert'], self.s._meta(j)['unzensiert']), (200, True, True))
+            j['zustand'] = 'fehler'
+            self.assertEqual(self.s.aktion(j['id'], 'wiederholen'), (200, {'ok': True}))
+            self.assertTrue(self.s._finden(j['id'])['unzensiert'])
+            for wert in (False, None, 1, 'true'):
+                felder = self.s._pruefen(dict(bild, unzensiert=wert))
+                self.assertNotIn('unzensiert', felder)
+            self.assertNotIn('unzensiert', self.s._pruefen({k: v for k, v in bild.items() if k != 'unzensiert'}))
 
     def test_durchsichtig_und_schnell_pruefen(self):
         with mock.patch.object(self.s, 'comfy_zustand', return_value={'laeuft': True, 'ordner_ok': True}):

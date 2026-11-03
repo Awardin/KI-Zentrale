@@ -3389,6 +3389,24 @@ VERLAUF.md` (Prompts `prompts\`, Bilder `bilder\`, Endstand `arche_endstand.html
   Erklärmodell (LWS, Knie) fürs Tablet, Praxis-/Trainingsfläche als Voxel-Rundgang. Bei Bewegung und Anatomie ist der 4B
   am schwächsten; schematisch bleiben und prüfen.
 
+## Unzensiert-LoRA als weiterer Weg für neue Bilder (03.11.2026)
+
+Auftrag Sascha („als weiteren Pfad für die Image-Generierung einbauen“) nach dem Hugging-Face-Repo
+`abenzerps/Qwen-Image-2.1-Uncensored-Quantized`. Das Repo bietet Qwen-Image 2.1 als GGUF/FP8/INT8/NVFP4/MLX; Text-Encoder
+und VAE darin sind byte-gleich mit unseren Comfy-Org-Dateien. Statt 7,3 GB Modell nur die beiliegende LoRA geladen
+(`qwen-image-2.1-uncensored-lora.safetensors`, 33.586.704 Bytes, SHA-256 00ee2cb7…4ca1 gegen den Hub geprüft, Rang 16,
+PEFT-Schlüssel `lora_A/B.default`, von ComfyUI ohne verworfene Schlüssel geladen) in `ComfyUI\models\loras`.
+- **Gebaut** (Codex Terra max, 7 min, eine Runde, keine Nachbesserung; Abnahme Claude): Feld `unzensiert` nur für Art
+  `bild`, Knoten 32 (`LoraLoaderModelOnly`, 31 ist beim Verbessern belegt) nach Turbo, vor durchsichtig/ausformulieren/
+  schnell; Einstellung `studio.unzensiert`, `unzensiert_verfuegbar`, Häkchen „Unzensiert-LoRA“, Begleitdaten, „Nochmal“,
+  Wiedererkennung aus dem Graphen über den LoRA-Namen. Tests 266/189 grün. Skill-Skript: `bild … --unzensiert`.
+- **Vergleich** (Projekt Agent-Test, Nr. 4711, 1024 × 1280): Porträt in der Praxis Turbo ohne/mit (Bild 1/2), Aktaufnahme
+  am Strand Turbo (3/4) und Standard (5/6). Qwen-Image 2.1 zeigt die Aktaufnahme schon **ohne** LoRA; mit LoRA jeweils
+  nahezu dasselbe Bild (Porträt: langer statt kurzer Ärmel; Akt: Hand minimal anders). Zeit gleich (5,5–5,7 s Turbo,
+  12 s Standard). Ursache: die LoRA ändert nur Aufmerksamkeit in Block 0–31 und sehr schwach (Norm der Änderung ~0,05).
+- **Ergebnis:** eingebaut wie gewünscht, aber praktisch ohne Wirkung; das Grundmodell hat keinen Inhaltsfilter. Höhere
+  Stärke wäre der nächste Test, nur auf Wunsch.
+
 ## Offen
 
 - **Qwen3.5-4B-3D-Coder** (01.11.2026): Eintrag `qwen35-3d-coder`, getestet auf der Suprim (Abschnitt direkt oben).

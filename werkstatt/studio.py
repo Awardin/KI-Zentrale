@@ -38,6 +38,7 @@ from . import platz, quellen
 
 _OHNE_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 FORMAT = 'werkstatt-studio/1'
+UNZENSIERT_LORA = 'qwen-image-2.1-uncensored-lora.safetensors'
 BILD_ENDUNGEN = ('.png', '.jpg', '.jpeg', '.webp')
 VIDEO_ENDUNGEN = ('.mp4', '.webm', '.mov')
 MEDIEN_TYPEN = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
@@ -202,6 +203,15 @@ def _mit_details(graph, s):
     return graph
 
 
+def _mit_unzensiert(graph, s):
+    """Unzensiert-LoRA zwischen Modell (bzw. Turbo-LoRA) und Shift hängen."""
+    u = s['unzensiert']
+    graph['32'] = {'class_type': 'LoraLoaderModelOnly', 'inputs': {
+        'model': graph['7']['inputs']['model'], 'lora_name': u['lora'], 'strength_model': float(u['staerke'])}}
+    graph['7']['inputs']['model'] = ['32', 0]
+    return graph
+
+
 def _mit_schnell(graph, s):
     """Schnellere Aufmerksamkeit (Kernknoten ModelAttentionBackend, INT8) zwischen Modell bzw. LoRAs und Shift hängen.
     Als letzter Schritt eines Ablaufs aufrufen, damit Turbo- und Detail-LoRA davor bleiben. Nur für Aufträge mit
@@ -335,6 +345,8 @@ def bild_graph(e, s, praefix, vorlagen=(), system=None):
         _mit_turbo(graph, s, b, h, e.get('turbo_modell'))
     if e.get('details') and e['art'] == 'bearbeiten':
         _mit_details(graph, s)
+    if e.get('unzensiert') and e['art'] == 'bild':
+        _mit_unzensiert(graph, s)
     if e.get('durchsichtig') and e['art'] == 'bild':
         _mit_durchsichtig(graph, s)
     elif e.get('ausformulieren') and e['art'] == 'bild' and system:
@@ -1616,7 +1628,7 @@ def _json(text):
         return None
 
 
-def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, tauschen=None):
+def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, tauschen=None, unzensiert=UNZENSIERT_LORA):
     """Was sich aus einem ComfyUI-Arbeitsablauf (API-Form) über ein Ergebnis sagen lässt.
 
     durchsichtig_vorlage: Rahmen-Prompt für durchsichtige Bilder (studio.durchsichtig.vorlage); damit wird bei solchen
@@ -1676,6 +1688,9 @@ def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, ta
             e['schritte'] = max(0, len(re.findall(r'[-+]?(?:\d*\.*\d+)', sig)) - 1)
     if (knoten.get('25') or {}).get('class_type') == 'LoraLoaderModelOnly':
         e['details'] = True  # Detail-LoRA des Studios (Knoten 25, siehe _mit_details)
+    u = knoten.get('32') or {}
+    if unzensiert and u.get('class_type') == 'LoraLoaderModelOnly' and u['inputs'].get('lora_name') == unzensiert:
+        e['unzensiert'] = True  # Unzensiert-LoRA des Studios (Knoten 32, siehe _mit_unzensiert)
     if 'ModelAttentionBackend' in klassen:
         e['schnell'] = True  # schnellere Aufmerksamkeit (Bilder Knoten 26, siehe _mit_schnell; Videos Knoten 29)
     if isinstance(e['modell_datei'], str) and 'qwen_image' in e['modell_datei'] and 'int8' in e['modell_datei']:
@@ -2140,6 +2155,11 @@ class Studio:
         d = self.s.get('details') or {}
         return bool(d.get('lora')) and os.path.isfile(os.path.join(self.comfy_ordner, 'models', 'loras', d['lora']))
 
+    def unzensiert_verfuegbar(self):
+        """Liegt die Unzensiert-LoRA in ComfyUIs LoRA-Ordner?"""
+        u = self.s.get('unzensiert') or {}
+        return bool(u.get('lora')) and os.path.isfile(os.path.join(self.comfy_ordner, 'models', 'loras', u['lora']))
+
     def schnell_verfuegbar(self):
         """Schnellere Aufmerksamkeit für neue Bildaufträge eingeschaltet? (studio.schnelle_aufmerksamkeit.aktiv)"""
         return bool((self.s.get('schnelle_aufmerksamkeit') or {}).get('aktiv'))
@@ -2245,7 +2265,8 @@ class Studio:
                 'max_seite': int(s.get('max_seite', 2048)), 'turbo_verfuegbar': self.turbo_verfuegbar(),
                 'turbo_modell_verfuegbar': self.turbo_modell_verfuegbar(),
                 'turbo_modell_schritte': len((s.get('turbo') or {}).get('modell_sigmas') or []),
-                'details_verfuegbar': self.details_verfuegbar(), 'schnell_verfuegbar': self.schnell_verfuegbar(),
+                'details_verfuegbar': self.details_verfuegbar(), 'unzensiert_verfuegbar': self.unzensiert_verfuegbar(),
+                'schnell_verfuegbar': self.schnell_verfuegbar(),
                 'video_schnell_verfuegbar': self.video_schnell_verfuegbar(),
                 'durchsichtig_verfuegbar': bool(s.get('durchsichtig')), 'int8_verfuegbar': self.int8_verfuegbar(),
                 'freistellen_schnell_verfuegbar': self.freistellen_schnell_verfuegbar(),
@@ -2508,7 +2529,8 @@ class Studio:
             info = dict(eigen, herkunft='studio')
         else:
             g = einstellungen_aus_graph(_json(texte.get('prompt')), (self.s.get('durchsichtig') or {}).get('vorlage'),
-                                        self.s['video'].get('realismus'), self.s['video'].get('tauschen'))
+                                        self.s['video'].get('realismus'), self.s['video'].get('tauschen'),
+                                        (self.s.get('unzensiert') or {}).get('lora'))
             art = g.get('art') if g.get('art') in (VIDEO_ARTEN if video else BILD_ARTEN) else \
                 ('video_text' if video else 'bild')
             info = {'herkunft': 'metadaten' if g.get('prompt') else 'unbekannt', 'art': art,
@@ -2523,6 +2545,8 @@ class Studio:
                 info['turbo'] = True
             if g.get('details') and art == 'bearbeiten':
                 info['details'] = True
+            if g.get('unzensiert') and art == 'bild':
+                info['unzensiert'] = True
             if g.get('durchsichtig') and art == 'bild':
                 info['durchsichtig'] = True
             if g.get('schnell'):
@@ -2793,6 +2817,9 @@ class Studio:
         details = art == 'bearbeiten' and d.get('details') is True
         if details and not self.details_verfuegbar():
             raise ValueError('„Details auffrischen“ ist nicht eingerichtet: Die Detail-LoRA fehlt in ComfyUI.')
+        unzensiert = art == 'bild' and d.get('unzensiert') is True
+        if unzensiert and not self.unzensiert_verfuegbar():
+            raise ValueError('„Unzensiert-LoRA“ ist nicht eingerichtet: Die LoRA fehlt in ComfyUI.')
         # Durchsichtiger Hintergrund nur für neue Bilder; schnellere Aufmerksamkeit (Qwen-Bilder, seit 17.10.2026 auch
         # MiniMax-Videos) und INT8 (nur Qwen-Bilder) nur auf ausdrücklichen Wunsch (die Oberfläche fragt sie für neue
         # Aufträge an, „Nochmal“ älterer Aufträge ohne sie bleibt gleich). Ausformulieren nur für neue Bilder ohne
@@ -2875,6 +2902,8 @@ class Studio:
             felder['turbo_modell'] = True
         if details:
             felder['details'] = True
+        if unzensiert:
+            felder['unzensiert'] = True
         if durchsichtig:
             felder['durchsichtig'] = True
         if schnell:
@@ -3775,6 +3804,8 @@ class Studio:
             meta['stelle'] = a['stelle']
         if a['art'] == 'bild' and a.get('durchsichtig'):
             meta['durchsichtig'] = True
+        if a['art'] == 'bild' and a.get('unzensiert'):
+            meta['unzensiert'] = True
         if a['art'] == 'bild' and a.get('ausformulieren'):
             meta['ausformulieren'] = True
         if not video and a.get('turbo'):
