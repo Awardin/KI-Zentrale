@@ -79,7 +79,7 @@
     "unzensiert": {
       "lora": "qwen-image-2.1-uncensored-lora.safetensors",
       "staerke": 1.0,
-      "grund": "Seit 03.11.2026 (Auftrag Sascha): LoRA aus abenzerps/Qwen-Image-2.1-Uncensored-Quantized (Hugging Face, Lizenz-Angabe qwen-research, 33,6 MB, Rang 16, SHA-256 00ee2cb7…4ca1 geprüft). Wirkung laut Karte undokumentiert; Vergleich mit/ohne in PLAN.md. Nur für neue Bilder auf Wunsch."
+      "grund": "Seit 03.11.2026 (Auftrag Sascha): LoRA aus abenzerps/Qwen-Image-2.1-Uncensored-Quantized (Hugging Face, Lizenz-Angabe qwen-research, 33,6 MB, Rang 16, SHA-256 00ee2cb7…4ca1 geprüft). Wirkung laut Karte undokumentiert; Vergleich mit/ohne in PLAN.md: kaum Unterschied, bei Schrift, Händen, Raum und Porträt gleichwertig. Seit 03.11.2026 auf Wunsch Sascha Standard für neue Bilder (Häkchen vorbelegt, abwählbar); ältere Bilder bleiben bei „Nochmal“ gleich."
     },
     "vorlage_zeit": {
       "fest": 0.94,
@@ -112,6 +112,7 @@
     },
     "ausformulieren": {
       "modell": "qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors",
+      "modell_frei": "qwen3.5_9b_qwen_image_2.1_pe_t2i_heretic.int8_convrot.safetensors",
       "geraet": "gpu:0",
       "system_datei": "ausformulieren_t2i.txt",
       "max_laenge": 2048,
@@ -121,7 +122,8 @@
         "haupt": 20480,
         "neben": 4096
       },
-      "grund": "Stufe 3l (27.09.2026, Comfy-Org/Qwen-Image-2.1, SHA-256 geprüft): offizieller Prompt-Enhancer von Qwen (Qwen3.5 9B, INT8) mit dem Systemtext der ComfyUI-Vorlage image_qwen_image_2_1_t2i. Test mit vier kurzen deutschen Wünschen × 2 Nummern: Schulterbehandlung direkt 0 von 2 passend, ausformuliert 2 von 2; Wartezimmer deutlich stimmiger; einmal ein erfundener Wandspruch mit Tippfehler. Auf der 3090 15–34 s je Bild statt 7 s (Spitze 18,7 GiB); auf der 3080 neben dem Text-Encoder 517 s (Modell teils im Arbeitsspeicher), deshalb läuft er auf der Karte des Diffusionsmodells (seit 14.10.2026 gewählt je Auftrag; geraet ist nur die Vorgabe). Gleiche Nummer ergab denselben Text und dasselbe Bild. Nur auf Wunsch (Häkchen)."
+      "grund": "Stufe 3l (27.09.2026, Comfy-Org/Qwen-Image-2.1, SHA-256 geprüft): offizieller Prompt-Enhancer von Qwen (Qwen3.5 9B, INT8) mit dem Systemtext der ComfyUI-Vorlage image_qwen_image_2_1_t2i. Test mit vier kurzen deutschen Wünschen × 2 Nummern: Schulterbehandlung direkt 0 von 2 passend, ausformuliert 2 von 2; Wartezimmer deutlich stimmiger; einmal ein erfundener Wandspruch mit Tippfehler. Auf der 3090 15–34 s je Bild statt 7 s (Spitze 18,7 GiB); auf der 3080 neben dem Text-Encoder 517 s (Modell teils im Arbeitsspeicher), deshalb läuft er auf der Karte des Diffusionsmodells (seit 14.10.2026 gewählt je Auftrag; geraet ist nur die Vorgabe). Gleiche Nummer ergab denselben Text und dasselbe Bild. Nur auf Wunsch (Häkchen).",
+      "frei_grund": "Seit 03.11.2026 (Auftrag Sascha): Heretic-Fassung des Enhancers (entsperrt, Adahm/PE-Heretic-INT8-ConvRot-for-Qwen-Image-2.1, SHA-256 91b9ba42…d8f3 geprüft) für neue Aufträge (Feld ausformulieren_frei); der offizielle wich bei manchen Posen und Körpermotiven aus. Ältere Aufträge bleiben bei „Nochmal“ gleich."
     },
     "pose": {
       "modell": "sdpose_wholebody_fp16.safetensors",

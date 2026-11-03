@@ -715,7 +715,7 @@ function vorschlagEinsetzen(name) {
   if (v.qualitaet) setze('#st-qualitaet', v.qualitaet, $('#st-qualitaet').value);
   ST.rezept = v.familie ? { name, familie: v.familie, raster: v.raster } : null;
   if (v.art === 'bearbeiten') $('#st-details').checked = !!v.details && !!EIN().details_verfuegbar;
-  if (v.art === 'bild') $('#st-unzensiert').checked = !!v.unzensiert && !!EIN().unzensiert_verfuegbar;
+  if (v.art === 'bild') $('#st-unzensiert').checked = v.unzensiert !== false && !!EIN().unzensiert_verfuegbar; // Standard seit 03.11.2026
   formAnpassen();
   stMelden(v.hinweis || '', true);
   p.focus();
@@ -987,6 +987,7 @@ async function erstellen() {
   if (art === 'bild' && !$('#st-durchsichtig-feld').hidden && $('#st-durchsichtig').checked) daten.durchsichtig = true;
   if (art === 'bild' && !$('#st-unzensiert-feld').hidden && $('#st-unzensiert').checked) daten.unzensiert = true;
   if (art === 'bild' && !$('#st-ausformulieren-feld').hidden && $('#st-ausformulieren').checked) daten.ausformulieren = true;
+  if (daten.ausformulieren && EIN().ausformulieren_frei_verfuegbar) daten.ausformulieren_frei = true;
   if (video && realismusAn()) daten.realismus = true;
   if (art === 'video_referenz' && tauschenAn()) daten.tauschen = true;
   // 8-Schritt-LoRA statt Turbo für neue Referenz-Videos mit 8 Schritten (seit 09.10.2026; ältere bleiben bei „Nochmal“ gleich).
@@ -1444,6 +1445,7 @@ async function wiederAnfrage(e, neueVariation) {
     int8: !video && i.int8 === true ? true : undefined, // ebenso: nur, wenn das Original mit INT8 entstand
     verfahren: i.art === 'freistellen' && i.verfahren === 'schnell' ? 'schnell' : undefined,
     ausformulieren: i.art === 'bild' && i.ausformulieren === true ? true : undefined, // gleiche Nummer = gleicher Text
+    ausformulieren_frei: i.art === 'bild' && i.ausformulieren_frei === true ? true : undefined,
     personen: i.art === 'pose' && i.personen === true ? true : undefined, // ältere Skelette: nur eine Person
     realismus: video && i.realismus === true ? true : undefined, // nur mit Realism-LoRA entstandene Videos (Stufe 3o)
     tauschen: i.art === 'video_referenz' && i.tauschen === true ? true : undefined, // Person tauschen (Stufe 3q)
@@ -1750,7 +1752,7 @@ function detailOeffnen(pfad) {
   }
   if (i.art === 'freistellen') zeile('Verfahren', i.verfahren === 'schnell' ? 'schnell (BiRefNet), Hauptmotiv' : 'Qwen');
   if (i.art === 'pose') zeile('Personen', i.personen ? 'alle (einzeln gesucht mit SAM3)' : 'eine (ganzes Bild)');
-  zeile('Ausformuliert', i.prompt_ausformuliert);
+  zeile(i.ausformulieren_frei ? 'Ausformuliert (freier Enhancer)' : 'Ausformuliert', i.prompt_ausformuliert);
   zeile('Szenenfolge', i.szenenfolge ? `Szene ${i.szenenfolge.szene} von ${i.szenenfolge.szenen}` : null);
   if (i.art === 'video_weiter') {
     zeile('Neues Stück', i.neu_bilder ? `${sekundenVon(i.neu_bilder)} s (${i.neu_bilder} Bilder)` : null);

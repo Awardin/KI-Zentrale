@@ -3406,6 +3406,31 @@ PEFT-Schlüssel `lora_A/B.default`, von ComfyUI ohne verworfene Schlüssel gelad
   12 s Standard). Ursache: die LoRA ändert nur Aufmerksamkeit in Block 0–31 und sehr schwach (Norm der Änderung ~0,05).
 - **Ergebnis:** eingebaut wie gewünscht, aber praktisch ohne Wirkung; das Grundmodell hat keinen Inhaltsfilter. Höhere
   Stärke wäre der nächste Test, nur auf Wunsch.
+- **Als Standard** (Sascha: „neue Version als Standard“): Gegencheck Turbo, Nr. 4711, 1584 × 1056 – Türschild mit
+  „Physiotherapie Hauser – Termine nach Vereinbarung“ in beiden fehlerfrei, Hände an der Wade in beiden sauber, leerer
+  Behandlungsraum nahezu gleich. Häkchen seit 03.11.2026 vorbelegt (abwählbar, Vorschläge setzen es mit, außer
+  `unzensiert: false`); Skill-Skript sendet es immer, außer `--ohne-unzensiert`. „Nochmal“ alter Bilder bleibt gleich.
+
+## Freier Prompt-Enhancer (Heretic) für „Wunsch ausformulieren“ (03.11.2026)
+
+Auftrag Sascha („bei bestimmten Posen werden immer andere gezeigt – unzensiertes Modell suchen und umbauen“).
+Befund vorab: im ganzen Studio nur 5 Bilder mit Ausformulieren (Abnahme September) – die abweichenden Posen kamen also
+meist **ohne** Enhancer zustande (vom Bildmodell bzw. von Prompts, die Agenten oder Skills geschrieben haben).
+- Geladen: `qwen3.5_9b_qwen_image_2.1_pe_t2i_heretic.int8_convrot.safetensors` (Hugging Face
+  Adahm/PE-Heretic-INT8-ConvRot-for-Qwen-Image-2.1, Heretic-Fassung von pottokao/Qwen-Image-2.1-PE-T2I-Heretic,
+  9.471.072.252 Bytes, SHA-256 91b9ba42…d8f3 geprüft, Lizenz wie der offizielle Enhancer) nach `models\text_encoders`.
+- Gebaut (Codex Terra max, eine Runde; Abnahme Claude): Feld `ausformulieren_frei`, `modell_frei` in
+  `studio.ausformulieren`; neue Aufträge mit Ausformulieren nehmen ihn automatisch, ältere bleiben bei „Nochmal“ beim
+  offiziellen; Großansicht „Ausformuliert (freier Enhancer)“. Tests 269/189 grün.
+- Vergleich (gleiche Nummer 4711, Turbo, mit Unzensiert-LoRA, alt/frei): „Oberkörper frei“ bei der Rückenmassage –
+  alt schrieb „upper body covered by a towel“, frei „upper body is uncovered“; Haltungsanalyse in Unterwäsche – alt ließ
+  die Unterwäsche im Text weg, frei übernahm sie (Bilder beide passend); „Aktmodell, Beine angewinkelt, Arme hinter dem
+  Kopf“ – **beide** machten ein Modefoto mit Kleidung („Akt“ als „akt model archetype“ missverstanden), frei aber mit
+  der gewünschten Pose (am Boden, Beine angewinkelt), alt auf einem Hocker mit überschlagenen Beinen. Zeit 3–4 s länger
+  (19–34 s). Folgerung: freier Enhancer folgt dem Wunsch genauer; Nacktheit auf Englisch („nude“) ausdrücklich schreiben.
+- **Offen (vorhanden seit Stufe 3l, beide Enhancer):** bei manchen Wünschen schreibt der Enhancer seine Überlegungen
+  („Step 1: … For the canvas …“) vor die Beschreibung, und alles (5–6.400 Zeichen) geht in den Text-Encoder. Bilder
+  trotzdem passend; sauber wäre, nur den Schlussabsatz bzw. `rewritten_prompt` zu nehmen.
 
 ## Offen
 

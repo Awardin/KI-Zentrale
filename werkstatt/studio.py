@@ -288,7 +288,8 @@ def _mit_ausformulieren(graph, e, s, system):
     Gleiche Variationsnummer = gleicher Text (Stichprobe mit derselben Nummer), also auch dasselbe Bild."""
     a = s['ausformulieren']
     graph.update({
-        '60': {'class_type': 'CLIPLoader', 'inputs': {'clip_name': a['modell'], 'type': 'stable_diffusion', 'device': 'default'}},
+        '60': {'class_type': 'CLIPLoader', 'inputs': {'clip_name': a['modell_frei'] if e.get('ausformulieren_frei') else a['modell'],
+                                                     'type': 'stable_diffusion', 'device': 'default'}},
         '61': {'class_type': 'SelectCLIPDevice', 'inputs': {'clip': ['60', 0], 'device': a.get('geraet') or 'gpu:0'}},
         '62': {'class_type': 'TextGenerate', 'inputs': {
             'clip': ['61', 0], 'prompt': ausformulieren_text(system, e['prompt']), 'max_length': int(a.get('max_laenge', 2048)),
@@ -1713,6 +1714,9 @@ def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, ta
     if 'TextGenerate' in klassen:
         # Prompt-Enhancer (siehe _mit_ausformulieren): der Prompt ist der Wunsch, nicht der ganze Chat-Rahmen
         e['ausformulieren'] = True
+        if any(n.get('class_type') == 'CLIPLoader' and 'heretic' in str(n['inputs'].get('clip_name')).lower()
+               for n in knoten.values()):
+            e['ausformulieren_frei'] = True
         e['prompt'] = next((w for w in (ausformulieren_wunsch(n['inputs'].get('prompt')) for n in knoten.values()
                                         if n.get('class_type') == 'TextGenerate') if w), e['prompt'])
     alpha = 'JoinImageWithAlpha' in klassen and 'SplitImageWithAlpha' in klassen
@@ -2239,6 +2243,11 @@ class Studio:
         return self._modell_da('text_encoders', (self.s.get('ausformulieren') or {}).get('modell')) \
             and bool(self._system_ausformulieren())
 
+    def ausformulieren_frei_verfuegbar(self):
+        """Liegt auch die freie Fassung des Prompt-Enhancers bereit?"""
+        return self.ausformulieren_verfuegbar() \
+            and self._modell_da('text_encoders', (self.s.get('ausformulieren') or {}).get('modell_frei'))
+
     def _system_ausformulieren(self):
         """Systemtext des Prompt-Enhancers (Datei neben studio.py, aus der ComfyUI-Vorlage), einmal gelesen."""
         if self._ausformulieren_system is None:
@@ -2272,6 +2281,7 @@ class Studio:
                 'freistellen_schnell_verfuegbar': self.freistellen_schnell_verfuegbar(),
                 'finden_verfuegbar': self.finden_verfuegbar(), 'pose_verfuegbar': self.pose_verfuegbar(),
                 'ausformulieren_verfuegbar': self.ausformulieren_verfuegbar(),
+                'ausformulieren_frei_verfuegbar': self.ausformulieren_frei_verfuegbar(),
                 'realismus_verfuegbar': self.realismus_verfuegbar(),
                 # Stufe 3q: Person tauschen bei „Video mit Referenz“ (Prompt-Vorlage mit {wer} für den Vorschlag)
                 'tauschen_verfuegbar': self.tauschen_verfuegbar(),
@@ -2561,6 +2571,8 @@ class Studio:
                     info['personen'] = True
             if g.get('ausformulieren') and art == 'bild':
                 info['ausformulieren'] = True
+                if g.get('ausformulieren_frei'):
+                    info['ausformulieren_frei'] = True
             if g.get('realismus') and video:
                 info['realismus'] = True
             if g.get('tauschen') and video:
@@ -2831,6 +2843,7 @@ class Studio:
         ausformulieren = art == 'bild' and not durchsichtig and d.get('ausformulieren') is True
         if ausformulieren and not self.ausformulieren_verfuegbar():
             raise ValueError('„Wunsch ausformulieren“ ist nicht eingerichtet: Der Prompt-Enhancer fehlt in ComfyUI.')
+        ausformulieren_frei = ausformulieren and d.get('ausformulieren_frei') is True and self.ausformulieren_frei_verfuegbar()
         # Pose-Skelett aller Personen (SAM3 sucht die Personen): wie INT8 nur für neue Aufträge und nur mit SAM3.
         personen = art == 'pose' and d.get('personen') is True and self.finden_verfuegbar()
         breite = hoehe = bilder = None
@@ -2912,6 +2925,8 @@ class Studio:
             felder['int8'] = True
         if ausformulieren:
             felder['ausformulieren'] = True
+        if ausformulieren_frei:
+            felder['ausformulieren_frei'] = True
         if personen:
             felder['personen'] = True
         felder.update(extra)
@@ -3808,6 +3823,8 @@ class Studio:
             meta['unzensiert'] = True
         if a['art'] == 'bild' and a.get('ausformulieren'):
             meta['ausformulieren'] = True
+            if a.get('ausformulieren_frei'):
+                meta['ausformulieren_frei'] = True
         if not video and a.get('turbo'):
             meta['turbo'] = True
         if not video and a.get('turbo_modell'):

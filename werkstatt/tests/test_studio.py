@@ -18,7 +18,8 @@ S = {
                 'unet_int8': 'qwen_image_2.1_int8_convrot.safetensors', 'clip_int8': 'qwen3vl_8b_int8_convrot.safetensors',
                 'vae': 'qwen_image_2.1_vae_bf16.safetensors'},
     'int8': {'aktiv': True, 'zeitfaktor': 0.5},
-    'ausformulieren': {'modell': 'pe_t2i.safetensors', 'geraet': 'gpu:0', 'system_datei': 'ausformulieren_t2i.txt',
+    'ausformulieren': {'modell': 'pe_t2i.safetensors', 'modell_frei': 'pe_t2i_heretic.safetensors',
+                       'geraet': 'gpu:0', 'system_datei': 'ausformulieren_t2i.txt',
                        'max_laenge': 2048, 'sekunden': 15, 'bedarf_mib': {'eine': 20480, 'haupt': 20480, 'neben': 4096}},
     'pose': {'modell': 'sdpose.safetensors', 'beschreibung': 'Pose-Skelett'},
     'bedarf_hilfe_mib': {'fest': 4096},
@@ -508,6 +509,21 @@ class Ausformulieren(unittest.TestCase):
         for extra, system in (({'durchsichtig': True}, 'X'), ({}, None)):
             g = studio.bild_graph(dict(e, **extra), S, 'x', system=system)
             self.assertNotIn('62', g)
+
+    def test_freier_enhancer_und_wiedererkennung(self):
+        e = dict(EINSTELLUNG, ausformulieren=True, int8=True)
+        alt = studio.bild_graph(e, S, 'Praxis/Bild', system='Systemtext')
+        frei = studio.bild_graph(dict(e, ausformulieren_frei=True), S, 'Praxis/Bild', system='Systemtext')
+        self.assertEqual(alt['60']['inputs']['clip_name'], S['ausformulieren']['modell'])
+        self.assertEqual(frei['60']['inputs']['clip_name'], S['ausformulieren']['modell_frei'])
+        erkannt_alt, erkannt_frei = studio.einstellungen_aus_graph(alt), studio.einstellungen_aus_graph(frei)
+        self.assertNotIn('ausformulieren_frei', erkannt_alt)
+        self.assertEqual((erkannt_frei['ausformulieren'], erkannt_frei['ausformulieren_frei'], erkannt_frei['prompt']),
+                         (True, True, e['prompt']))
+        frei['60']['inputs']['clip_name'] = alt['60']['inputs']['clip_name']
+        self.assertEqual(frei, alt)  # außer der Modellwahl bleibt der gesamte Ablauf gleich
+        frei['99'] = {'class_type': 'AndererKnoten', 'inputs': {'clip_name': 'heretic.safetensors'}}
+        self.assertNotIn('ausformulieren_frei', studio.einstellungen_aus_graph(frei))
 
 
 class Turbo(unittest.TestCase):
@@ -1066,6 +1082,16 @@ class Bibliothek(unittest.TestCase):
         self.assertEqual((info['art'], info['unzensiert']), ('bild', True))
         self.assertNotIn('details', info)
 
+    def test_ausformulieren_frei_aus_graph_in_bibliothek(self):
+        for frei in (False, True):
+            with self.subTest(frei=frei):
+                graph = studio.bild_graph(dict(EINSTELLUNG, ausformulieren=True, ausformulieren_frei=frei), S,
+                                          'gencenter/IMG', system='Systemtext')
+                png_bauen(self.alt, {'prompt': json.dumps(graph)})
+                info = self.s._info_bilden(self.alt, {})
+                self.assertTrue(info['ausformulieren'])
+                self.assertEqual(info.get('ausformulieren_frei'), True if frei else None)
+
     def test_frische_datei_wird_noch_nicht_beschrieben(self):
         frisch = os.path.join(self.wurzel, 'Praxis', 'Bild_00002_.png')
         png_bauen(frisch, {})
@@ -1577,6 +1603,51 @@ class Bibliothek(unittest.TestCase):
                 self.assertEqual(code, 200)
                 self.assertNotIn('personen', self.s._finden(a['neu'][0]))
 
+    def test_ausformulieren_frei_verfuegbarkeit_und_anlegen(self):
+        self.s.comfy_ordner = self.tmp.name
+        encoder = os.path.join(self.tmp.name, 'models', 'text_encoders')
+        os.makedirs(encoder)
+        frei = os.path.join(encoder, S['ausformulieren']['modell_frei'])
+        offiziell = os.path.join(encoder, S['ausformulieren']['modell'])
+        with open(frei, 'wb'):
+            pass
+        self.assertFalse(self.s.ausformulieren_frei_verfuegbar())  # offizielles Modell fehlt
+        with open(offiziell, 'wb'):
+            pass
+        self.assertTrue(self.s.ausformulieren_frei_verfuegbar())
+        self.assertTrue(self.s.einstellungen()['ausformulieren_frei_verfuegbar'])
+        with mock.patch.object(self.s, '_system_ausformulieren', return_value=''):
+            self.assertFalse(self.s.ausformulieren_frei_verfuegbar())
+            self.assertFalse(self.s.einstellungen()['ausformulieren_frei_verfuegbar'])
+
+        grund = {'art': 'bild', 'prompt': 'Hund', 'breite': 1328, 'hoehe': 1328}
+        faelle = (({}, False), ({'ausformulieren_frei': True}, False),
+                  ({'ausformulieren': True}, False), ({'ausformulieren': True, 'ausformulieren_frei': True}, True),
+                  ({'ausformulieren': True, 'ausformulieren_frei': 'true'}, False),
+                  ({'ausformulieren': True, 'ausformulieren_frei': True, 'durchsichtig': True}, False))
+        with mock.patch.object(self.s, 'comfy_zustand', return_value={'laeuft': True, 'ordner_ok': True}):
+            for felder, erwartet in faelle:
+                with self.subTest(felder=felder):
+                    code, antwort = self.s.erzeugen(dict(grund, **felder))
+                    self.assertEqual(code, 200)
+                    auftrag = self.s._finden(antwort['neu'][0])
+                    self.assertEqual(auftrag.get('ausformulieren_frei'), True if erwartet else None)
+                    self.assertEqual(self.s._meta(auftrag).get('ausformulieren_frei'), True if erwartet else None)
+            vorlage = [{'art': 'bibliothek', 'pfad': 'Praxis/Bild_00001_.png', 'rolle': 'vorlage'}]
+            code, antwort = self.s.erzeugen({'art': 'bearbeiten', 'prompt': 'Hund', 'vorlagen': vorlage,
+                                             'ausformulieren': True, 'ausformulieren_frei': True})
+            self.assertEqual(code, 200)
+            self.assertNotIn('ausformulieren', self.s._finden(antwort['neu'][0]))
+            self.assertNotIn('ausformulieren_frei', self.s._finden(antwort['neu'][0]))
+            with mock.patch.object(self.s, '_modell_da', side_effect=lambda ordner, datei: datei != S['ausformulieren']['modell_frei']):
+                self.assertFalse(self.s.einstellungen()['ausformulieren_frei_verfuegbar'])
+                code, antwort = self.s.erzeugen(dict(grund, ausformulieren=True, ausformulieren_frei=True))
+                self.assertEqual(code, 200)
+                auftrag = self.s._finden(antwort['neu'][0])
+                self.assertTrue(auftrag['ausformulieren'])
+                self.assertNotIn('ausformulieren_frei', auftrag)
+                self.assertNotIn('ausformulieren_frei', self.s._meta(auftrag))
+
     def test_stelle_finden(self):
         a = {'id': 'x1', 'art': 'verbessern', 'stelle': 'hand', 'breite': 64, 'hoehe': 48}
         klein = bytes(255 if 4 <= x < 8 and 3 <= y < 6 else 0 for y in range(12) for x in range(16) for _ in range(3))
@@ -1607,12 +1678,13 @@ class Bibliothek(unittest.TestCase):
         bereit = {'laeuft': True, 'ordner_ok': True}
         with mock.patch.object(self.s, 'comfy_zustand', return_value=bereit), mock.patch.object(self.s, '_modell_da', return_value=True):
             code, r = self.s.erzeugen({'art': 'bild', 'prompt': 'Hund im Garten', 'breite': 1328, 'hoehe': 1328,
-                                       'ausformulieren': True, 'projekt': 'Praxis', 'variation': 5})
+                                       'ausformulieren': True, 'ausformulieren_frei': True, 'projekt': 'Praxis', 'variation': 5})
         a = self.s._finden(r['neu'][0])
         ziel = os.path.join(self.wurzel, 'Praxis', 'Bild_00009_.png')
 
         def rechnen(auftrag, graph, meta, anmeldung):
             self.assertEqual((graph['4']['inputs']['text'], graph['62']['inputs']['sampling_mode.seed']), (['62', 0], 5))
+            self.assertEqual(graph['60']['inputs']['clip_name'], S['ausformulieren']['modell_frei'])
             self.assertIn('Hund im Garten', graph['62']['inputs']['prompt'])
             png_bauen(ziel, {}, 16, 16)
             auftrag['rechnen_ab'] = time.time() - 1
@@ -1623,8 +1695,11 @@ class Bibliothek(unittest.TestCase):
             self.s._rechnen(a, None)
         with open(ziel + '.json', encoding='utf-8') as f:
             info = json.load(f)
-        self.assertEqual((info['prompt'], info['prompt_ausformuliert'], info['ausformulieren']),
-                         ('Hund im Garten', 'A golden retriever in a sunny garden.', True))
+        self.assertEqual((info['prompt'], info['prompt_ausformuliert'], info['ausformulieren'], info['ausformulieren_frei']),
+                         ('Hund im Garten', 'A golden retriever in a sunny garden.', True, True))
+        os.utime(ziel, (time.time() - 60,) * 2)
+        eintrag = next(e for e in self.s.bibliothek(neu=True)['eintraege'] if e['name'] == 'Bild_00009_.png')
+        self.assertTrue(eintrag['info']['ausformulieren_frei'])
 
     def test_gewaehlte_karten_kommen_in_den_ablauf(self):
         # Seit 14.10.2026: _platz wählt die Karten, _rechnen muss sie in jeden Ablauf übernehmen (Bild samt Enhancer).
