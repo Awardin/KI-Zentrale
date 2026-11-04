@@ -3444,7 +3444,11 @@ auch während er schon ein Video rechnete; Prozess 1 durfte so nie ein zweites V
   wie bisher auf Prozess 2. Test `test_zweites_video_auf_die_fe_wenn_kein_monitor_an_den_3090`; Werkstatt-Tests 270 grün.
 - Werkstatt nach dem laufenden Video neu gestartet. Entscheidung mit dem echten Stand der Zentrale durchgespielt (beide
   3090 je 23.808 MiB frei, kein Monitor): Prozess 2 rechnet → zweites Video an Prozess 1, ganz auf die FE (alle Teile
-  `gpu:0`); Prozess 2 frei → Video an Prozess 2. Zwei echte Videos gleichzeitig noch nicht gerechnet.
+  `gpu:0`); Prozess 2 frei → Video an Prozess 2.
+- Live (Saschas Videos am Morgen, nachgetragen aus `werkstatt\daten\studio.json`): 07:31–07:51 acht Videos aus Bild
+  (Schnell, 8 Schritte, 124 Bilder, 768×1344 bzw. 1344×768), je zwei gleichzeitig – Prozess 2 auf der Suprim 222–241 s,
+  Prozess 1 auf der FE 245–251 s; vorher allein auf der Suprim 222–224 s. Acht Videos in gut 20 Minuten statt rund 30
+  hintereinander; die FE ist dabei etwa 10 % langsamer.
 
 ## RTX 3080 ausgebaut: ComfyUI 3 startet nur mit seiner Karte (04.11.2026)
 

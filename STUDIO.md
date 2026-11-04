@@ -1008,7 +1008,9 @@ frei genug ist – zwei Videos gleichzeitig; andere Aufträge der erste freie Pr
 nach dem Stand der Zentrale jetzt ganz auf eine eigene Karte legen kann – Prozess 1 (FE) zuerst, damit die Suprim für
 ein Video frei bleibt; passt ein großes Bild nicht auf die FE, nimmt es Prozess 2. Ohne frischen Stand (über 15 s) oder
 wenn nichts allein passt: wer zuerst kommt. Gemessen 16.10.2026: Video in Prozess 2 und Bild in Prozess 1, beide Karten
-gleichzeitig bei 100 %. Nach einem Video hält ComfyUI 2 rund 20 GiB auf der Suprim (Zwischenspeicher, in der Zentrale
+gleichzeitig bei 100 %. Gemessen 04.11.2026 (kein Monitor an den 3090): zwei Videos aus Bild gleichzeitig (Schnell,
+8 Schritte, 124 Bilder) – Suprim 222–241 s, FE 245–251 s (allein auf der Suprim 222–224 s), acht Videos in gut 20 statt
+rund 30 Minuten. Nach einem Video hält ComfyUI 2 rund 20 GiB auf der Suprim (Zwischenspeicher, in der Zentrale
 freigebbar).
 
 ## 12. Wie es intern arbeitet
