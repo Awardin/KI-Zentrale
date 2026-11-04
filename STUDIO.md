@@ -1002,7 +1002,9 @@ Gemessen 14.10.2026: Bild (INT8, Turbo, 1328²) ganz auf der Suprim neben NInfer
 Welche Karte ein Auftrag nimmt, steht im Werkstatt-Protokoll („rechnet auf RTX 3090 Suprim“).
 
 **Zwei ComfyUI-Prozesse (Stufe 8, 16.10.2026):** Welcher Prozess einen Auftrag nimmt, entscheidet `_wer_zuerst`:
-Videos auf einer Karte gehören Prozess 2 (Suprim), solange er läuft; andere Aufträge der erste freie Prozess, der sie
+Videos auf einer Karte gehören Prozess 2 (Suprim), solange er läuft; rechnet er schon ein Video und hängt kein Monitor
+an der FE (seit 04.11.2026: Monitor an der Intel-Grafik), nimmt Prozess 1 das nächste Video ganz auf die FE, wenn sie
+frei genug ist – zwei Videos gleichzeitig; andere Aufträge der erste freie Prozess, der sie
 nach dem Stand der Zentrale jetzt ganz auf eine eigene Karte legen kann – Prozess 1 (FE) zuerst, damit die Suprim für
 ein Video frei bleibt; passt ein großes Bild nicht auf die FE, nimmt es Prozess 2. Ohne frischen Stand (über 15 s) oder
 wenn nichts allein passt: wer zuerst kommt. Gemessen 16.10.2026: Video in Prozess 2 und Bild in Prozess 1, beide Karten

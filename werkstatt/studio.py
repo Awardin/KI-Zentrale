@@ -3580,12 +3580,23 @@ class Studio:
             self._monitor_merken(stand)
         verfuegbar = [i for i in self.instanzen if i.nr == 1 or i.laeuft()]
         verfuegbar.sort(key=lambda i: (not i.nebenkarte, i.nr))
-        for i in verfuegbar:
-            if i.bevorzugt(b):
-                return i
+        rechnet = {x.get('prozess') for x in self.auftraege if x['zustand'] == 'laeuft'}
+        video_prozesse = [i for i in verfuegbar if i.bevorzugt(b)]
+        if video_prozesse:
+            frei_video = next((i for i in video_prozesse if i.nr not in rechnet), None)
+            if frei_video is not None or not frisch:
+                return frei_video or video_prozesse[0]
+            # Alle Video-Prozesse rechnen schon (04.11.2026: Monitor an der Intel-Grafik, keine 3090 trägt ihn): ein
+            # freier anderer Prozess nimmt das nächste Video, wenn es jetzt ganz auf eine eigene Karte ohne Monitor passt
+            # (Prozess 1 auf der FE neben dem Video auf der Suprim). Sonst wartet es auf den Video-Prozess.
+            for i in verfuegbar:
+                if i.nr not in rechnet and i not in video_prozesse and i.videos and i.kann(b):
+                    v, fehlend, _ = karten_waehlen(stand, b, i)
+                    if v and v['rang'] == 0 and not fehlend:
+                        return i
+            return video_prozesse[0]
         if len(verfuegbar) < 2 or not frisch:
             return None
-        rechnet = {x.get('prozess') for x in self.auftraege if x['zustand'] == 'laeuft'}
         for i in verfuegbar:
             if i.nr not in rechnet and i.kann(b):
                 v, fehlend, _ = karten_waehlen(stand, b, i)

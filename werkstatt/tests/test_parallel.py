@@ -139,6 +139,30 @@ class Kartenwahl(unittest.TestCase):
             # Videos bleiben beim video-fähigen Prozess 2.
             self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), b)
 
+    def test_zweites_video_auf_die_fe_wenn_kein_monitor_an_den_3090(self):
+        # 04.11.2026: Monitor an der Intel-Grafik. Rechnet Prozess 2 ein Video auf der Suprim, nimmt Prozess 1 das
+        # nächste Video ganz auf die FE – zwei Videos gleichzeitig.
+        a, b = instanzen()
+        ohne = antwort(23400, 1000)
+        ohne['karten'][0]['monitor'] = False
+        s = mock.Mock(instanzen=[a, b], _stand_zentrale=(time.time(), ohne),
+                      auftraege=[{'id': 'x', 'art': 'video_text', 'zustand': 'laeuft', 'prozess': 2}])
+        a.zustand = b.zustand = (time.time(), {'laeuft': True})
+        self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), a)
+        self.assertEqual(studio.karten_waehlen(ohne, VIDEO_EINE, a)[0]['mib'], {0: 22528})
+        # Ist Prozess 2 frei, bekommt er das Video wie bisher.
+        s.auftraege = []
+        self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), b)
+        # Hängt der Monitor an der FE, wartet das zweite Video auf Prozess 2 (nie allein auf die Monitorkarte).
+        s.auftraege = [{'id': 'x', 'art': 'video_text', 'zustand': 'laeuft', 'prozess': 2}]
+        s._stand_zentrale = (time.time(), antwort(23400, 1000))
+        self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), b)
+        # Ist die FE belegt (z. B. Sprachmodell), wartet es ebenfalls auf Prozess 2.
+        voll = antwort(5000, 1000)
+        voll['karten'][0]['monitor'] = False
+        s._stand_zentrale = (time.time(), voll)
+        self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), b)
+
     def test_video_ganz_auf_einer_karte_aber_nie_auf_der_monitorkarte(self):
         a, b = instanzen()
         # Monitor an der FE (21,3 GiB frei): das Video geht allein auf die Suprim, die FE bleibt für Bilder frei.

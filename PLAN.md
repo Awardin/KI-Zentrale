@@ -3432,6 +3432,20 @@ meist **ohne** Enhancer zustande (vom Bildmodell bzw. von Prompts, die Agenten o
   („Step 1: … For the canvas …“) vor die Beschreibung, und alles (5–6.400 Zeichen) geht in den Text-Encoder. Bilder
   trotzdem passend; sauber wäre, nur den Schlussabsatz bzw. `rewritten_prompt` zu nehmen.
 
+## Zwei Videos gleichzeitig, wenn keine 3090 den Monitor trägt (04.11.2026)
+
+Anlass (Sascha): Monitor umgesteckt, trotzdem rechnete die Werkstatt keine zwei Videos gleichzeitig. Befund: Der
+Monitor hängt jetzt an der Intel-Grafik (nvidia-smi: `display_attached` No an FE und Suprim; die RTX 3080 meldet
+nvidia-smi an diesem Tag gar nicht). `_wer_zuerst` gab jedes Ein-Karten-Video dem Video-Prozess 2, solange er lief –
+auch während er schon ein Video rechnete; Prozess 1 durfte so nie ein zweites Video nehmen.
+- Geändert (`werkstatt\studio.py`, `_wer_zuerst`): Rechnen alle Video-Prozesse schon, nimmt ein freier anderer
+  video-fähiger Prozess (Prozess 1) das nächste Video, wenn es jetzt ganz auf eine eigene Karte ohne Monitor passt
+  (FE, Suprim meidet er, solange Prozess 2 läuft). Hängt der Monitor an der FE oder ist sie belegt, wartet das Video
+  wie bisher auf Prozess 2. Test `test_zweites_video_auf_die_fe_wenn_kein_monitor_an_den_3090`; Werkstatt-Tests 270 grün.
+- Werkstatt nach dem laufenden Video neu gestartet. Entscheidung mit dem echten Stand der Zentrale durchgespielt (beide
+  3090 je 23.808 MiB frei, kein Monitor): Prozess 2 rechnet → zweites Video an Prozess 1, ganz auf die FE (alle Teile
+  `gpu:0`); Prozess 2 frei → Video an Prozess 2. Zwei echte Videos gleichzeitig noch nicht gerechnet.
+
 ## RTX 3080 ausgebaut: ComfyUI 3 startet nur mit seiner Karte (04.11.2026)
 
 Anlass (Sascha): „die 3080 ist nicht mehr installiert wegen der fehler“ (korrigierte PCIe-Fehler am M.2-Steckplatz).
