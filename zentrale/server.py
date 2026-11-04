@@ -14,7 +14,7 @@ import traceback
 BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASIS)
 
-from gemeinsam import dienst  # noqa: E402
+from gemeinsam import dienst, gpu  # noqa: E402
 from zentrale import chat_app, planung  # noqa: E402
 from zentrale.aktionen import Aktionen, Fehler  # noqa: E402
 from zentrale.erfassung import Erfassung  # noqa: E402
@@ -231,7 +231,11 @@ class Zentrale:
                     zustand = 'aus'
                 if s['pid']:
                     detail = 'Das alte 2Wild Studio läuft noch; „Beenden“ beendet es mit.'
-                weitere = [d.get(f"comfy{w['nr']}") or {} for w in self._comfy_weitere()]
+                # Ein Prozess, dessen Karte fehlt (04.11.2026: RTX 3080 ausgebaut), zählt nicht mit; „Starten“ startet
+                # ihn auch nicht.
+                ohne_karte = [w for w in self._comfy_weitere() if not (d.get(f"comfy{w['nr']}") or {}).get('pid')
+                              and gpu.karte_fehlt(roh.get('karten'), w['karte'], self.cfg.get('karten'))]
+                weitere = [d.get(f"comfy{w['nr']}") or {} for w in self._comfy_weitere() if w not in ohne_karte]
                 if weitere and c['laeuft'] and not s['pid']:
                     laufen = sum(1 for w in weitere if w.get('laeuft'))
                     if laufen == len(weitere):
@@ -244,6 +248,9 @@ class Zentrale:
                         detail = ('Nur ein Prozess läuft; „Starten“ startet die fehlenden nach.' if an == 1 else
                                   f'Nur {self._zahlwort(an)} von {self._zahlwort(alle)} Prozessen laufen; '
                                   '„Starten“ startet die fehlenden nach.')
+                if ohne_karte and c['laeuft'] and not s['pid']:
+                    namen = ', '.join(w.get('name') or f"ComfyUI {w['nr']}" for w in ohne_karte)
+                    detail = ' '.join(x for x in (detail, f'{namen} aus: Die Karte ist nicht eingebaut.') if x)
                 laufend = c['auftraege_laufend'] + sum(w.get('auftraege_laufend', 0) for w in weitere)
                 if laufend:
                     wartend = c['auftraege_wartend'] + sum(w.get('auftraege_wartend', 0) for w in weitere)

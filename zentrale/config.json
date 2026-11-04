@@ -427,7 +427,7 @@
         {"nr": 3, "port": 8190, "karte": 2, "name": "ComfyUI 3 (RTX 3080)", "videos": false}
       ],
       "comfy_2_grund": "Stufe 8 (16.10.2026, Auftrag Sascha: zwei Studio-Aufträge gleichzeitig). ComfyUI rechnet je Prozess einen Auftrag; der zweite Prozess sieht nur die Suprim (--cuda-device 1), eigene temp-/user-Ordner, gleiche Ausgabe. Aufträge über zwei Karten (Videos geteilt) bleiben beim ersten Prozess. Gutachten Astra: SPEC-studio-parallel-ASTRA-antwort.md.",
-      "comfy_3_grund": "22.10.2026 (Auftrag Sascha): dritter Prozess nur auf der RTX 3080 (Nebenkarte, USB4), Port 8190, temp-3/user-3, Dateien mit -3. Nur Bilder und Hilfsabläufe, deren Bedarf auf die Karte passt (Gesamt minus Reserve), keine Videos. Bilder gehen zuerst an ihn, damit die 3090 frei bleiben. Gemessen: Turbo-INT8-Bild 1584×1056 7,6 s (FE 6,6 s), erstes mit Laden 13,6 s (8,9 s), Spitze 17,4 GiB; 2048×1152 11,7 s, 17,9 GiB; neben Strata (beide 3090 belegt) gleich schnell.",
+      "comfy_3_grund": "22.10.2026 (Auftrag Sascha): dritter Prozess nur auf der RTX 3080 (Nebenkarte, USB4), Port 8190, temp-3/user-3, Dateien mit -3. Nur Bilder und Hilfsabläufe, deren Bedarf auf die Karte passt (Gesamt minus Reserve), keine Videos. Bilder gehen zuerst an ihn, damit die 3090 frei bleiben. Gemessen: Turbo-INT8-Bild 1584×1056 7,6 s (FE 6,6 s), erstes mit Laden 13,6 s (8,9 s), Spitze 17,4 GiB; 2048×1152 11,7 s, 17,9 GiB; neben Strata (beide 3090 belegt) gleich schnell. Seit 04.11.2026 ist die 3080 ausgebaut: Ohne seine Karte startet die Zentrale den Prozess nicht mit (`karte_fehlt`).",
       "studio_port": 3998,
       "pflichtdateien": [
         "models\\diffusion_models\\qwen_image_2.1_bf16.safetensors",

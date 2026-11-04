@@ -18,6 +18,10 @@ from zentrale.server import Zentrale  # noqa: E402
 with open(os.path.join(os.path.dirname(__file__), '..', 'config.json'), encoding='utf-8') as f:
     KONFIG = json.load(f)
 
+KARTE_FE = {'index': 0, 'bus': 2, 'name': 'NVIDIA GeForce RTX 3090'}
+KARTE_SUPRIM = {'index': 1, 'bus': 4, 'name': 'NVIDIA GeForce RTX 3090'}
+KARTE_3080 = {'index': 2, 'bus': 135, 'name': 'NVIDIA GeForce RTX 3080'}
+
 
 class WeitereProzesse(unittest.TestCase):
     def setUp(self):
@@ -136,6 +140,31 @@ class Aktionen3(unittest.TestCase):
         ports = [c.args[0][c.args[0].index('--port') + 1] for c in self.starte_losgeloest.call_args_list]
         self.assertEqual(ports, ['8189', '8190'])
 
+    def test_ohne_rtx_3080_bleibt_prozess_3_aus(self):
+        # 04.11.2026: RTX 3080 ausgebaut – nvidia-smi meldet nur die zwei 3090; Prozess 3 bräche sonst den Start ab.
+        roh = self.dienste()
+        roh['karten'] = [KARTE_FE, KARTE_SUPRIM]
+        self.erf.messen.return_value = roh
+        meldung = self.akt._comfy_starten(self.e)
+        ports = [c.args[0][c.args[0].index('--port') + 1] for c in self.starte_losgeloest.call_args_list]
+        self.assertEqual(ports, ['8188', '8189'])
+        self.assertIn('ComfyUI 3 (RTX 3080) läuft nicht mit: Die Karte ist nicht eingebaut.', meldung)
+
+    def test_mit_rtx_3080_startet_prozess_3_wieder(self):
+        roh = self.dienste()
+        roh['karten'] = [KARTE_FE, KARTE_SUPRIM, KARTE_3080]
+        self.erf.messen.return_value = roh
+        meldung = self.akt._comfy_starten(self.e)
+        self.assertEqual(len(self.starte_losgeloest.call_args_list), 3)
+        self.assertNotIn('nicht eingebaut', meldung)
+
+    def test_andere_karte_an_stelle_der_3080_bekommt_prozess_3_nicht(self):
+        roh = self.dienste()
+        roh['karten'] = [KARTE_FE, KARTE_SUPRIM, dict(KARTE_3080, bus=7)]
+        self.erf.messen.return_value = roh
+        self.akt._comfy_starten(self.e)
+        self.assertEqual(len(self.starte_losgeloest.call_args_list), 2)
+
     def test_fremder_port_eines_weiteren_prozesses(self):
         self.erf.messen.return_value = self.dienste(drei={'fremd': 'Python'})
         with self.assertRaisesRegex(Fehler, 'Port 8190'):
@@ -237,6 +266,18 @@ class Zustandstexte(unittest.TestCase):
     def test_nur_zwei_von_drei_prozessen_laufen(self):
         z = self.z._zustaende(self.dienste(laeuft=(True, True, False), pid=(1, 2, None)))
         self.assertEqual(z['bild-video']['detail'],
+                         'Nur zwei von drei Prozessen laufen; „Starten“ startet die fehlenden nach.')
+
+    def test_prozess_ohne_karte_zaehlt_nicht_mit(self):
+        self.z.cfg['karten'] = KONFIG['karten']
+        roh = self.dienste(laeuft=(True, True, False), pid=(1, 2, None))
+        roh['karten'] = [KARTE_FE, KARTE_SUPRIM]
+        self.assertEqual(self.z._zustaende(roh)['bild-video']['detail'],
+                         'Zwei Prozesse bereit (je ein Auftrag gleichzeitig). '
+                         'ComfyUI 3 (RTX 3080) aus: Die Karte ist nicht eingebaut.')
+        # Steckt die Karte wieder, fehlt Prozess 3 wie früher und „Starten“ startet ihn nach.
+        roh['karten'].append(KARTE_3080)
+        self.assertEqual(self.z._zustaende(roh)['bild-video']['detail'],
                          'Nur zwei von drei Prozessen laufen; „Starten“ startet die fehlenden nach.')
 
     def test_weiterer_prozess_startet_noch(self):

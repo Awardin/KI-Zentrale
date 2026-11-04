@@ -4,7 +4,9 @@ Lokale Apps für Saschas zwei Grafikkarten: seit 14.10.2026 zwei RTX 3090 mit je
 (gpu:0, Steckplatz 02; Monitor 16.–20.10.2026) und „RTX 3090 Suprim“ = Karte 1 (gpu:1, Steckplatz 04; seit 20.10.2026
 wieder mit Monitor, vorher bis 16.10.2026). Die RTX 3080 (20 GB) ist seit 22.10.2026 Karte 2,
 seit 23.10.2026 am M.2-Steckplatz (Bus 87, PCIe 4.0 ×4, 6,6 GB/s; vorher USB4, 3,1 GB/s), und ist **Nebenkarte** (`nebenkarte` in `zentrale\config.json`): Vorrang nur für LightOnOCR und
-Whisper, wenn sie ganz darauf passen; für Strata und verteilte Modelle ungeeignet (Strata am M.2 am 23.10.2026 neu gemessen: weiter halb bis ein Drittel so schnell beim Schreiben). Ollama sieht sie nicht (Benutzervariablen
+Whisper, wenn sie ganz darauf passen; für Strata und verteilte Modelle ungeeignet (Strata am M.2 am 23.10.2026 neu gemessen: weiter halb bis ein Drittel so schnell beim Schreiben).
+**Seit 04.11.2026 ist die 3080 ausgebaut** (PCIe-Fehler am M.2): Was sie bevorzugt, nimmt eine 3090; ComfyUI-Prozess 3
+startet die Zentrale ohne seine Karte nicht mit (PLAN.md, 04.11.2026). Der Eintrag „2“ in `karten` bleibt für den Wiedereinbau. Ollama sieht sie nicht (Benutzervariablen
 `CUDA_VISIBLE_DEVICES` = UUIDs der 3090 und `OLLAMA_VULKAN=0`; Rückweg in PLAN.md 22.10.2026) – Programme, die eine Karte
 brauchen, setzen `CUDA_VISIBLE_DEVICES` mit `CUDA_DEVICE_ORDER=PCI_BUS_ID` selbst.
 Keine Karte ist für bestimmte Modelle reserviert; Zentrale und Studio wählen nach freiem Platz (README.md, „Kartenwahl“).
@@ -96,6 +98,7 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Seit 22.10.2026 **Prozess 3** (8190, nur RTX 3080, `bild-video-3`, Dateien `-3`, `comfy_weitere` in `zentrale\config.json`):
   nur Bilder und Hilfsabläufe, die auf die 3080 passen, keine Videos; Bilder gehen zuerst an ihn (3090 bleiben frei, auch
   neben Strata). Passt ein Auftrag gerade nirgends, wartet er in der Schlange auf einen rechnenden Prozess (PLAN.md 22.10.2026).
+  Fehlt die 3080 (seit 04.11.2026 ausgebaut), bleibt Prozess 3 aus; Bilder rechnen Prozess 1 und 2.
   Werkstatt-Design seit 16.10.2026 „Bernstein-Kommandozentrale“ (Saschas Wahl; Farben vorher mit ihm abstimmen). PLAN.md, Stufe 8.
 - **Eigene Edit-LoRAs** (Stufe 5, 12.10.2026, Auftrag Sascha nach dem Video „QWEN IMAGE 2.1 EDIT LORA TRAINING“):
   AI Toolkit (Ostris, MIT) auf Auftrag in `C:\LLM\runtimes\ai-toolkit` (eigenes venv), Training damals auf der RTX 3080, künftig auf einer freien 3090, nur über

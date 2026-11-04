@@ -6,7 +6,9 @@ GPU 1 und GPU 2 (GPU 0 ist die Intel-Grafik). Keine Karte ist für bestimmte Mod
 passt, startet dort, wo Platz ist, und mehrere Modelle teilen sich eine Karte (Abschnitt „Kartenwahl“).
 Seit 22.10.2026 dazu die „RTX 3080“ (20 GiB, Karte 2), seit 23.10.2026 am M.2-Steckplatz (Bus 87, PCIe 4.0 ×4,
 6,6 GB/s; vorher USB4 am eGPU-Dock AG02, 3,1 GB/s) – als **Nebenkarte**
-für LightOnOCR und Whisper (Abschnitt „Kartenwahl“).
+für LightOnOCR und Whisper (Abschnitt „Kartenwahl“). **Seit 04.11.2026 ausgebaut** (PCIe-Fehler am M.2-Steckplatz;
+nvidia-smi meldet nur die zwei 3090): Was sie bevorzugt, nimmt dann eine 3090, ComfyUI 3 bleibt aus. Steckt sie wieder
+am selben Steckplatz, gilt alles wie unten beschrieben.
 
 - **Modellzentrale** (fertig): Wer belegt die Karten? Sprachmodelle starten, laden,
   entladen, wechseln; Bild & Video starten; GPU freigeben.
@@ -88,7 +90,7 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
   `monitor_puffer_mib` (2 GiB) für Windows frei bleiben, solange die andere Karte reicht. Passt es nirgends, schlägt
   sie die Karte vor, auf der am wenigsten weichen muss. NInfer startet mit `CUDA_VISIBLE_DEVICES` auf der gewählten
   Karte, LightOnOCR ebenso.
-- **Nebenkarte RTX 3080** (seit 22.10.2026, `nebenkarte` in `karten`): schmaler angebunden (M.2, PCIe 4.0 ×4, 6,6 GB/s statt 13 GB/s der 3090; bis 23.10.2026 USB4, 3,1 GB/s), deshalb nur für
+- **Nebenkarte RTX 3080** (seit 22.10.2026, `nebenkarte` in `karten`; **seit 04.11.2026 ausgebaut**): schmaler angebunden (M.2, PCIe 4.0 ×4, 6,6 GB/s statt 13 GB/s der 3090; bis 23.10.2026 USB4, 3,1 GB/s), deshalb nur für
   Einträge, die „RTX 3080“ in `karten` nennen (LightOnOCR), und für Whisper. Passt es ohne Freigabe auf sie, hat sie Vorrang
   vor jeder 3090 – die 3090 bleiben für große Modelle frei. Whisper (Werkstatt) nimmt sie, wenn sie alle Worker trägt
   (gemessen 984 s Ton mit zwei Workern: 78 s statt 53 s auf der FE). NInfer, PolyStrata, Fibo, Strata und ComfyUI nutzen sie
@@ -119,7 +121,9 @@ neu startet), „Chat-App beenden“ beendet nur diesen Prozess, „In eigenem F
   Monitorkarte (sonst geteilt, das Videomodell nicht auf der Monitorkarte). Mit zwei ComfyUI-Prozessen (Stufe 8) rechnet
   ComfyUI 2 die Videos auf der Suprim und ComfyUI 1 Bilder daneben auf der FE. Seit 22.10.2026 rechnet **ComfyUI 3**
   (Port 8190, nur die RTX 3080) Bilder und Hilfsabläufe, die auf die 3080 passen – sie gehen zuerst dorthin, auch wenn
-  Strata beide 3090 belegt (seit 23.10.2026 auch Bilder über 2 MP); Videos und „Ausformulieren“ bleiben bei den 3090. Passt ein Auftrag gerade
+  Strata beide 3090 belegt (seit 23.10.2026 auch Bilder über 2 MP); Videos und „Ausformulieren“ bleiben bei den 3090. Fehlt die 3080 (seit
+  04.11.2026 ausgebaut), startet die Zentrale ComfyUI 3 nicht mit („ComfyUI 3 (RTX 3080) läuft nicht mit: Die Karte ist
+  nicht eingebaut.“, ebenso in der Zeile von Bild & Video); Bilder rechnen dann ComfyUI 1 und 2. Passt ein Auftrag gerade
   nirgends, wartet er in der Schlange, bis ein rechnender Prozess frei wird. Drei leere ComfyUI-Prozesse halten zusammen
   etwa 6 GiB Arbeitsspeicher; Strata prüft beim Start 42 GiB – reicht es nicht, Bild & Video vorher beenden. Abläufe ohne Kartenwahl (Pose, schnelles Freistellen, Stelle per Wort, Zeitlupe, Video
   freistellen, 3D) rechnen auf ComfyUIs Standardkarte 0 (FE).

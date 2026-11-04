@@ -84,3 +84,21 @@ def nebenkarten(karten, cfg_karten=None):
                         for c in cfg_karten.values()):
             gefunden.add(k['index'])
     return gefunden
+
+
+def karte_fehlt(karten, index, cfg_karten=None):
+    """Fehlt die Karte `index` in der Messung (seit 04.11.2026 ist die RTX 3080 ausgebaut)?
+
+    Gleiche Regel wie in `nebenkarten`: Steht die Karte mit Steckplatz (`bus`) und Kartenmodell (`name`) in der
+    Konfiguration, muss beides zur gemessenen Karte passen. Ohne Messung (nvidia-smi nicht lesbar) gilt sie als da.
+    """
+    if not karten:
+        return False
+    k = next((k for k in karten if k['index'] == index), None)
+    if k is None:
+        return True
+    c = (cfg_karten or {}).get(str(index)) or {}
+    if c.get('bus') is not None and c['bus'] != k.get('bus'):
+        return True
+    name = (k.get('name') or '').strip()
+    return bool(name and c.get('name')) and c['name'].casefold() not in name.casefold()

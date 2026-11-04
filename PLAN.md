@@ -3432,8 +3432,32 @@ meist **ohne** Enhancer zustande (vom Bildmodell bzw. von Prompts, die Agenten o
   („Step 1: … For the canvas …“) vor die Beschreibung, und alles (5–6.400 Zeichen) geht in den Text-Encoder. Bilder
   trotzdem passend; sauber wäre, nur den Schlussabsatz bzw. `rewritten_prompt` zu nehmen.
 
+## RTX 3080 ausgebaut: ComfyUI 3 startet nur mit seiner Karte (04.11.2026)
+
+Anlass (Sascha): „die 3080 ist nicht mehr installiert wegen der fehler“ (korrigierte PCIe-Fehler am M.2-Steckplatz).
+nvidia-smi meldet nur noch FE (Bus 2) und Suprim (Bus 4). ComfyUI 3 startete fest mit `--cuda-device 2`; ohne die
+Karte hätte er sich beim Start beendet, und `_comfy_starten` hätte den Start von Bild & Video mit Fehler abgebrochen
+(Prozess 1 und 2 liefen dann schon).
+- Geändert: `gemeinsam\gpu.py` `karte_fehlt` (gleiche Regel wie `nebenkarten`: Index, Steckplatz und Modell aus
+  `karten` müssen zur Messung passen; ohne Messung gilt die Karte als da). `zentrale\aktionen.py` `_comfy_starten`:
+  ein weiterer Prozess ohne seine Karte wird übersprungen (Protokoll; Meldung „ComfyUI 3 (RTX 3080) läuft nicht mit:
+  Die Karte ist nicht eingebaut.“). `zentrale\server.py`: Die Zeile von Bild & Video zählt ihn nicht mit („Zwei Prozesse
+  bereit (je ein Auftrag gleichzeitig). ComfyUI 3 (RTX 3080) aus: Die Karte ist nicht eingebaut.“) statt „Nur zwei von
+  drei … „Starten“ startet die fehlenden nach“. Werkstatt unverändert: Sie gibt weiteren Prozessen nur Aufträge, wenn
+  sie laufen. Steckt die 3080 wieder am selben Steckplatz, startet ComfyUI 3 wie vorher mit; Eintrag „2“ in `karten` bleibt.
+- Tests: 4 neue in `zentrale\tests\test_comfy2.py` (ohne 3080, mit 3080, andere Karte an ihrer Stelle, Zeile); Zentrale
+  193, Werkstatt 270 grün.
+- Live: Zentrale gestartet, Bild & Video über `/api/starten` → bereit nach 37 s, 8188 und 8189 antworten, 8190 nicht
+  gestartet, Meldung und Zeile wie oben; danach über die Zentrale beendet.
+- Nicht einzeln live geprüft: LightOnOCR, Qwen 27B IQ3_S, 3D-Coder und Whisper bevorzugen die 3080 nur und weichen über
+  die Kartenwahl (aus der Messung) auf eine 3090 aus.
+- Nebenbefund am Abend: nvidia-smi meldet den Monitor wieder an der Suprim (`display_attached` Yes an Karte 1), anders
+  als am Morgen (Abschnitt „Zwei Videos gleichzeitig, wenn keine 3090 den Monitor trägt“).
+
 ## Offen
 
+- **Qwen 27B IQ3_S** (`qwen27-iq3s`, 04.11.2026): war für die 3080 neben Strata gedacht; ohne 3080 landet er auf einer
+  3090, wo der Unsloth Q4 (`qwen27-unsloth`) besser ist. Behalten oder entfernen entscheidet Sascha.
 - **Qwen3.5-4B-3D-Coder** (01.11.2026): Eintrag `qwen35-3d-coder`, getestet auf der Suprim (Abschnitt direkt oben).
   Offen: Messung auf der RTX 3080, sobald sie wieder an ist; ggf. Startvariante „Denken aus“ prüfen (schneller, weniger
   Schleifen?).

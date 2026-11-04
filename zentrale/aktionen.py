@@ -6,7 +6,7 @@ deren Programmpfad, Port und Kommandozeile eindeutig passen.
 import os
 import time
 
-from gemeinsam import winapi
+from gemeinsam import gpu, winapi
 from . import planung
 from .erfassung import http_erreichbar, http_json, norm
 
@@ -538,7 +538,8 @@ class Aktionen:
         python = os.path.join(e['comfy_ordner'], '.venv', 'Scripts', 'python.exe')
         if not os.path.exists(python):
             raise Fehler(f'ComfyUI-Python fehlt: {python}')
-        d = self.erf.messen()['dienste']
+        roh = self.erf.messen()
+        d = roh['dienste']
         if d['comfy']['fremd']:
             raise Fehler(f"Port {e['comfy_port']} ist von {d['comfy']['fremd']} belegt.")
         for w in e.get('comfy_weitere') or []:
@@ -566,10 +567,21 @@ class Aktionen:
                 if time.time() > frist:
                     raise Fehler('ComfyUI antwortet nach dem Start nicht.')
                 time.sleep(1)
+        ohne_karte = []
         for w in e.get('comfy_weitere') or []:
             if not (d.get(f"comfy{w['nr']}") or {}).get('pid'):
+                # Ohne seine Karte bräche der Prozess beim Start ab und mit ihm der ganze Start (04.11.2026: RTX 3080
+                # ausgebaut). Er bleibt aus und startet wieder mit, sobald die Karte gemessen wird.
+                if gpu.karte_fehlt(roh.get('karten'), w['karte'], self.cfg.get('karten')):
+                    name = w.get('name') or f"ComfyUI {w['nr']}"
+                    ohne_karte.append(name)
+                    self.log(f'{name} nicht gestartet: Karte {w["karte"]} nicht gefunden')
+                    continue
                 self._comfy_weiterer_starten(e, w, python, env)
-        return f"Bild & Video ist bereit ({round(time.time() - beginn)} s)."
+        meldung = f"Bild & Video ist bereit ({round(time.time() - beginn)} s)."
+        if ohne_karte:
+            meldung += f" {', '.join(ohne_karte)} läuft nicht mit: Die Karte ist nicht eingebaut."
+        return meldung
 
     def _comfy_weiterer_starten(self, e, w, python, env):
         """Ein weiterer ComfyUI-Prozess (Stufe 8): dieselbe Installation und Ausgabe, eigener Port, eigene
