@@ -989,6 +989,10 @@ async function erstellen() {
   if (art === 'bild' && !$('#st-ausformulieren-feld').hidden && $('#st-ausformulieren').checked) daten.ausformulieren = true;
   if (daten.ausformulieren && EIN().ausformulieren_frei_verfuegbar) daten.ausformulieren_frei = true;
   if (video && realismusAn()) daten.realismus = true;
+  if (video && !VIDEO_HILFEN.includes(art)) {
+    const dekoder = Object.hasOwn(ST.extra, 'vae_dekoder') ? ST.extra.vae_dekoder : EIN().video_dekoder_standard;
+    if (dekoder !== undefined && dekoder !== null) daten.vae_dekoder = dekoder;
+  }
   if (art === 'video_referenz' && tauschenAn()) daten.tauschen = true;
   // 8-Schritt-LoRA statt Turbo für neue Referenz-Videos mit 8 Schritten (seit 09.10.2026; ältere bleiben bei „Nochmal“ gleich).
   if (art === 'video_referenz' && EIN().acc8_verfuegbar && daten.schritte === EIN().acc8_schritte && !daten.tauschen) daten.acc8 = true;
@@ -1103,6 +1107,8 @@ async function szenenStarten() {
   };
   if (realismusAn()) daten.realismus = true;
   if (EIN()?.video_schnell_verfuegbar) daten.schnell = true; // alle Szenen mit schnellerer Aufmerksamkeit (Stufe 3u)
+  const dekoder = Object.hasOwn(ST.extra, 'vae_dekoder') ? ST.extra.vae_dekoder : EIN().video_dekoder_standard;
+  if (dekoder !== undefined && dekoder !== null) daten.vae_dekoder = dekoder;
   ST.sendet = true;
   erstellenKnopf();
   try {
@@ -1448,6 +1454,7 @@ async function wiederAnfrage(e, neueVariation) {
     ausformulieren_frei: i.art === 'bild' && i.ausformulieren_frei === true ? true : undefined,
     personen: i.art === 'pose' && i.personen === true ? true : undefined, // ältere Skelette: nur eine Person
     realismus: video && i.realismus === true ? true : undefined, // nur mit Realism-LoRA entstandene Videos (Stufe 3o)
+    vae_dekoder: video ? i.vae_dekoder : undefined, // fehlt beim Original, bleibt es auch bei „Nochmal“ weg
     tauschen: i.art === 'video_referenz' && i.tauschen === true ? true : undefined, // Person tauschen (Stufe 3q)
     acc8: i.art === 'video_referenz' && i.acc8 === true ? true : undefined, // nur, wenn das Original mit ihr entstand
     dmad: ['video_text', 'video_bild'].includes(i.art) && i.dmad === true ? true : undefined, // ebenso (seit 11.10.2026)
@@ -1685,6 +1692,7 @@ async function mitAenderungen(e, ausformuliertNehmen = false) {
   if ([...$('#st-projekt').options].some((o) => o.value === ziel)) $('#st-projekt').value = ziel;
   if (ROLLEN[art] && !['verbessern', 'freistellen', 'pose'].includes(art) && !wiederholbar(e)) ST.vorlagen = vorlagenAus(i);
   ST.extra = { cfg: video ? undefined : i.cfg || undefined, quelle: e.pfad };
+  if (video) ST.extra.vae_dekoder = i.vae_dekoder; // auch fehlender Altwert hat Vorrang vor dem neuen Standard
   formZeigen(art === 'verbessern' && !aktuelleMaske() ? 'Einstellungen übernommen. Markiere die Stelle neu, dann „Erstellen“.'
     : ausformuliert ? 'Ausformulierten Text als Prompt übernommen (Ausformulieren ist aus). Text ändern, dann „Erstellen“.'
       : 'Einstellungen übernommen. Ändern und „Erstellen“ drücken.');
@@ -1741,7 +1749,7 @@ function detailOeffnen(pfad) {
   if (i.laenge_bilder) zeile('Länge', `${sekundenVon(i.laenge_bilder)} s (${i.laenge_bilder} Bilder)`);
   const turbo = (istVideo(i.art) && i.schritte && i.schritte <= (VID()?.turbo_bis_schritte || 8)) || (!istVideo(i.art) && i.turbo)
     ? (!istVideo(i.art) && i.turbo_modell ? ', mit Turbo-Modell' : ', mit Turbo') : '';
-  const lora = `${i.acc8 ? ', mit 8-Schritt-LoRA' : i.dmad ? ', mit DMAD (4 Schritte)' : turbo}${i.details ? ', mit Detail-LoRA' : ''}${i.unzensiert ? ', mit Unzensiert-LoRA' : ''}${i.realismus ? ', mit Realism-LoRA' : ''}${i.tauschen ? ', Person getauscht' : ''}`;
+  const lora = `${i.acc8 ? ', mit 8-Schritt-LoRA' : i.dmad ? ', mit DMAD (4 Schritte)' : turbo}${i.details ? ', mit Detail-LoRA' : ''}${i.unzensiert ? ', mit Unzensiert-LoRA' : ''}${i.realismus ? ', mit Realism-LoRA' : ''}${i.tauschen ? ', Person getauscht' : ''}${i.vae_dekoder ? ', schnellere VAE (INT8)' : ''}`;
   const ohneStufe = i.art === 'pose' || i.verfahren === 'schnell'; // ohne Qwen gerechnet: keine Qualitätsstufe
   zeile('Qualität', i.schritte && !ohneStufe ? (i.qualitaet ? `${i.qualitaet} (${i.schritte} Schritte${lora})` : `${i.schritte} Schritte${lora}`) : null);
   if (i.art === 'verbessern') {

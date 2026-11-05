@@ -17,6 +17,7 @@ from test_studio import S  # noqa: E402
 BILD = {'eine': 18432, 'haupt': 16384, 'neben': 2048}
 VIDEO = {'haupt': 20480, 'neben': 7168}
 VIDEO_EINE = dict(VIDEO, eine_ohne_monitor=22528)  # seit 16.10.2026 (H3 auf einer 3090 gemessen)
+VIDEO_INT8 = dict(VIDEO_EINE, monitorkarte=19456)
 
 
 def antwort(frei0, frei1, comfy1=0, comfy2=0):
@@ -53,6 +54,54 @@ def instanzen_drei():
 
 
 class Kartenwahl(unittest.TestCase):
+    def test_int8_video_auf_monitorkarte_nur_wenn_noetig(self):
+        stand = antwort(23400, 22065)
+        stand['karten'][0]['monitor'], stand['karten'][1]['monitor'] = False, True
+        v, fehlend, _ = studio.karten_waehlen(stand, VIDEO_INT8)
+        self.assertEqual((v['mib'], fehlend), ({0: 22528}, {}))
+        stand['karten'][0]['frei'] = 1000
+        v, fehlend, zusatz = studio.karten_waehlen(stand, VIDEO_INT8)
+        self.assertEqual((v['mib'], fehlend, zusatz), ({1: 19456}, {}, {1: 19456}))
+        self.assertTrue(v['nur_monitor'])
+        self.assertEqual(v['geraete'], dict.fromkeys(studio.GERAETE_ROLLEN, 'gpu:1'))
+        # Ohne Freigabe durch den Dekoder bleibt es bei der bisherigen geteilten Variante.
+        v, fehlend, _ = studio.karten_waehlen(stand, VIDEO_EINE)
+        self.assertEqual((v['rang'], bool(fehlend)), (1, True))
+        # Die kleinere Variante darf nie auf eine Karte ohne Monitor ausweichen.
+        stand['karten'][1]['monitor'] = False
+        v, fehlend, _ = studio.karten_waehlen(stand, VIDEO_INT8)
+        self.assertFalse(v.get('nur_monitor'))
+        self.assertTrue(fehlend)
+
+    def test_int8_video_prozess_auf_monitor_und_kapazitaet(self):
+        _, b, c = instanzen_drei()
+        b.auf_monitor = c.auf_monitor = True
+        b.kapazitaet = c.kapazitaet = 19456
+        self.assertTrue(b.kann(VIDEO_INT8) and b.bevorzugt(VIDEO_INT8))
+        self.assertFalse(b.kann(VIDEO_EINE) or b.bevorzugt(VIDEO_EINE))
+        self.assertFalse(c.kann(VIDEO_INT8) or c.bevorzugt(VIDEO_INT8))
+        self.assertFalse(c.kann({'monitorkarte': 19456}))
+        b.kapazitaet = 19455
+        self.assertFalse(b.kann(VIDEO_INT8))
+        b.kapazitaet = 19456
+        self.assertFalse(b.kann(dict(VIDEO_INT8, standard_zusatz=19457)))
+        b.auf_monitor = False
+        self.assertFalse(b.kann(VIDEO_INT8))  # ohne Monitor gilt weiter der größere Bedarf
+
+    def test_zwei_int8_videos_mit_monitor_an_suprim(self):
+        a, b = instanzen()
+        stand = antwort(23400, 22065)
+        stand['karten'][0]['monitor'], stand['karten'][1]['monitor'] = False, True
+        s = studio.Studio.__new__(studio.Studio)
+        s.instanzen, s._stand_zentrale, s.auftraege = [a, b], (time.time(), stand), []
+        a.zustand = b.zustand = (time.time(), {'laeuft': True})
+        self.assertIs(s._wer_zuerst(VIDEO_INT8), b)
+        self.assertEqual(studio.karten_waehlen(stand, VIDEO_INT8, b)[0]['mib'], {1: 19456})
+        s.auftraege = [{'zustand': 'laeuft', 'prozess': 2}]
+        self.assertIs(s._wer_zuerst(VIDEO_INT8), a)
+        self.assertEqual(studio.karten_waehlen(stand, VIDEO_INT8, a)[0]['mib'], {0: 22528})
+        self.assertFalse(b.kann(VIDEO_EINE))
+
     def test_zweiter_prozess_sieht_nur_seine_karte_und_seinen_cache(self):
         a, b = instanzen()
         # Prozess 1 hält 18.000 MiB auf der FE: das zählt für Prozess 2 nicht (Astra: sonst falsche Karte).

@@ -52,7 +52,7 @@ man Arten, LoRAs und Prompts einsetzt – für Sascha und für jeden Agenten, de
 | Bilder | **Qwen-Image 2.1** mit Text-Encoder Qwen3-VL 8B und VAE (RGBA, vier Kanäle), möglichst ganz auf einer der beiden RTX 3090 (Abschnitt 11, „Karten“). Neue Aufträge rechnen mit den INT8-Fassungen von Bildmodell und Text-Encoder (etwa doppelt so schnell, gleichwertig; Abschnitt 4), ältere bei „Nochmal“ weiter mit BF16 |
 | Hilfsmodelle (Stufe 3l) | **BiRefNet** (schnelles Freistellen), **SAM3.1** (Stelle per Wort finden), **SDPose** (Pose-Skelett), **Qwen-Prompt-Enhancer** (Qwen3.5 9B, Wunsch ausformulieren; auf der Karte des Bildmodells) |
 | Videos | **MiniMax-H3** (fl2va: Text/Bild → Video, ref2va: Referenzen → Video; INT8) auf der einen RTX 3090 (nicht der Monitorkarte, wenn es geht); Text-Encoder Qwen3-VL 32B (NVFP4), Video- und Audio-VAE auf der anderen. Erzeugt den Ton gleich mit |
-| Grafikkarten | Zwei RTX 3090 (seit 14.10.2026): „FE“ = Karte 0, „Suprim“ = Karte 1. Seit Stufe 8 (16.10.2026) zwei ComfyUI-Prozesse: Prozess 1 (Port 8188, beide 3090 – `comfy_karten`; die RTX 3080 als Nebenkarte seit 22.10.2026 sieht er nicht, das Studio wählt für ihn nur Karte 0/1), Prozess 2 (Port 8189, nur die Suprim, Ein-Karten-Aufträge) – zwei Aufträge rechnen gleichzeitig; Dateien aus Prozess 2 heißen `…-2_00001_.png`. Videos rechnen seit 16.10.2026 ganz auf einer Karte (nie auf der Monitorkarte): Prozess 2 nimmt sie auf der Suprim, Bilder gehen daneben an Prozess 1 auf der FE (Video + Bild gleichzeitig, live geprüft); läuft Prozess 2 nicht, rechnet Prozess 1 das Video allein auf der Suprim. **Seit 22.10.2026 Prozess 3** (Port 8190, nur die RTX 3080, `…-3_00001_.png`, PLAN.md Stufe 8b): Bilder ohne „Ausformulieren“ (seit 23.10.2026 auch über 2 MP: 2752×1536, 40 Schritte 133 s statt 110–114 s) und Hilfsabläufe, die auf die 3080 passen, gehen zuerst dorthin (7,6 s statt 6,6 s, Spitze 17,4 GiB) – auch wenn Strata beide 3090 belegt; keine Videos. **Seit 04.11.2026 ist die 3080 ausgebaut:** Die Zentrale startet Prozess 3 dann nicht mit („ComfyUI 3 (RTX 3080) läuft nicht mit: Die Karte ist nicht eingebaut.“), Bilder rechnen Prozess 1 und 2, und neben Strata auf beiden 3090 warten auch Bilder. Passt ein Auftrag gerade nirgends, wartet er in der Schlange auf einen rechnenden Prozess, statt sich an einer belegten Karte festzusetzen. Seit 16.10.2026 keine gemeinsame Sperre: Aufträge rechnen neben Transkription, Texterkennung und lokalen Modellen, wenn der Speicher reicht (Anmeldung `schluessel` „bild-video“, auch ohne Zusatzbedarf). Jeder Auftrag fragt die Zentrale nach Platz (`/api/platz`), wählt seine Karten und wartet sonst; ein geladenes Sprachmodell auf der anderen Karte stört nicht |
+| Grafikkarten | Zwei RTX 3090 (seit 14.10.2026): „FE“ = Karte 0, „Suprim“ = Karte 1. Seit Stufe 8 (16.10.2026) zwei ComfyUI-Prozesse: Prozess 1 (Port 8188, beide 3090 – `comfy_karten`; die RTX 3080 als Nebenkarte seit 22.10.2026 sieht er nicht, das Studio wählt für ihn nur Karte 0/1), Prozess 2 (Port 8189, nur die Suprim, Ein-Karten-Aufträge) – zwei Aufträge rechnen gleichzeitig; Dateien aus Prozess 2 heißen `…-2_00001_.png`. Videos rechnen seit 16.10.2026 ganz auf einer Karte (nie auf der Monitorkarte; seit 05.11.2026 dürfen neue Videos mit INT8-VAE dorthin, 19.456 MiB, Abschnitt 4 „Schneller rechnen“): Prozess 2 nimmt sie auf der Suprim, Bilder gehen daneben an Prozess 1 auf der FE (Video + Bild gleichzeitig, live geprüft); läuft Prozess 2 nicht, rechnet Prozess 1 das Video allein auf der Suprim. **Seit 22.10.2026 Prozess 3** (Port 8190, nur die RTX 3080, `…-3_00001_.png`, PLAN.md Stufe 8b): Bilder ohne „Ausformulieren“ (seit 23.10.2026 auch über 2 MP: 2752×1536, 40 Schritte 133 s statt 110–114 s) und Hilfsabläufe, die auf die 3080 passen, gehen zuerst dorthin (7,6 s statt 6,6 s, Spitze 17,4 GiB) – auch wenn Strata beide 3090 belegt; keine Videos. **Seit 04.11.2026 ist die 3080 ausgebaut:** Die Zentrale startet Prozess 3 dann nicht mit („ComfyUI 3 (RTX 3080) läuft nicht mit: Die Karte ist nicht eingebaut.“), Bilder rechnen Prozess 1 und 2, und neben Strata auf beiden 3090 warten auch Bilder. Passt ein Auftrag gerade nirgends, wartet er in der Schlange auf einen rechnenden Prozess, statt sich an einer belegten Karte festzusetzen. Seit 16.10.2026 keine gemeinsame Sperre: Aufträge rechnen neben Transkription, Texterkennung und lokalen Modellen, wenn der Speicher reicht (Anmeldung `schluessel` „bild-video“, auch ohne Zusatzbedarf). Jeder Auftrag fragt die Zentrale nach Platz (`/api/platz`), wählt seine Karten und wartet sonst; ein geladenes Sprachmodell auf der anderen Karte stört nicht |
 
 Arten: **Bild** neu (auf Wunsch mit durchsichtigem Hintergrund oder ausformuliertem Wunsch) · bearbeiten · Stelle
 verbessern (gemalt oder per Wort, auf Wunsch mit Vorbild) · freistellen · Pose-Skelett; **Video** aus Text · aus Bild · mit Referenz ·
@@ -485,6 +485,16 @@ hintereinander, Szene für Szene geprüft).
   Hände, Schrift und 4 MP vergrößert verglichen, kein Qualitätsverlust zu sehen. Ältere
   Bilder bleiben bei „Nochmal“ BF16 und pixelgleich (geprüft: `Bild_00076_` → `Bild_00083_`). Abschalten:
   `studio.int8.aktiv` auf `false`.
+- **INT8-Video-VAE** (seit 05.11.2026, Stufe 3v, `vae_dekoder`): Neue Videos (Text, Bild, Referenz, Weiterführen,
+  Szenenfolge) rechnen mit `minimax_h3_video_vae_int8_convrot` (2,8 statt 5,2 GB) statt der fp16-VAE. Oberfläche und
+  Skill setzen das Feld aus `video_dekoder_standard` (Kennung `int8_v1` mit Datei und SHA-256); „Nochmal“ und „Mit
+  Änderungen“ behalten den Wert des Originals, ältere Videos ohne Feld bleiben unverändert. Gemessen mit denselben
+  Latents: Dekodieren 36–40 % kürzer (960×544 5 s: ~27 → ~17 s; 1344×768 10 s: 91 → 55 s, Spitze 23,0 → 18,3 GiB),
+  PSNR 56–58 dB zur fp16-Fassung, kein sichtbarer Unterschied (auch Startbild bei Bild → Video). Zwei Videos
+  gleichzeitig 15 % früher fertig. Solche Videos dürfen ganz auf die **Monitorkarte** (Bedarf dort 19.456 MiB; eine
+  Karte ohne Monitor bleibt erste Wahl), gemessen nicht langsamer, kein Ruckeln. Abschalten:
+  `studio.video.dekoder_standard` auf `null` (Einträge in `dekoder` nie umschreiben, neue Fassung = neue Kennung).
+  Sol-H3-VAE braucht ComfyUI 0.44 und ist nicht eingebaut (PLAN.md, Stufe 3v).
 
 ### LoRAs
 
@@ -839,7 +849,8 @@ Am einfachsten über das Skript des Skills (`studio.py`, siehe Skill). Direkt:
   Stufen, `turbo_verfuegbar`,
   `details_verfuegbar`, `unzensiert_verfuegbar`, `schnell_verfuegbar`, `video_schnell_verfuegbar`, `durchsichtig_verfuegbar`, `int8_verfuegbar`,
   `freistellen_schnell_verfuegbar`, `finden_verfuegbar`, `pose_verfuegbar`, `ausformulieren_verfuegbar`,
-  `realismus_verfuegbar`,
+  `realismus_verfuegbar`, `video_dekoder_standard` (seit 05.11.2026: {kennung, datei, sha256} oder null – als
+  `vae_dekoder` bei neuen Videos mitschicken; die Werkstatt ergänzt es nie selbst),
   `ausformulieren_sekunden` …), `comfy` (`laeuft`, `ordner_ok`), `projekte`, `auftraege`. Die `…_verfuegbar`-Angaben
   prüfen, ob die Modelldateien in ComfyUI liegen.
 - `GET /api/studio/bibliothek` → alle Dateien mit `info` (Begleitdaten).
@@ -992,7 +1003,8 @@ Spitze 18,7 GiB auf der 3090, dort liegen Prompt-Enhancer und Bildmodell).
 der Zentrale (`karten_waehlen`). Bedarf je Rolle in `werkstatt\config.json`: `eine` (alles auf einer Karte: Bild 18 GiB,
 über 2 MP 19 GiB – bis 22.10.2026 21,5 GiB, damit passte ein großes Bild weder auf die Suprim mit Monitor noch auf die
 3080 und wartete auf die FE –, mit Ausformulieren 20 GiB), `eine_ohne_monitor` (ganz auf einer Karte, nie auf der Monitorkarte:
-Video 22 GiB, seit 16.10.2026), `haupt`/`neben` (geteilt: Bild 16 + 2, groß 18 + 6, Video 20 + 7 GiB) und
+Video 22 GiB, seit 16.10.2026), `monitorkarte` (seit 05.11.2026 nur Videos mit INT8-VAE: ganz auf der Monitorkarte
+mit 19.456 MiB, eine Karte ohne Monitor bleibt erste Wahl), `haupt`/`neben` (geteilt: Bild 16 + 2, groß 18 + 6, Video 20 + 7 GiB) und
 `fest` (Abläufe ohne Kartenwahl auf ComfyUIs Standardkarte 0 = FE: Pose 6, Zeitlupe 4, Video freistellen 8, 3D 14 GiB;
 „Stelle per Wort“ plant 2 GiB für SAM3 auf Karte 0 dazu). Reihenfolge: passt ohne Freigabe; Bild ganz auf einer Karte vor
 geteilt; die Monitorkarte (Suprim) nicht unter 2 GiB Rest füllen; geteilt das Diffusionsmodell nicht auf die

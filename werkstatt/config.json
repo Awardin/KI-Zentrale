@@ -362,6 +362,18 @@
       "grund": "Stufe 3t (11.10.2026, Video „I Fixed Pixal3D's Biggest Weakness“, PixelArtistry): Pixal3D (TencentARC, MIT; Comfy-Org-Dateien, SHA-256 geprüft) rechnet aus einem Drehblatt mit vier Ansichten (Qwen, Vorschlag „Drehblatt“) oder einem Bild ein texturiertes 3D-Modell (GLB). Graph und Werte nach den Comfy-Org-Vorlagen „Pixal3D: Multi Views to 3D“ und „Pixal3D & TRELLIS.2: Image to Model“ (Kernknoten, ComfyUI 0.37.0). Die Vorschau ist ein Drehteller aus RenderMesh-Bildern; die 3D-Datei liegt mit gleichem Stamm daneben. Gemessen 11.10.2026 (Anna, Drehblatt): fein 191–201 s, leicht 52 s; Spitze 12.810 MiB auf der 3090 (ComfyUI hielt davor 9.443 MiB mit Qwen); Einzelbild (Hochbeet, leicht) 114 s, Spitze 13.689 MiB bei leerem ComfyUI; Bedarf 14 GiB mit Reserve. Leicht: 6,3 MB GLB statt 40 MB, für flächige Illustrationen stimmiger (keine gebackenen Schatten)."
     },
     "video": {
+      "dekoder": {
+        "int8_v1": {
+          "datei": "minimax_h3_video_vae_int8_convrot.safetensors",
+          "sha256": "52a2c8c73583c86e4f41cdcce3a6ad0ea562987bc0bf3d60a0cef5f5c8e60c0e",
+          "rolle": "ganz",
+          "bedarf_zusatz_mib": 0,
+          "monitorkarte_mib": 19456,
+          "monitorkarte_grund": "Gemessen 05.11.2026: INT8-Video ganz auf der Suprim mit Monitor, Anmeldung etwa 19,9 GiB, ohne Zeitverlust oder Ruckeln; auch zwei Videos gleichzeitig (FE + Suprim) und 1344×768, 10 s. Der Wert beeinflusst nur die Kartenwahl, nicht das Ergebnis."
+        }
+      },
+      "dekoder_standard": "int8_v1",
+      "dekoder_grund": "Nur neue Aufträge übernehmen den Standard aus dem Formular; Kennung, Datei und SHA-256 bleiben im Auftrag unverändert. Ohne Feld bleibt der bisherige Graph erhalten. Gemessen 05.11.2026: Dekodieren 36–40 % kürzer, PSNR etwa 58 dB, Text/Bild → Video, Beste, 1344×768, 10 s, zwei Videos gleichzeitig.",
       "modell_name": "MiniMax-H3",
       "modelle": {
         "fl2va": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",

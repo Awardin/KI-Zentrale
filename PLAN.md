@@ -3472,8 +3472,54 @@ Karte hätte er sich beim Start beendet, und `_comfy_starten` hätte den Start v
 - Nebenbefund am Abend: nvidia-smi meldet den Monitor wieder an der Suprim (`display_attached` Yes an Karte 1), anders
   als am Morgen (Abschnitt „Zwei Videos gleichzeitig, wenn keine 3090 den Monitor trägt“).
 
+## INT8-Video-VAE für neue Videos, Monitorkarte erlaubt (05.11.2026, Stufe 3v)
+
+Anlass: Video „MiniMax H3 Just Got WAY FASTER!“ (Ok Todd AI, 04.11.2026). Die dort genannte Sol-H3-VAE braucht
+ComfyUI 0.44 (wir 0.37); beim Gegenlesen (Astra xhigh, drei Runden, `SPEC-comfyui-044-REVIEW-LOG.md`) kam die
+einfachere Alternative ohne Update: die klassische H3-Video-VAE als INT8-ConvRot von Comfy-Org. Plan:
+[SPEC-comfyui-044.md](SPEC-comfyui-044.md), Phase A. Gebaut von Codex Sol medium (Worktree), abgenommen von Claude.
+
+- **Datei:** `minimax_h3_video_vae_int8_convrot.safetensors` (Comfy-Org/MiniMax-H3, 2,81 GB statt 5,2 GB, auf Saschas
+  Auftrag geladen, SHA-256 52a2c8c7…8e60c0e geprüft) in `ComfyUI\models\vae`.
+- **Auftragsfeld `vae_dekoder`** = {kennung, datei, sha256} aus `studio.video.dekoder` (Kennung `int8_v1`, Rolle `ganz`:
+  ersetzt nur `vae_name` von Knoten 3, also auch das Kodieren von Start-/Referenzbildern). Unveränderlich: neue
+  Fassung = neue Kennung. Formular und Skill setzen `dekoder_standard` nur bei neuen Videos/Szenenfolgen; „Nochmal“ und
+  „Mit Änderungen“ behalten den Wert des Originals, die Werkstatt ergänzt nie selbst. Ohne Feld ist der Graph
+  JSON-gleich zu vorher (9 eingefrorene Altgraphen, gegen den unveränderten Code geprüft). Rolle `dekodieren`
+  (eigener Decoder nur für `VAEDecode`, z. B. Sol) ist vorbereitet, aber ungenutzt.
+- **Gemessen** (gleiche Latents: ein Sampling, dann zwei Dekodierungen, Sampler laut ComfyUI aus dem Zwischenspeicher):
+
+  | Lauf | Dekodieren + Speichern bisher → INT8 | Abweichung INT8 ↔ bisher |
+  |---|---|---|
+  | 960×544, 5 s, Turbo, geteilt | 31,7 → 19,5 s | PSNR 57,4–57,9 dB, max. 18/255 |
+  | dasselbe ganz FE (Reihenfolge vertauscht) | 27,4 → 17,1 s | gleich |
+  | „Beste“ 20 Schritte, 960×544, 5 s | 25,8 → 16,4 s | 57,5–57,9 dB |
+  | 1344×768, 10 s, Turbo, ganz FE | 90,7 → 54,8 s, Spitze 23,0 → 18,3 GiB | 57,9–58,3 dB |
+  | Bild → Video (Porträt, 544×960) gesamt | 114,4 → 100,4 s | 56,2–57,9 dB, Startbild gleich gut |
+  | zwei Videos gleichzeitig (FE + Suprim mit Monitor), beide fertig | 111,9 → 94,7 s | – |
+
+  Sichtprüfung je Fall (Gesicht, Hände, Schrift, Anfang/Ende): kein Unterschied, verstärktes Differenzbild nur Rauschen.
+- **Monitorkarte:** Ein INT8-Video ganz auf der Suprim mit Monitor (Anmeldung ~19,9 GiB) war nicht langsamer als auf
+  der FE (5 s: 82,7 statt 88,2 s; 1344×768 10 s: 594 statt ~626 s), ohne Fehler, kein Ruckeln (Sascha). Der
+  Windows-Zähler „gemeinsamer GPU-Speicher“ steigt beim großen Clip auf beiden Karten (FE +6, Suprim +8 GiB) – ComfyUIs
+  Nachladen, ohne Zeitverlust. Deshalb dürfen Videos mit `int8_v1` (`monitorkarte_mib` 19.456) ganz auf die
+  Monitorkarte, eine Karte ohne Monitor bleibt erste Wahl; so rechnen zwei Videos gleichzeitig auch mit Monitor an der
+  Suprim. Ältere Videos ohne Feld bleiben bei der alten Regel.
+- **Kartenwahl:** neue Bedarfsrolle `monitorkarte` (aus `monitorkarte_mib` des Dekoders), Variante `nur_monitor` nur
+  auf der Monitorkarte und nach einer Karte ohne Monitor gewertet; `Instanz.kann`/`bevorzugt` mit `auf_monitor`;
+  Prozesse ohne Videos nehmen sie nie. Tests: Werkstatt 283, Zentrale 193 grün.
+- **Live abgenommen** (05.11.2026, Monitor an der Suprim): Video über den Skill (`schnell`, Text) → Auftrag mit
+  `vae_dekoder` `int8_v1`, gerechnet von Prozess 2 ganz auf der Suprim in 73,7 s, Begleit-JSON mit Kennung, Datei und
+  SHA-256 (`VAE-Messung/Video-2_00001_`). Vorher hätte dieses Video mit Monitor an der Suprim auf Prozess 1 gewartet.
+- Testdateien in `Arbeitsmaterial\Studio\VAE-Messung` (Löschen nur auf Wunsch). Sol/ComfyUI 0.44 bleibt Phase B
+  (nur Skizze, eigene Planung). Molmo2-Encoder, Motion Dials und D-RoPE aus dem Video bewusst nicht übernommen
+  (fremde Knoten, D-RoPE verändert Gesichter).
+
 ## Offen
 
+- **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update
+  Pfadprüfung in `gehoert_zu_comfy`, getrennter Testverbraucher, laufzeitunabhängiger Modellpfad, Wechsel-/Rückweg.
+  Nach Phase A (INT8-VAE, oben) eher geringer Zusatznutzen.
 - **Qwen 27B IQ3_S** (`qwen27-iq3s`, 04.11.2026): war für die 3080 neben Strata gedacht; ohne 3080 landet er auf einer
   3090, wo der Unsloth Q4 (`qwen27-unsloth`) besser ist. Behalten oder entfernen entscheidet Sascha.
 - **Qwen3.5-4B-3D-Coder** (01.11.2026): Eintrag `qwen35-3d-coder`, getestet auf der Suprim (Abschnitt direkt oben).

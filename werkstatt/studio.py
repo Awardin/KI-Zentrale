@@ -717,6 +717,22 @@ def bilder_raster(bilder):
     return 17 * n + 5
 
 
+def vae_dekoder(e, v):
+    """Unveränderlicher Auftragswert: Kennung, Datei und geprüfte Konfigurations-Prüfsumme, nie ein Standard."""
+    if 'vae_dekoder' not in e:
+        return None
+    d = e['vae_dekoder']
+    k = d.get('kennung') if isinstance(d, dict) else None
+    cfg = (v.get('dekoder') or {}).get(k) if isinstance(k, str) else None
+    if not cfg:
+        raise ValueError('Unbekannte Kennung für den VAE-Dekoder.')
+    if any(d.get(f) != cfg.get(f) for f in ('datei', 'sha256')):
+        raise ValueError('Datei oder SHA-256 des VAE-Dekoders stimmt nicht mit der Konfiguration überein.')
+    if cfg.get('rolle') not in ('ganz', 'dekodieren'):
+        raise ValueError('Die Rolle des VAE-Dekoders ist ungültig.')
+    return cfg
+
+
 def video_graph(e, v, praefix, namen=None):
     """ComfyUI-Arbeitsablauf für MiniMax-H3 (nach 2Wild): aus Text, aus Bild oder mit Referenzen.
 
@@ -751,6 +767,14 @@ def video_graph(e, v, praefix, namen=None):
         '17': {'class_type': 'SaveVideo', 'inputs': {'video': ['16', 0], 'filename_prefix': praefix,
                                                      'format': 'auto', 'codec': 'auto'}},
     }
+    dekoder = vae_dekoder(e, v)
+    if dekoder:
+        if dekoder['rolle'] == 'ganz':
+            graph['3']['inputs']['vae_name'] = dekoder['datei']
+        else:
+            graph['34'] = {'class_type': 'VAELoader', 'inputs': {'vae_name': dekoder['datei']}}
+            graph['35'] = {'class_type': 'SelectVAEDevice', 'inputs': {'vae': ['34', 0], 'device': g['vae_video']}}
+            graph['14']['inputs']['vae'] = ['35', 0]
     if referenz:
         bilder, clips = list(namen.get('bilder') or [])[:9], list(namen.get('clips') or [])[:3]
         if not bilder and not clips:
@@ -1629,7 +1653,8 @@ def _json(text):
         return None
 
 
-def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, tauschen=None, unzensiert=UNZENSIERT_LORA):
+def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, tauschen=None, unzensiert=UNZENSIERT_LORA,
+                           dekoder=None):
     """Was sich aus einem ComfyUI-Arbeitsablauf (API-Form) über ein Ergebnis sagen lässt.
 
     durchsichtig_vorlage: Rahmen-Prompt für durchsichtige Bilder (studio.durchsichtig.vorlage); damit wird bei solchen
@@ -1696,6 +1721,13 @@ def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, ta
         e['schnell'] = True  # schnellere Aufmerksamkeit (Bilder Knoten 26, siehe _mit_schnell; Videos Knoten 29)
     if isinstance(e['modell_datei'], str) and 'qwen_image' in e['modell_datei'] and 'int8' in e['modell_datei']:
         e['int8'] = True  # INT8-Fassung (siehe qwen_dateien)
+    # Der gespeicherte Graph enthält die Datei; die zugehörige geprüfte SHA kommt aus der unveränderlichen Kennung.
+    for kennung, d in (dekoder or {}).items():
+        nid = '3' if d.get('rolle') == 'ganz' else '34'
+        n = knoten.get(nid) or {}
+        if n.get('class_type') == 'VAELoader' and n['inputs'].get('vae_name') == d.get('datei') and d.get('sha256'):
+            e['vae_dekoder'] = {'kennung': kennung, 'datei': d['datei'], 'sha256': d['sha256']}
+            break
     r = realismus or {}
     if r.get('lora') and any(n.get('class_type') == 'LoraLoaderModelOnly' and n['inputs'].get('lora_name') == r['lora']
                              for n in knoten.values()):
@@ -1785,7 +1817,7 @@ def platz_fehlt(antwort, bedarf, schluessel='bild-video'):
 # ComfyUI startet mit --default-device 0 (Zentrale). Abläufe ohne Kartenwahl (Pose, schnelles Freistellen, SAM3,
 # Zeitlupe, Video freistellen, 3D) rechnen dort.
 STANDARD_KARTE = 0
-BEDARF_ROLLEN = ('eine', 'eine_ohne_monitor', 'haupt', 'neben', 'fest', 'standard_zusatz')
+BEDARF_ROLLEN = ('eine', 'eine_ohne_monitor', 'monitorkarte', 'haupt', 'neben', 'fest', 'standard_zusatz')
 GERAETE_ROLLEN = ('modell', 'clip', 'vae', 'vae_video', 'vae_audio')
 
 
@@ -1798,11 +1830,13 @@ def verteilungen(bedarf, karten, standard=STANDARD_KARTE):
     """Mögliche Verteilungen eines Auftrags auf die Karten (`karten`: Indizes).
 
     bedarf: 'eine' – alles auf einer Karte; 'eine_ohne_monitor' – ebenso, aber nie auf der Monitorkarte (Videos, Stufe 8:
-    ComfyUI füllt die Karte fast ganz); 'haupt'/'neben' – Diffusionsmodell auf einer Karte, Text-Encoder und VAE auf
+    ComfyUI füllt die Karte fast ganz); 'monitorkarte' – ganzes Video mit geeignetem Dekoder nur auf der Monitorkarte;
+    'haupt'/'neben' – Diffusionsmodell auf einer Karte, Text-Encoder und VAE auf
     der anderen; 'fest' – Abläufe ohne Kartenwahl auf ComfyUIs Standardkarte; 'standard_zusatz' – zusätzlich auf der
     Standardkarte gebraucht (SAM3 bei „Stelle per Wort“).
     -> [{'rang': 0 eine Karte / 1 geteilt, 'mib': {Karte: MiB}, 'geraete': {Rolle: 'gpu:n'} oder None,
-         'haupt': Karte des Diffusionsmodells (nur geteilt), 'ohne_monitor': True (nur „eine_ohne_monitor“)}]
+         'haupt': Karte des Diffusionsmodells (nur geteilt), 'ohne_monitor': True (nur „eine_ohne_monitor“),
+         'nur_monitor': True (nur „monitorkarte“)}]
     """
     out = []
     if bedarf.get('fest') and standard in karten:
@@ -1813,6 +1847,10 @@ def verteilungen(bedarf, karten, standard=STANDARD_KARTE):
     if bedarf.get('eine_ohne_monitor'):
         for a in karten:
             out.append({'rang': 0, 'mib': {a: bedarf['eine_ohne_monitor']}, 'ohne_monitor': True,
+                        'geraete': dict.fromkeys(GERAETE_ROLLEN, f'gpu:{a}')})
+    if bedarf.get('monitorkarte'):
+        for a in karten:
+            out.append({'rang': 0, 'mib': {a: bedarf['monitorkarte']}, 'nur_monitor': True,
                         'geraete': dict.fromkeys(GERAETE_ROLLEN, f'gpu:{a}')})
     if bedarf.get('haupt'):
         for a in karten:
@@ -1838,7 +1876,8 @@ def karten_waehlen(antwort, bedarf, inst=None):
     rechnet seinen eigenen Cache an und nimmt für Ein-Karten-Aufträge die Karte des anderen Prozesses nicht, solange
     der läuft (sonst müsste der warten, gemessen 16.10.2026: Prozess 1 legte ein Bild auf die Suprim, Prozess 2
     stand); dann wartet er auf seine eigene Karte.
-    Ein Video auf einer Karte („eine_ohne_monitor“) kommt nie auf die Monitorkarte.
+    Ein Video auf einer Karte („eine_ohne_monitor“) kommt nur mit zusätzlichem Bedarf „monitorkarte“ auf die
+    Monitorkarte; passt eine Karte ohne Monitor, bleibt diese zuerst dran.
     -> (verteilung oder None, fehlend {Karte: MiB}, zusatz {Karte: MiB})
     """
     sichtbar = inst.karten if inst is not None and inst.karten is not None else (inst.sichtbar if inst else None)
@@ -1859,7 +1898,10 @@ def karten_waehlen(antwort, bedarf, inst=None):
             continue
         if v.get('ohne_monitor') and any(i in monitor for i in v['mib']):
             continue
-        wert = (sum(fehlend.values()), v['rang'], eng, v.get('haupt') in monitor, sum(zusatz.values()), rest, nr)
+        if v.get('nur_monitor') and any(i not in monitor for i in v['mib']):
+            continue
+        wert = (sum(fehlend.values()), v['rang'], eng, bool(v.get('nur_monitor')),
+                v.get('haupt') in monitor, sum(zusatz.values()), rest, nr)
         if beste is None or wert < beste[0]:
             beste = (wert, v, fehlend, zusatz)
     return beste[1:] if beste else (None, {}, {})
@@ -1931,27 +1973,28 @@ class Instanz:
 
     def kann(self, bedarf):
         """Kann dieser Prozess den Bedarf überhaupt rechnen? Wer nur eine Karte sieht, braucht eine Ein-Karten-Möglichkeit
-        („eine“ oder „fest“, ein Video „eine_ohne_monitor“ nur, wenn der Monitor nicht an dieser Karte hängt).
+        („eine“ oder „fest“, Videos mit „eine_ohne_monitor“ ohne Monitor bzw. „monitorkarte“ mit Monitor).
 
         Seit der RTX 3080 (22.10.2026): Prozesse ohne Videos nehmen nur Bilder und Hilfsabläufe; ihre Kapazität (Gesamt
         minus Reserve) muss der Ein-Karten-Bedarf samt Standardzusatz fassen. Ohne bekannte Kapazität rechnen sie nichts."""
         if self.karten is None:
             return True
-        if not self.videos and bedarf.get('eine_ohne_monitor') and not bedarf.get('eine'):
+        if not self.videos and (bedarf.get('eine_ohne_monitor') or bedarf.get('monitorkarte')) and not bedarf.get('eine'):
             return False
+        video = bedarf.get('monitorkarte') if self.auf_monitor else bedarf.get('eine_ohne_monitor')
         if not (bedarf.get('eine') or bedarf.get('fest')
-                or (bedarf.get('eine_ohne_monitor') and not self.auf_monitor)):
+                or video):
             return False
         if self.kapazitaet is None:
             return self.videos
-        noetig = bedarf.get('eine') or bedarf.get('eine_ohne_monitor') or bedarf.get('fest') or 0
+        noetig = bedarf.get('eine') or video or bedarf.get('fest') or 0
         noetig = max(noetig, bedarf.get('standard_zusatz') or 0)
         return noetig <= self.kapazitaet
 
     def bevorzugt(self, bedarf):
         """Videos auf einer Karte gehören dem video-fähigen Prozess (Stufe 8: Video auf der Suprim, Bild daneben auf der
         FE); er nimmt sie vor allem anderen, der erste Prozess lässt sie ihm, solange er läuft."""
-        return bool(self.karten and bedarf.get('eine_ohne_monitor') and self.kann(bedarf))
+        return bool(self.karten and (bedarf.get('eine_ohne_monitor') or bedarf.get('monitorkarte')) and self.kann(bedarf))
 
 
 # ---------------------------------------------------------------- Studio
@@ -2277,6 +2320,7 @@ class Studio:
                 'details_verfuegbar': self.details_verfuegbar(), 'unzensiert_verfuegbar': self.unzensiert_verfuegbar(),
                 'schnell_verfuegbar': self.schnell_verfuegbar(),
                 'video_schnell_verfuegbar': self.video_schnell_verfuegbar(),
+                'video_dekoder_standard': self._dekoder_standard(),
                 'durchsichtig_verfuegbar': bool(s.get('durchsichtig')), 'int8_verfuegbar': self.int8_verfuegbar(),
                 'freistellen_schnell_verfuegbar': self.freistellen_schnell_verfuegbar(),
                 'finden_verfuegbar': self.finden_verfuegbar(), 'pose_verfuegbar': self.pose_verfuegbar(),
@@ -2356,7 +2400,16 @@ class Studio:
             h = (self.s['video'].get('freistellen' if a['art'] == 'video_freistellen' else 'zeitlupe') or {}).get('bedarf_mib')
             return bedarf_lesen(h) or self.bedarf_hilfe
         if a['art'] in VIDEO_ARTEN:
-            return self.bedarf_video
+            # Die Warteschlange muss auch ungültige Altaufträge nehmen können; die strenge Prüfung folgt vor dem Rechnen.
+            wert = a.get('vae_dekoder')
+            k = wert.get('kennung') if isinstance(wert, dict) else None
+            d = (self.s['video'].get('dekoder') or {}).get(k) if isinstance(k, str) else None
+            zusatz = int(d.get('bedarf_zusatz_mib', 0)) if d and d['rolle'] == 'dekodieren' else 0
+            bedarf = {k: m + (zusatz if k in ('neben', 'eine', 'eine_ohne_monitor', 'fest') else 0)
+                      for k, m in self.bedarf_video.items()} if zusatz else self.bedarf_video
+            if d and d.get('monitorkarte_mib'):
+                bedarf = dict(bedarf, monitorkarte=int(d['monitorkarte_mib']))
+            return bedarf
         if a['art'] in HILFS_ARTEN or a.get('verfahren') == 'schnell':
             return self.bedarf_hilfe
         bedarf = self.bedarf_gross if (self._pixel(a) or 0) > self.bedarf_gross_ab else self.bedarf
@@ -2540,7 +2593,7 @@ class Studio:
         else:
             g = einstellungen_aus_graph(_json(texte.get('prompt')), (self.s.get('durchsichtig') or {}).get('vorlage'),
                                         self.s['video'].get('realismus'), self.s['video'].get('tauschen'),
-                                        (self.s.get('unzensiert') or {}).get('lora'))
+                                        (self.s.get('unzensiert') or {}).get('lora'), self.s['video'].get('dekoder'))
             art = g.get('art') if g.get('art') in (VIDEO_ARTEN if video else BILD_ARTEN) else \
                 ('video_text' if video else 'bild')
             info = {'herkunft': 'metadaten' if g.get('prompt') else 'unbekannt', 'art': art,
@@ -2575,6 +2628,8 @@ class Studio:
                     info['ausformulieren_frei'] = True
             if g.get('realismus') and video:
                 info['realismus'] = True
+            if g.get('vae_dekoder') and video:
+                info['vae_dekoder'] = g['vae_dekoder']
             if g.get('tauschen') and video:
                 info['tauschen'] = True
             if g.get('acc8') and video:
@@ -2884,6 +2939,7 @@ class Studio:
         if video:
             felder.update(bilder=bilder, turbo=schritte <= int(s['video']['turbo_bis_schritte']))
             felder.update(self._realismus(d))
+            felder.update(self._vae_dekoder(d))
             # DMAD nur für neue Videos aus Text bzw. Bild mit genau dmad.schritte Schritten (Feld dmad), wie INT8 bei Bildern.
             if art in ('video_text', 'video_bild') and d.get('dmad') is True and self.dmad_verfuegbar() \
                     and schritte == int((s['video'].get('dmad') or {}).get('schritte', 4)):
@@ -3071,6 +3127,7 @@ class Studio:
         if neu_sekunden is not None:
             felder['neu_sekunden'] = neu_sekunden
         felder.update(self._realismus(d))
+        felder.update(self._vae_dekoder(d))
         if d.get('schnell') is True and self.video_schnell_verfuegbar():
             felder['schnell'] = True  # schnellere Aufmerksamkeit, nur neue Aufträge (seit 17.10.2026)
         return felder
@@ -3191,6 +3248,19 @@ class Studio:
                 continue
         return summe
 
+    def _dekoder_standard(self):
+        k = self.s['video'].get('dekoder_standard')
+        d = (self.s['video'].get('dekoder') or {}).get(k)
+        return dict(kennung=k, datei=d['datei'], sha256=d['sha256']) if d else None
+
+    def _vae_dekoder(self, d):
+        cfg = vae_dekoder(d, self.s['video'])
+        if cfg is None:
+            return {}
+        if not self._modell_da('vae', cfg['datei']):
+            raise ValueError('Die Modelldatei für den VAE-Dekoder fehlt in ComfyUI: ' + cfg['datei'])
+        return {'vae_dekoder': {f: d['vae_dekoder'][f] for f in ('kennung', 'datei', 'sha256')}}
+
     def _realismus(self, d):
         """Realism-LoRA für Videos mit Personen (Stufe 3o): nur auf ausdrücklichen Wunsch, sonst bleiben ältere Videos bei
         „Nochmal“ gleich und Räume ohne Personen ohne sie (dort war sie schlechter)."""
@@ -3289,7 +3359,8 @@ class Studio:
             'breite': d.get('breite'), 'hoehe': d.get('hoehe'), 'bilder': round(szenen[0]['sekunden'] * fps),
             'schritte': d.get('schritte'), 'variation': d.get('variation'), 'vorlagen': d.get('vorlagen'),
             'referenz_genau': d.get('referenz_genau'), 'ton_behalten': d.get('ton_behalten'),
-            'realismus': szenen[0]['realismus'], 'schnell': d.get('schnell')})
+            'realismus': szenen[0]['realismus'], 'schnell': d.get('schnell'),
+            **({'vae_dekoder': d['vae_dekoder']} if 'vae_dekoder' in d else {})})
         f = {'id': secrets.token_hex(4), 'erstellt': time.time(), 'projekt': erste['projekt'], 'gemeinsam': gemeinsam,
              'szenen': szenen, 'breite': erste['breite'], 'hoehe': erste['hoehe'], 'schritte': erste['schritte'],
              'realismus': any(s['realismus'] for s in szenen), 'variation': erste['variation'],
@@ -3300,6 +3371,8 @@ class Studio:
              'zustand': 'laeuft', 'meldung': ''}
         if erste.get('schnell'):
             f['schnell'] = True  # alle Szenen mit schnellerer Aufmerksamkeit (seit 17.10.2026; ältere Folgen ohne)
+        if 'vae_dekoder' in erste:
+            f['vae_dekoder'] = dict(erste['vae_dekoder'])
         return f, erste
 
     def _szene_anlegen(self, f, felder=None):
@@ -3323,6 +3396,8 @@ class Studio:
                 d['realismus'] = True
             if f.get('schnell'):
                 d['schnell'] = True
+            if 'vae_dekoder' in f:
+                d['vae_dekoder'] = f['vae_dekoder']
             if not f['takes'][i] and f.get('variation_fest'):
                 d['variation'] = f['variation']
             felder = self._pruefen(d)
@@ -3586,8 +3661,8 @@ class Studio:
             frei_video = next((i for i in video_prozesse if i.nr not in rechnet), None)
             if frei_video is not None or not frisch:
                 return frei_video or video_prozesse[0]
-            # Alle Video-Prozesse rechnen schon (04.11.2026: Monitor an der Intel-Grafik, keine 3090 trägt ihn): ein
-            # freier anderer Prozess nimmt das nächste Video, wenn es jetzt ganz auf eine eigene Karte ohne Monitor passt
+            # Alle Video-Prozesse rechnen schon: ein freier anderer Prozess nimmt das nächste Video, wenn es jetzt
+            # ganz auf eine eigene Karte passt (Monitorkarte nur mit geeignetem Dekoder)
             # (Prozess 1 auf der FE neben dem Video auf der Suprim). Sonst wartet es auf den Video-Prozess.
             for i in verfuegbar:
                 if i.nr not in rechnet and i not in video_prozesse and i.videos and i.kann(b):
@@ -3846,6 +3921,8 @@ class Studio:
             meta['int8'] = True
         if video and a.get('realismus'):
             meta['realismus'] = True
+        if video and 'vae_dekoder' in a:
+            meta['vae_dekoder'] = dict(a['vae_dekoder'])
         if video and a.get('tauschen'):
             meta['tauschen'] = True
         if video and a.get('acc8'):
@@ -3858,6 +3935,11 @@ class Studio:
         return meta
 
     def _rechnen(self, a, anmeldung, geraete=None):
+        if a['art'] in VIDEO_ARTEN:
+            try:
+                self._vae_dekoder(a)  # vor jeder Berechnung erneut prüfen, auch bei wartenden/alten Aufträgen
+            except ValueError as ex:
+                raise Fehler(str(ex)) from ex
         inst = self._inst()
         s = mit_geraeten(self.s, geraete, inst.lokal)
         z = self.comfy_zustand(frisch=True)
