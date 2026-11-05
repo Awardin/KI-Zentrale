@@ -3209,6 +3209,28 @@ Projektseite `nvlabs.github.io/Sana/Open-H3-Regenerate-2K`. Schließt die Lücke
 - **Testplan:** zwei vorhandene Studio-Videos 960 × 544 auf 1080p, 3 Schritte – eine Sprechszene in der Halbtotale
   (etwa `Video-Real-B-…` vom 29.10. in „Werkstatt-Abnahme“) und ein Raum ohne Personen. Prüfen: Gesicht wie im
   Original, Lippen synchron, erfundene Details, Zeit und Speicher auf der Suprim.
+- **Erster Clip gerechnet (05.11.2026, Auftrag Sascha „Ok dann starten“):** Sprechszene `Video-Real-B-n11_00001_`
+  (960 × 544, 124 Bilder) auf 1920 × 1088, Ergebnis `Hochskalieren-Test/Real-B-n11-1080p_00001_.mp4` (ohne Begleitdatei,
+  direkt an ComfyUI mit Anmeldung `bild-video`).
+  - **Weg mit Kernknoten:** Die LoRA (Diffusers-Aufbau) lädt ComfyUI nicht direkt; umgerechnet nach
+    `models\loras\open_h3_regenerate_2k_comfy_bf16.safetensors` (9,4 GB): q/k/v als Blockdiagonale auf `qkv_proj`,
+    `fc1`-Hälften getauscht ([gate; value], belegt in diffusers `convert_minimax_h3_gated_ff`), Sharp-Zweige als LoRA auf
+    `adaln_proj.linear` (Eingang ist dort die 8-D-Kurve); Delta-Fehler bf16 0,05–0,07 %. Der H3-Latent-Hochskalierer hat
+    in 0.37 keinen Lader – stattdessen Bildweg: Bilder lanczos ×2 → H3-VAE kodieren (`LTXVConcatAVLatent`) → σ 0,909375
+    verrauschen → 3 Euler-Schritte (ManualSigmas), CFG 1, ref2va INT8 + LoRA; Ton als Führung (`MiniMaxH3AddGuide`).
+    Skripte im Scratchpad (`lora_umrechnen.py`, `hochskalieren.py`).
+  - **Zeit/Speicher:** 373 s mit Laden (Prozess 1: Modell FE, VAE/Text-Encoder Suprim); FE-Spitze 23,8 GiB, dabei rund
+    7 GiB in den gemeinsamen Speicher ausgelagert; Suprim 7,3 GiB.
+  - **Bild:** deutlich schärfer (Haare, Haut, Augen), Bildaufbau, Bewegung und Mundformen wie im Original. Aber das
+    Gesicht ändert sich: glatter und jünger, Falten fast weg – eher „dieselbe Frau zehn Jahre jünger“ als nur schärfer.
+  - **Ton:** Original bleibt erhalten (Korrelation 0,98, 4,5 ms Versatz durch die Ton-VAE, etwas lauter).
+- **Zweiter Clip (05.11.2026, „Ja, Raum rechnen“):** Kamerafahrt `Video_00022_` (Behandlungsraum ohne Personen) →
+  `Hochskalieren-Test/Raum-22-1080p_00001_.mp4`, 369 s mit Laden, FE 23,8 GiB (8,6 GiB ausgelagert), Suprim 7,4 GiB.
+  Viel schärfer (Fensterkreuze, Bäume, Kissen, Dielen), aber Inhalt geändert: Monstera wird Palme, auf dem Tisch eine
+  Pflanze statt Kerze, Beistelltisch anders bestückt, Kamerafahrt gegen Ende leicht anders.
+- **Zwischenbefund:** Schärfe wie versprochen, aber bei σ 0,909 ist es ein Neurechnen nach Vorlage, kein treues
+  Hochskalieren – Gesichter jünger, Gegenstände getauscht. Fürs Studio so nicht einbauen; offen wäre ein Versuch mit
+  niedrigerem Start-σ (näher am Original, weniger scharf). Entscheidung Sascha.
 
 ### Test B: Singularity V2 gegen unser H3
 
@@ -3514,6 +3536,35 @@ einfachere Alternative ohne Update: die klassische H3-Video-VAE als INT8-ConvRot
 - Testdateien in `Arbeitsmaterial\Studio\VAE-Messung` (Löschen nur auf Wunsch). Sol/ComfyUI 0.44 bleibt Phase B
   (nur Skizze, eigene Planung). Molmo2-Encoder, Motion Dials und D-RoPE aus dem Video bewusst nicht übernommen
   (fremde Knoten, D-RoPE verändert Gesichter).
+
+## Video hochrechnen (05.11.2026, Stufe 3w)
+
+Auftrag Sascha nach Test A: „als zusätzlichen Knopf integrieren … hochwertiges Bild, aber nicht 100 % originalgetreu –
+das ist ok.“ Spec [SPEC-video-hochrechnen.md](SPEC-video-hochrechnen.md), drei Runden Codex Astra xhigh
+([Log](SPEC-video-hochrechnen-REVIEW-LOG.md)), Bau Codex Sol medium im Worktree, Abnahme Claude.
+
+- **Was:** Art `video_hochrechnen` – Knopf „Hochrechnen 1080p“ in der Großansicht eines MP4 (Skill
+  `studio.py hochrechnen <video>`). Studio-Videos mit Ton bis 124 Bilder (5 s), Länge 17k+5, Zielgröße unter
+  1920 × 1088 Pixeln im 32er-Raster (960 × 544 → 1920 × 1088). Graph wie Test A (Bildweg, ref2va INT8 + umgerechnete
+  Regenerate-LoRA, σ 0,909375 → 3 Euler-Schritte, INT8-VAE beim Dekodieren); der **Originalton** wird bildgenau
+  gekürzt/aufgefüllt und geht direkt ins Video (kein `VAEDecodeAudio`).
+- **Eingefroren:** Feld `hochrechnen` (LoRA + SHA-256, Sigmas, Modell, Text-Encoder, Kodier-/Dekodier-VAE mit SHA-256,
+  Ton-VAE, fps, Zielgröße, Aufmerksamkeit) und `quell_sha256`; vor jedem Rechnen erneut gegen die Dateien geprüft
+  (Prüfsummen großer Dateien je Größe/Änderungszeit zwischengespeichert). „Mit Änderungen“ ist für diese Art aus.
+- **Karten/Speicher:** nur Prozess 1, geteilt (`haupt` 22.528 / `neben` 9.216 MiB), Modell **nie** auf der
+  Monitorkarte (hart ausgeschlossen); wartet sonst. Vor dem Senden Commit-Spielraum ≥ 36.864 MiB, sonst „Wartet auf
+  Arbeitsspeicher“.
+- **Umrechnung:** `werkstatt\regenerate_lora.py` (ComfyUI-venv, prüft alle 258 Module, Formen und Delta-Fehler; max.
+  0,11 %). Neu erzeugt ergab sie eine andere Datei-Prüfsumme (`107c1930…`), aber **gleiche Schlüssel, Kopfdaten und
+  Tensoren** (alle 516 bitgleich) – nur die Reihenfolge im Dateikopf; die vorhandene Datei (`0291f981…`) bleibt.
+- **Tests:** Werkstatt 303 (1 übersprungen: Tensor-Test ohne torch), Zentrale 193 grün.
+- **Live abgenommen (05.11.2026):** Knopf an `Video-Real-B-n11_00001_` → `Werkstatt-Abnahme/Hochgerechnet_00001_.mp4`,
+  1920 × 1088, 124 Bilder, 361,8 s; Ton: Versatz 0, Korrelation 0,9997 zum Original; Begleit-JSON vollständig.
+  Daneben ein Bild auf Prozess 2 (12,3 s). „Nochmal“ nach `/free` (ComfyUI ohne Zwischenspeicher, 360,4 s) →
+  `Hochgerechnet_00002_`: **fast gleich, nicht bitgleich** (PSNR 35,6 dB; gleiche Person und Bewegung, feine Unterschiede
+  etwa an Augenfarbe und Hautdetails) – vermutlich Auslagerung/INT8-Aufmerksamkeit. Diese Fassung behielt mehr Falten
+  als Test A (andere Nummer): Wie stark das Gesicht jünger wird, schwankt mit der Variationsnummer.
+- **Offen:** längere Clips (10 s) erst nach Messung; Variation bei schwankendem Gesicht nutzen.
 
 ## Offen
 

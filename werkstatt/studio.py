@@ -47,7 +47,7 @@ OFFEN = ('wartet', 'laeuft')
 BILD_ARTEN = ('bild', 'bearbeiten', 'verbessern', 'freistellen', 'pose')
 HILFS_ARTEN = ('pose',)  # rechnen ohne Qwen (Stufe 3l): kein Prompt, keine Qualitätsstufe
 # Zeitlupe und Video freistellen (seit 09.10.2026): bearbeiten ein vorhandenes Video ohne MiniMax, ohne Prompt und Stufe.
-VIDEO_HILFS_ARTEN = ('video_zeitlupe', 'video_freistellen')
+VIDEO_HILFS_ARTEN = ('video_zeitlupe', 'video_freistellen', 'video_hochrechnen')
 VIDEO_ARTEN = ('video_text', 'video_bild', 'video_referenz', 'video_weiter') + VIDEO_HILFS_ARTEN
 # 3D-Modell (Stufe 3t, seit 11.10.2026): Pixal3D aus einem Drehblatt (vier Ansichten nebeneinander), einem Bild oder
 # Einzelansichten – ohne Qwen und MiniMax. Ergebnis: GLB plus Vorschau-Video (Drehteller) mit gleichem Stamm.
@@ -859,6 +859,81 @@ def video_graph(e, v, praefix, namen=None):
     return graph
 
 
+def hochrechnen_masse(breite, hoehe, ziel_pixel):
+    """Größtes passendes 32er-Raster unter dem Pixelbudget, ohne Beschnitt."""
+    if min(breite, hoehe, ziel_pixel) <= 0:
+        raise ValueError('Ungültige Videogröße.')
+    faktor = math.sqrt(ziel_pixel / (breite * hoehe))
+    b, h = int(breite * faktor // 32) * 32, int(hoehe * faktor // 32) * 32
+    if b <= breite or h <= hoehe:
+        raise ValueError('Das Video ist bereits so groß; die Zielgröße muss größer als das Original sein.')
+    return b, h
+
+
+def quellton_graph(graph, neu_id, quelle, q, start, anzahl, fps, exakt=False):
+    """Originalton auf die Bildgrenzen schneiden und fehlendes Ende mit Stille auffüllen."""
+    nid = neu_id()
+    graph[nid] = {'class_type': 'TrimAudioDuration', 'inputs': {
+        'audio': quelle, 'start_index': round(start / fps, 6), 'duration': round(anzahl / fps, 6)}}
+    ton = [nid, 0]
+    fehlt = (start + anzahl) / fps - float(q['tondauer'])
+    if exakt:
+        rate = int(q['tonrate'])
+        fehlt = (round((start + anzahl) / fps * rate) - round(float(q['tondauer']) * rate)) / rate
+    if fehlt > (0 if exakt else 1 / float(q['tonrate'])):
+        still, concat = neu_id(), neu_id()
+        graph[still] = {'class_type': 'EmptyAudio', 'inputs': {
+            'duration': round(fehlt, 6), 'sample_rate': int(q['tonrate']), 'channels': int(q.get('tonkanaele') or 2)}}
+        graph[concat] = {'class_type': 'AudioConcat', 'inputs': {
+            'audio1': ton, 'audio2': [still, 0], 'direction': 'after'}}
+        ton = [concat, 0]
+    return ton
+
+
+def hochrechnen_graph(e, v, praefix, clip):
+    """Gemessener Regenerate-Bildweg; nur die Geräte kommen aus der aktuellen Kartenwahl."""
+    h, g = e['hochrechnen'], v['geraete']
+    def n(klasse, **inputs):
+        return {'class_type': klasse, 'inputs': inputs}
+    graph = {
+        '1': n('UNETLoader', unet_name=h['modell'], weight_dtype='default'),
+        '2': n('CLIPLoader', clip_name=h['clip'], type='minimax', device='default'),
+        '3': n('VAELoader', vae_name=h['vae_kodieren']),
+        '4': n('VAELoader', vae_name=h['vae_audio']),
+        '34': n('VAELoader', vae_name=h['vae_dekoder']['datei']),
+        '20': n('SelectModelDevice', model=['1', 0], device=g['modell']),
+        '21': n('SelectCLIPDevice', clip=['2', 0], device=g['clip']),
+        '22': n('SelectVAEDevice', vae=['3', 0], device=g['vae_video']),
+        '23': n('SelectVAEDevice', vae=['4', 0], device=g['vae_audio']),
+        '35': n('SelectVAEDevice', vae=['34', 0], device=g['vae_video']),
+        '24': n('LoraLoaderModelOnly', model=['20', 0], lora_name=h['lora'], strength_model=1.0),
+        '29': n('ModelAttentionBackend', model=['24', 0], attention=h['aufmerksamkeit']),
+        '40': n('LoadVideo', file=clip),
+        '41': n('GetVideoComponents', video=['40', 0]),
+        '42': n('ImageScale', image=['41', 0], upscale_method='lanczos', width=h['ziel_breite'],
+                height=h['ziel_hoehe'], crop='disabled'),
+        '43': n('VAEEncode', pixels=['42', 0], vae=['22', 0]),
+        '5': n('MiniMaxH3ImageToVideo', clip=['21', 0], vae=['22', 0], prompt=e['prompt'],
+               width=h['ziel_breite'], height=h['ziel_hoehe'], length=e['bilder']),
+        '44': n('LTXVSeparateAVLatent', av_latent=['5', 1]),
+        '45': n('LTXVConcatAVLatent', video_latent=['43', 0], audio_latent=['44', 1]),
+        '9': n('KSamplerSelect', sampler_name='euler'),
+        '10': n('ManualSigmas', sigmas=h['sigmas']),
+        '11': n('BasicGuider', model=['29', 0], conditioning=['50', 0]),
+        '12': n('RandomNoise', noise_seed=e['variation']),
+        '13': n('SamplerCustomAdvanced', noise=['12', 0], guider=['11', 0], sampler=['9', 0],
+                sigmas=['10', 0], latent_image=['45', 0]),
+        '14': n('VAEDecode', samples=['13', 0], vae=['35', 0]),
+        '17': n('SaveVideo', video=['16', 0], filename_prefix=praefix, format='auto', codec='auto'),
+    }
+    frei = iter(range(70, 100))
+    ton = quellton_graph(graph, lambda: str(next(frei)), ['41', 1], e, 0, e['bilder'], h['fps'], exakt=True)
+    graph['50'] = n('MiniMaxH3AddGuide', positive=['5', 0], latent=['45', 0], frame_idx=0,
+                    audio_vae=['23', 0], audio=ton)
+    graph['16'] = n('CreateVideo', images=['14', 0], audio=ton, fps=float(h['fps']))
+    return graph
+
+
 def zeitlupe_graph(e, v, praefix, clip):
     """Zeitlupe mit RIFE (Kernknoten FrameInterpolate, seit 09.10.2026): ×2 verdoppelt die Bilder bei gleicher Bildrate
     (halbe Geschwindigkeit); ×1,5 rechnet dreimal so viele Bilder und nimmt jedes zweite. Ohne Ton (er passt nicht mehr)."""
@@ -1257,15 +1332,7 @@ def weiter_graph(e, v, praefix, namen):
         return [nid, 0]
 
     def quellton(rolle, start, anzahl):
-        ton = ton_stueck([knoten[rolle][1], 0], start, anzahl)
-        q = quellen[rolle]
-        fehlt = (start + anzahl) / fps - float(q['tondauer'])
-        if fehlt > 1 / float(q['tonrate']):
-            still = neu_id()
-            graph[still] = {'class_type': 'EmptyAudio', 'inputs': {
-                'duration': round(fehlt, 6), 'sample_rate': int(q['tonrate']), 'channels': int(q.get('tonkanaele') or 2)}}
-            ton = verketten(ton, [still, 0])
-        return ton
+        return quellton_graph(graph, neu_id, [knoten[rolle][1], 0], quellen[rolle], start, anzahl, fps)
 
     def verketten(ton1, ton2):
         nid = neu_id()
@@ -1312,6 +1379,38 @@ def datei_pruefsumme(pfad):
         for block in iter(lambda: f.read(1 << 20), b''):
             h.update(block)
     return h.hexdigest()
+
+
+_MODELL_HASHES = {}
+_MODELL_HASH_LOCK = threading.Lock()
+
+
+def modell_pruefsumme(pfad):
+    """Große Modelldateien nur nach einer Änderung erneut lesen."""
+    st = os.stat(pfad)
+    key = (os.path.normcase(os.path.abspath(pfad)), st.st_size, st.st_mtime_ns)
+    with _MODELL_HASH_LOCK:
+        if key not in _MODELL_HASHES:
+            summe = datei_pruefsumme(pfad)
+            nach = os.stat(pfad)
+            if (nach.st_size, nach.st_mtime_ns) != (st.st_size, st.st_mtime_ns):
+                raise ValueError('Eine Modelldatei wurde während der Prüfung verändert.')
+            _MODELL_HASHES[key] = summe
+        return _MODELL_HASHES[key]
+
+
+def commit_frei_mib():
+    """Freier Windows-Commit-Spielraum (RAM plus Auslagerungsdatei), keine RAM-Heuristik."""
+    import ctypes
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong)] + [
+            (n, ctypes.c_ulonglong) for n in ('ullTotalPhys', 'ullAvailPhys', 'ullTotalPageFile',
+                'ullAvailPageFile', 'ullTotalVirtual', 'ullAvailVirtual', 'ullAvailExtendedVirtual')]
+    status = MemoryStatus()
+    status.dwLength = ctypes.sizeof(status)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        raise Fehler('Der freie Arbeitsspeicher lässt sich nicht prüfen.')
+    return status.ullAvailPageFile // (1024 * 1024)
 
 
 def _mp4_boxen(f, von, bis):
@@ -1663,6 +1762,9 @@ def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, ta
     if not isinstance(graph, dict):
         return {}
     knoten = {k: v for k, v in graph.items() if isinstance(v, dict) and isinstance(v.get('inputs'), dict)}
+    hoch = hochrechnen_aus_graph(knoten, dekoder)
+    if hoch is not None:
+        return hoch
 
     def text_von(ref):
         if isinstance(ref, list) and ref and str(ref[0]) in knoten:
@@ -1784,6 +1886,56 @@ def einstellungen_aus_graph(graph, durchsichtig_vorlage=None, realismus=None, ta
     return e
 
 
+def hochrechnen_aus_graph(knoten, dekoder=None):
+    """Regenerate vor der allgemeinen Turbo-Erkennung lesen; Verbindungen statt fester Knotennummern."""
+    def eingang(ref):
+        if not isinstance(ref, list) or len(ref) != 2:
+            raise KeyError('Verbindung fehlt')
+        return knoten[str(ref[0])]['inputs']
+    def klasse(name):
+        return next(n['inputs'] for n in knoten.values() if n.get('class_type') == name)
+    lora = next((n['inputs'] for n in knoten.values() if n.get('class_type') == 'LoraLoaderModelOnly'
+                 and 'regenerate' in str(n['inputs'].get('lora_name', '')).lower()), None)
+    klassen = {n.get('class_type') for n in knoten.values()}
+    if not lora or not {'VAEEncode', 'LTXVConcatAVLatent'} <= klassen:
+        return None
+    try:
+        sampler = klasse('SamplerCustomAdvanced')
+        guider = eingang(sampler['guider'])
+        attention = eingang(guider['model'])
+        verbunden_lora = eingang(attention['model'])
+        if verbunden_lora is not lora:
+            return None
+        modell = eingang(eingang(lora['model'])['model'])['unet_name']
+        latent = eingang(sampler['latent_image'])
+        encode = eingang(latent['video_latent'])
+        skala = eingang(encode['pixels'])
+        guide = eingang(guider['conditioning'])
+        kond = eingang(guide['positive'])
+        kodieren = eingang(eingang(encode['vae'])['vae'])['vae_name']
+        audio = eingang(eingang(guide['audio_vae'])['vae'])['vae_name']
+        create = klasse('CreateVideo')
+        decode = eingang(create['images'])
+        datei = eingang(eingang(decode['vae'])['vae'])['vae_name']
+        sha = next((d['sha256'] for d in (dekoder or {}).values() if d.get('datei') == datei), None)
+        # Graphen enthalten keine Datei-Prüfsummen. Nur bekannte Kennungen ergänzen; ohne Quellhash bleibt
+        # ein solcher Fund in der Oberfläche ausdrücklich keine identische Wiederholung.
+        lora_sha = ('0291f98110844496fdef4f3b9a8cd3a47cbf66b0dc8de9e59378ca37502532cd'
+                    if lora['lora_name'] == 'open_h3_regenerate_2k_comfy_bf16.safetensors' else None)
+        h = dict(kennung='regenerate_v1', lora=lora['lora_name'], lora_sha256=lora_sha,
+                 modell=modell, clip=eingang(eingang(kond['clip'])['clip'])['clip_name'],
+                 vae_kodieren=kodieren, vae_dekoder={'datei': datei, 'sha256': sha}, vae_audio=audio,
+                 sigmas=eingang(sampler['sigmas'])['sigmas'], fps=create['fps'],
+                 ziel_breite=skala['width'], ziel_hoehe=skala['height'], aufmerksamkeit=attention['attention'])
+        return dict(art='video_hochrechnen', prompt=kond['prompt'], negativ='',
+                    variation=eingang(sampler['noise'])['noise_seed'], breite=h['ziel_breite'], hoehe=h['ziel_hoehe'],
+                    laenge_bilder=kond['length'], modell_datei=modell, modell='Open-H3-Regenerate-2K',
+                    schritte=None, cfg=None, hochrechnen=h,
+                    vorlagen=[klasse('LoadVideo')['file']])
+    except (KeyError, TypeError, StopIteration):
+        return None
+
+
 def modellname(datei):
     n = (datei or '').lower()
     if 'qwen_image' in n:
@@ -1864,7 +2016,7 @@ def verteilungen(bedarf, karten, standard=STANDARD_KARTE):
     return out
 
 
-def karten_waehlen(antwort, bedarf, inst=None):
+def karten_waehlen(antwort, bedarf, inst=None, haupt_ohne_monitor=False):
     """Beste Verteilung nach dem Stand der Zentrale (`/api/platz`).
 
     Reihenfolge: passt ohne Freigabe; alles auf einer Karte vor geteilt; die Karte mit dem Monitor nicht bis auf weniger
@@ -1891,6 +2043,8 @@ def karten_waehlen(antwort, bedarf, inst=None):
     puffer = antwort.get('monitor_puffer_mib') or 0
     beste = None
     for nr, v in enumerate(verteilungen(bedarf, karten, standard)):
+        if haupt_ohne_monitor and v.get('haupt') in monitor:
+            continue
         fehlend, zusatz = platz_fehlt(antwort, v['mib'], schluessel)
         rest = sum(frei.get(i, 0) - zusatz.get(i, 0) for i in v['mib'])
         eng = any(frei.get(i, 0) - zusatz.get(i, 0) < puffer for i in v['mib'] if i in monitor and v['mib'][i])
@@ -2248,6 +2402,14 @@ class Studio:
         a = self.s['video'].get('acc8') or {}
         return bool(a.get('aktiv')) and self._modell_da('loras', a.get('lora'))
 
+    def hochrechnen_verfuegbar(self):
+        v = self.s['video']
+        h, m = v.get('hochrechnen') or {}, v['modelle']
+        return bool(h.get('aktiv')) and all(self._modell_da(r, f) for r, f in (
+            ('loras', h.get('lora')), ('diffusion_models', m.get('ref2va')),
+            ('text_encoders', m.get('clip')), ('vae', m.get('vae_video')), ('vae', m.get('vae_audio')),
+            ('vae', (v.get('dekoder', {}).get('int8_v1') or {}).get('datei'))))
+
     def zeitlupe_verfuegbar(self):
         """Liegt das Zwischenbild-Modell (RIFE) in ComfyUI? (seit 09.10.2026)"""
         return self._modell_da('frame_interpolation', (self.s['video'].get('zeitlupe') or {}).get('modell'))
@@ -2329,6 +2491,7 @@ class Studio:
                 'realismus_verfuegbar': self.realismus_verfuegbar(),
                 # Stufe 3q: Person tauschen bei „Video mit Referenz“ (Prompt-Vorlage mit {wer} für den Vorschlag)
                 'tauschen_verfuegbar': self.tauschen_verfuegbar(),
+                'hochrechnen_verfuegbar': self.hochrechnen_verfuegbar(),
                 'zeitlupe_verfuegbar': self.zeitlupe_verfuegbar(),
                 'acc8_verfuegbar': self.acc8_verfuegbar(),
                 'dmad_verfuegbar': self.dmad_verfuegbar(),
@@ -2396,6 +2559,9 @@ class Studio:
         """Geplanter Grafikspeicher (MiB) für einen Auftrag, je Rolle (siehe `verteilungen`)."""
         if a['art'] in MODELL_ARTEN:
             return bedarf_lesen((self.s.get('modell3d') or {}).get('bedarf_mib')) or self.bedarf_hilfe
+        if a['art'] == 'video_hochrechnen':
+            h = self.s['video']['hochrechnen']['bedarf_mib']
+            return {r: int(h[r]) for r in ('haupt', 'neben')}
         if a['art'] in VIDEO_HILFS_ARTEN:
             h = (self.s['video'].get('freistellen' if a['art'] == 'video_freistellen' else 'zeitlupe') or {}).get('bedarf_mib')
             return bedarf_lesen(h) or self.bedarf_hilfe
@@ -2449,7 +2615,7 @@ class Studio:
         def median(mit_schnell):
             werte = sorted((a['rechenzeit_s'] - float(z['grund_s'])) / (a['schritte'] * video_einheiten(a, z))
                            for a in self.auftraege[-40:]
-                           if a['zustand'] == 'fertig' and a.get('art') in VIDEO_ARTEN and a.get('art') != 'video_referenz'
+                           if a['zustand'] == 'fertig' and a.get('art') in VIDEO_ARTEN and a.get('art') not in ('video_referenz', 'video_hochrechnen')
                            and a.get('rechenzeit_s') and a['rechenzeit_s'] > float(z['grund_s']) and a.get('bilder')
                            and a.get('schritte') and a.get('breite') and not a.get('zwischenspeicher')
                            and bool(a.get('schnell')) == mit_schnell)
@@ -2473,7 +2639,7 @@ class Studio:
         if a['art'] in MODELL_ARTEN:
             return self._modell3d_erwartet(a.get('stufe'))
         if a['art'] in VIDEO_HILFS_ARTEN:
-            z = (self.s['video'].get('freistellen' if a['art'] == 'video_freistellen' else 'zeitlupe') or {}).get('zeit') or {}
+            z = (self.s['video'].get({'video_freistellen': 'freistellen', 'video_hochrechnen': 'hochrechnen'}.get(a['art'], 'zeitlupe')) or {}).get('zeit') or {}
             return round(float(z.get('grund_s', 5)) + float(z.get('je_bild_s', 0.1)) * int(a.get('bilder') or 0))
         if a['art'] in VIDEO_ARTEN:
             return video_zeit(a, self.s['video']['zeit'], self._video_je_schritt(bool(a.get('schnell'))))
@@ -2602,6 +2768,8 @@ class Studio:
                     'breite': g.get('breite'), 'hoehe': g.get('hoehe'), 'laenge_bilder': g.get('laenge_bilder'),
                     'modell_datei': g.get('modell_datei'), 'modell': modellname(g.get('modell_datei')),
                     'vorlagen': g.get('vorlagen') or []}
+            if art == 'video_hochrechnen':
+                info.update(hochrechnen=g.get('hochrechnen'), modell='Open-H3-Regenerate-2K')
             if art == 'bearbeiten' and g.get('groesse_von'):
                 info['groesse_von'] = g['groesse_von']
             if g.get('turbo') and not video:
@@ -3143,7 +3311,10 @@ class Studio:
         projekt = str(d.get('projekt') or '')
         if projekt and projekt not in {p['name'] for p in self.projekte()}:
             raise ValueError('Dieses Projekt gibt es nicht (mehr).')
-        liste = [x for x in d.get('vorlagen') or [] if isinstance(x, dict) and x.get('rolle') == 'original'][:1]
+        liste = [x for x in d.get('vorlagen') or [] if isinstance(x, dict) and x.get('rolle') == 'original']
+        if art == 'video_hochrechnen' and len(liste) != 1:
+            raise ValueError('Bitte genau ein Ausgangsvideo wählen.')
+        liste = liste[:1]
         if not liste:
             raise ValueError('Bitte das Video wählen.')
         vorlage = self._vorlage(liste[0], ('.mp4', '.mov'))
@@ -3155,6 +3326,8 @@ class Studio:
         felder = {'projekt': projekt, 'art': art, 'prompt': '', 'negativ': '', 'breite': m['breite'], 'hoehe': m['hoehe'],
                   'schritte': None, 'qualitaet': None, 'cfg': None, 'variation': 0, 'vorlagen': [vorlage],
                   'quelle': str(d['quelle'])[:300] if d.get('quelle') else None, 'quell_bilder': m['bilder']}
+        if art == 'video_hochrechnen':
+            return self._hochrechnen_pruefen(d, felder, pfad, m)
         if art == 'video_zeitlupe':
             faktor = {'2': 2, '2.0': 2, '1.5': 1.5, '1,5': 1.5}.get(str(d.get('faktor')).strip())
             if faktor is None:
@@ -3169,6 +3342,107 @@ class Studio:
                 raise ValueError('Bitte das Motiv kurz benennen (englisch, etwa „person“ oder „dog“).')
             felder.update(motiv=motiv, bilder=m['bilder'],
                           verfahren=(self.s['video'].get('freistellen') or {}).get('verfahren', 'kombi'))
+        return felder
+
+    def _hochrechnen_objekt(self, h):
+        """Unveränderliche Rechenwerte prüfen, unabhängig von den heutigen Standards."""
+        felder = {'kennung', 'lora', 'lora_sha256', 'sigmas', 'modell', 'clip', 'vae_kodieren',
+                  'vae_dekoder', 'vae_audio', 'fps', 'ziel_breite', 'ziel_hoehe', 'aufmerksamkeit'}
+        if not isinstance(h, dict) or set(h) != felder or h.get('kennung') != 'regenerate_v1':
+            raise ValueError('Die gespeicherten Hochrechnen-Einstellungen sind unvollständig oder ungültig.')
+        for k in felder - {'vae_dekoder', 'fps', 'ziel_breite', 'ziel_hoehe'}:
+            if not isinstance(h[k], str) or not h[k].strip():
+                raise ValueError('Ungültige Hochrechnen-Einstellung: ' + k)
+        if type(h['fps']) not in (int, float) or h['fps'] != 24:
+            raise ValueError('Hochrechnen ist bisher nur mit 24 Bildern/s geprüft.')
+        for k in ('ziel_breite', 'ziel_hoehe'):
+            if type(h[k]) is not int or h[k] <= 0 or h[k] % 32:
+                raise ValueError('Ungültige Zielgröße beim Hochrechnen.')
+        try:
+            sigmas = [float(x.strip()) for x in h['sigmas'].split(',')]
+        except ValueError:
+            raise ValueError('Ungültiger Zeitplan beim Hochrechnen.')
+        if len(sigmas) != 4 or not all(math.isfinite(x) for x in sigmas) \
+                or not 1 >= sigmas[0] > sigmas[1] > sigmas[2] > sigmas[3] == 0:
+            raise ValueError('Ungültiger Zeitplan beim Hochrechnen.')
+        d = h['vae_dekoder']
+        if not isinstance(d, dict) or set(d) != {'datei', 'sha256'}:
+            raise ValueError('Die gespeicherte Dekodier-VAE ist ungültig.')
+        for sha in (h['lora_sha256'], d['sha256']):
+            if not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{64}', sha):
+                raise ValueError('Ungültige Modell-Prüfsumme beim Hochrechnen.')
+        for ordner, datei, sha in (
+                ('loras', h['lora'], h['lora_sha256']), ('diffusion_models', h['modell'], None),
+                ('text_encoders', h['clip'], None), ('vae', h['vae_kodieren'], None),
+                ('vae', h['vae_audio'], None), ('vae', d['datei'], d['sha256'])):
+            # Dateinamen dürfen nur innerhalb des jeweiligen Modellordners liegen.
+            basis = os.path.join(self.comfy_ordner, 'models', ordner)
+            pfad = absolut(datei, basis)
+            if not pfad or not self._modell_da(ordner, datei):
+                raise ValueError(f'Die gespeicherte Modelldatei fehlt oder ist ungültig: {datei}')
+            if sha and modell_pruefsumme(pfad) != sha:
+                raise ValueError(f'Die Modelldatei wurde verändert (Prüfsumme stimmt nicht): {datei}')
+        return json.loads(json.dumps(h))
+
+    def _hochrechnen_dateien_pruefen(self, a):
+        v = a['vorlagen'][0]
+        pfad = self.datei(v['pfad']) if v['art'] == 'bibliothek' else v['pfad']
+        if not pfad or not os.path.isfile(pfad) or datei_pruefsumme(pfad) != a.get('quell_sha256'):
+            raise ValueError('Das Ausgangsvideo wurde seitdem verändert.')
+        self._hochrechnen_objekt(a.get('hochrechnen'))
+
+    def _hochrechnen_pruefen(self, d, felder, pfad, m):
+        v = self.s['video']
+        cfg = v.get('hochrechnen') or {}
+        alt = 'hochrechnen' in d
+        if not alt and not self.hochrechnen_verfuegbar():
+            raise ValueError('„Hochrechnen 1080p“ ist nicht eingerichtet: Eine benötigte Modelldatei fehlt.')
+        if m['bilder'] > int(cfg.get('max_bilder', 124)):
+            raise ValueError('Hochrechnen ist bisher bis 5 s geprüft. Bitte ein kürzeres Video nehmen.')
+        if m['bilder'] < 5 or (m['bilder'] - 5) % 17:
+            raise ValueError('Die Videolänge passt nicht zum H3-Raster (17k + 5 Bilder).')
+        h = self._hochrechnen_objekt(d['hochrechnen']) if alt else None
+        fps = h['fps'] if h else v['fps']
+        try:
+            ton = mp4_info(pfad, fps)
+        except (OSError, ValueError, struct.error) as ex:
+            if 'keine Tonspur' in str(ex):
+                raise ValueError('Nur Videos mit Ton aus dem Studio.') from ex
+            raise ValueError(f'Das Video lässt sich nicht hochrechnen: {ex}.') from ex
+        if ton['tondauer'] > m['bilder'] / fps + 1:
+            raise ValueError('Der Ton ist mehr als eine Sekunde länger als das Bild.')
+        if h is None:
+            b, hh = hochrechnen_masse(m['breite'], m['hoehe'], int(cfg['ziel_pixel']))
+            md, dek = v['modelle'], v['dekoder']['int8_v1']
+            h = self._hochrechnen_objekt(dict(kennung='regenerate_v1', lora=cfg['lora'],
+                lora_sha256=cfg['lora_sha256'], sigmas=cfg['sigmas'], modell=md['ref2va'], clip=md['clip'],
+                vae_kodieren=md['vae_video'], vae_audio=md['vae_audio'],
+                vae_dekoder={k: dek[k] for k in ('datei', 'sha256')}, fps=fps,
+                ziel_breite=b, ziel_hoehe=hh, aufmerksamkeit=v['schnelle_aufmerksamkeit']['backend']))
+        b, hh = h['ziel_breite'], h['ziel_hoehe']
+        if b <= m['breite'] or hh <= m['hoehe'] or b * hh > 2088960 \
+                or abs(b - m['breite'] * hh / m['hoehe']) > 32 * max(1, m['breite'] / m['hoehe']):
+            raise ValueError('Die gespeicherte Zielgröße passt nicht zum Ausgangsvideo.')
+        sha = datei_pruefsumme(pfad)
+        if 'quell_sha256' in d and d['quell_sha256'] != sha:
+            raise ValueError('Das Ausgangsvideo wurde seitdem verändert.')
+        if alt and 'quell_sha256' not in d:
+            raise ValueError('Ohne Prüfsumme des Ausgangsvideos ist keine identische Wiederholung möglich.')
+        begleit = self._lesen(pfad + '.json') or {}
+        if not isinstance(begleit, dict):
+            begleit = {}
+        prompt = d.get('prompt') if alt else begleit.get('prompt', '')
+        if not isinstance(prompt, str) or len(prompt) > 6000:
+            raise ValueError('Der gespeicherte Prompt ist ungültig oder zu lang (höchstens 6.000 Zeichen).')
+        variation = d.get('variation')
+        if alt and type(variation) is not int:
+            raise ValueError('Für eine identische Wiederholung fehlt die Variationsnummer.')
+        if variation not in (None, '') and (type(variation) is not int or not 0 <= variation < 2 ** 53):
+            raise ValueError('Die Variationsnummer ist ungültig.')
+        felder.update(prompt=prompt, variation=None if variation in (None, '') else variation,
+                      breite=b, hoehe=hh, quell_breite=m['breite'], quell_hoehe=m['hoehe'],
+                      bilder=m['bilder'], hochrechnen=h, quell_sha256=sha,
+                      tondauer=ton['tondauer'], tonrate=ton['tonrate'], tonkanaele=ton['tonkanaele'])
         return felder
 
     def _modell3d_pruefen(self, d):
@@ -3623,7 +3897,8 @@ class Studio:
         if inst.nr > 1 and not self.comfy_zustand(inst=inst).get('laeuft'):
             return None
         wartend = [(x, self._bedarf(x)) for x in self.auftraege if x['zustand'] == 'wartet']
-        wartend = [(x, b) for x, b in wartend if inst.kann(b) and self._darf_nehmen(inst, b)]
+        wartend = [(x, b) for x, b in wartend if (x['art'] != 'video_hochrechnen' or inst.nr == 1)
+                   and inst.kann(b) and self._darf_nehmen(inst, b)]
         return next((x for x, b in wartend if inst.bevorzugt(b)), wartend[0][0] if wartend else None)
 
     def _darf_nehmen(self, inst, b):
@@ -3811,7 +4086,13 @@ class Studio:
             if gruende:
                 return None, 'Wartet: ' + ' '.join(gruende), None
             inst = self._inst()
-            verteilung, fehlend, zusatz = karten_waehlen(antwort, self._bedarf(a), inst)
+            if a['art'] == 'video_hochrechnen':
+                if inst.nr != 1:
+                    return None, 'Hochrechnen wartet auf beide Grafikkarten im ersten Studio-Prozess.', None
+                if commit_frei_mib() < int(self.s['video']['hochrechnen']['commit_frei_mib']):
+                    return None, 'Wartet auf Arbeitsspeicher.', None
+            verteilung, fehlend, zusatz = karten_waehlen(
+                antwort, self._bedarf(a), inst, haupt_ohne_monitor=a['art'] == 'video_hochrechnen')
             if verteilung is None:
                 return None, ('Die Modellzentrale meldet keine Grafikkarten.' if not antwort.get('karten') else
                               'Dieser Auftrag braucht zwei Grafikkarten; die Modellzentrale meldet nur eine.'), None
@@ -3867,7 +4148,13 @@ class Studio:
                         turbo=a.get('turbo'), referenz_genau=a.get('referenz_genau'), ton_behalten=a.get('ton_behalten'))
         if a['art'] in VIDEO_HILFS_ARTEN:
             v = s['video']
-            if a['art'] == 'video_zeitlupe':
+            if a['art'] == 'video_hochrechnen':
+                h = a['hochrechnen']
+                meta.update(modell='Open-H3-Regenerate-2K', modell_datei=h['modell'],
+                            hochrechnen=json.loads(json.dumps(h)), lora=h['lora'], lora_sha256=h['lora_sha256'],
+                            quell_breite=a['quell_breite'], quell_hoehe=a['quell_hoehe'],
+                            quell_sha256=a['quell_sha256'], sekunden=round(a['bilder'] / h['fps'], 2))
+            elif a['art'] == 'video_zeitlupe':
                 meta.update(modell='RIFE 4.25', modell_datei=v['zeitlupe']['modell'], faktor=a['faktor'])
             else:
                 meta.update(modell='SAM3 + BiRefNet', modell_datei=v['freistellen']['sam3'], motiv=a['motiv'],
@@ -3935,6 +4222,11 @@ class Studio:
         return meta
 
     def _rechnen(self, a, anmeldung, geraete=None):
+        if a['art'] == 'video_hochrechnen':
+            try:
+                self._hochrechnen_dateien_pruefen(a)
+            except ValueError as ex:
+                raise Fehler(str(ex)) from ex
         if a['art'] in VIDEO_ARTEN:
             try:
                 self._vae_dekoder(a)  # vor jeder Berechnung erneut prüfen, auch bei wartenden/alten Aufträgen
@@ -3963,7 +4255,7 @@ class Studio:
             namen.setdefault(v.get('rolle', 'vorlage'), []).append(name)
         grundname = {'bearbeiten': 'Bearbeitet', 'bild': 'Bild', 'verbessern': 'Verbessert',
                      'freistellen': 'Freigestellt', 'pose': 'Pose', 'video_zeitlupe': 'Zeitlupe',
-                     'video_freistellen': 'Freigestellt', 'modell3d': 'Modell'}.get(a['art'], 'Video')
+                     'video_freistellen': 'Freigestellt', 'video_hochrechnen': 'Hochgerechnet', 'modell3d': 'Modell'}.get(a['art'], 'Video')
         # Weitere Prozesse schreiben mit Zusatz („Bild-2_00003_.png“): ComfyUI zählt die Nummern nicht prozessübergreifend.
         praefix = (a['projekt'] + '/' if a['projekt'] else '') + grundname + inst.zusatz
         if a['art'] == 'verbessern' and a.get('stelle') and not a.get('maske'):
@@ -3981,6 +4273,8 @@ class Studio:
             graph = modell3d_graph(a, s['modell3d'], praefix, {r: n[0] for r, n in namen.items()})
         elif a['art'] == 'video_weiter':
             graph = weiter_graph(a, s['video'], praefix, {r: n[0] for r, n in namen.items()})
+        elif a['art'] == 'video_hochrechnen':
+            graph = hochrechnen_graph(a, s['video'], praefix, namen['original'][0])
         elif a['art'] == 'video_zeitlupe':
             graph = zeitlupe_graph(a, s['video'], praefix, namen['original'][0])
         elif a['art'] == 'video_freistellen':

@@ -43,15 +43,15 @@ const HERKUNFT = { studio: 'Studio der Werkstatt', '2wild': '2Wild Studio', meta
 const ART = { bild: 'Neues Bild', bearbeiten: 'Bild bearbeitet', verbessern: 'Stelle verbessert', freistellen: 'Freigestellt',
   pose: 'Pose-Skelett', video_text: 'Video aus Text', video_bild: 'Video aus Bild', video_referenz: 'Video mit Referenz',
   video_weiter: 'Video weitergeführt', video_szenen: 'Szenenfolge', video_zeitlupe: 'Zeitlupe',
-  video_freistellen: 'Video freigestellt', video: 'Video', modell3d: '3D-Modell' };
+  video_freistellen: 'Video freigestellt', video_hochrechnen: 'Hochgerechnet', video: 'Video', modell3d: '3D-Modell' };
 // Zeitlupe und Video freistellen (seit 09.10.2026): nur aus der Großansicht eines Videos, ohne Formular.
-const VIDEO_HILFEN = ['video_zeitlupe', 'video_freistellen'];
+const VIDEO_HILFEN = ['video_zeitlupe', 'video_freistellen', 'video_hochrechnen'];
 // Welche Vorlagen eine Art braucht (Rollen), und wie sie heißen.
 // Verbessern (Stufe 3n): `vorbild` ist das freiwillige Bild für die Stelle („Bild 2“), eine eigene Rolle, damit Vorlagen
 // vom Bearbeiten beim Wechsel der Art nicht unbemerkt mitgehen.
 const ROLLEN = { bearbeiten: ['vorlage'], verbessern: ['original', 'vorbild'], freistellen: ['original'], pose: ['original'],
   video_bild: ['start', 'ende'], video_referenz: ['bild', 'clip'], video_weiter: ['ausgang', 'ziel'],
-  video_szenen: ['start', 'bild'], video_zeitlupe: ['original'], video_freistellen: ['original'],
+  video_szenen: ['start', 'bild'], video_zeitlupe: ['original'], video_freistellen: ['original'], video_hochrechnen: ['original'],
   modell3d: ['vorlage'] }; // 3D-Modell (Stufe 3t): ein Drehblatt (vier Ansichten nebeneinander) oder ein Bild
 const ROLLENNAME = { vorlage: 'Vorlage', original: 'Original', vorbild: 'Vorbild für die Stelle', start: 'Startbild', ende: 'Endbild',
   bild: 'Referenzbild', clip: 'Clip', ausgang: 'Clip davor', ziel: 'Clip danach' };
@@ -1223,7 +1223,8 @@ function auftragKachel(a) {
   // Weitergeführt: Länge des fertigen Videos und des neuen Stücks (a.bilder ist dort die Länge des gerechneten Clips).
   const dauerText = a.art === 'video_weiter' && a.laenge_bilder
     ? ` · ${sekundenVon(a.laenge_bilder)} s, davon ${sekundenVon(a.neu_bilder)} s neu` : a.bilder ? ` · ${sekundenVon(a.bilder)} s` : '';
-  const format = a.art === 'bearbeiten' ? `${a.vorlagen?.length || 0} Vorlagen${a.breite ? ` · ${a.breite} × ${a.hoehe}` : hoch}`
+  const format = a.art === 'video_hochrechnen' ? `Hochgerechnet: ${a.quell_breite} × ${a.quell_hoehe} → ${a.breite} × ${a.hoehe}, Ton aus dem Original`
+    : a.art === 'bearbeiten' ? `${a.vorlagen?.length || 0} Vorlagen${a.breite ? ` · ${a.breite} × ${a.hoehe}` : hoch}`
     : !a.breite ? 'Größe wie das Original'
       : `${a.breite} × ${a.hoehe}${dauerText}`;
   const artText = a.art === 'video_weiter' && WEITER[a.modus] ? `${ART[a.art]} (${WEITER[a.modus].erledigt})` : ART[a.art] || a.art;
@@ -1406,9 +1407,10 @@ function vorlagenAus(i) {
 
 function wiederholbar(e) {
   const i = e.info || {};
-  if (VIDEO_HILFEN.includes(i.art)) return 'Rechnet aus demselben Video immer gleich; aus dem Original neu starten.';
+  if (i.art === 'video_hochrechnen' && (!i.hochrechnen || !i.quell_sha256 || i.variation == null)) return 'Die gespeicherten Einstellungen oder die Prüfsumme des Ausgangsvideos fehlen; aus dem Original neu hochrechnen.';
+  if (VIDEO_HILFEN.includes(i.art) && i.art !== 'video_hochrechnen') return 'Rechnet aus demselben Video immer gleich; aus dem Original neu starten.';
   if (i.art === 'modell3d' && !i.stufe) return 'Zu diesem Modell ist die Detailstufe nicht bekannt; „Mit Änderungen“ geht.';
-  if (!i.prompt && i.art !== 'modell3d') return 'Zu dieser Datei ist kein Prompt bekannt.';
+  if (!i.prompt && !['modell3d', 'video_hochrechnen'].includes(i.art)) return 'Zu dieser Datei ist kein Prompt bekannt.';
   if (!ART[i.art] || i.art === 'video') return 'Die Art dieser Datei ist nicht bekannt; „Mit Änderungen“ geht.';
   if (istVideo(i.art) && !i.laenge_bilder) return 'Die Länge dieses Videos ist nicht bekannt; „Mit Änderungen“ geht.';
   if (!['bearbeiten', 'freistellen'].includes(i.art) && !(i.breite && i.hoehe)) return 'Die Größe ist nicht bekannt; „Mit Änderungen“ geht.';
@@ -1460,6 +1462,7 @@ async function wiederAnfrage(e, neueVariation) {
     dmad: ['video_text', 'video_bild'].includes(i.art) && i.dmad === true ? true : undefined, // ebenso (seit 11.10.2026)
     stufe: i.art === 'modell3d' ? i.stufe : undefined, modus: i.art === 'modell3d' ? i.modus : undefined, // 3D-Modell
   };
+  if (i.art === 'video_hochrechnen') Object.assign(daten, { hochrechnen: i.hochrechnen, quell_sha256: i.quell_sha256 });
   if (i.art === 'verbessern') {
     // Die Markierung steht in der Begleitdatei; die Bibliothek liefert sie nur auf Nachfrage.
     daten.maske = (await studio({ aktion: 'maske', pfad: e.pfad })).maske;
@@ -1609,6 +1612,7 @@ function formZeigen(text) {
 }
 
 async function mitAenderungen(e, ausformuliertNehmen = false) {
+  if (e.info?.art === 'video_hochrechnen') return;
   const i = e.info || {};
   const art = ART[i.art] && i.art !== 'video' ? i.art : (e.medium === 'video' ? 'video_text' : 'bild');
   const video = istVideo(art);
@@ -1772,9 +1776,10 @@ function detailOeffnen(pfad) {
     zeile('Wie genau', i.referenz_genau === 'max' ? 'so genau wie möglich' : 'normal');
     if (vorlagenAus(i).some((v) => v.rolle === 'clip')) zeile('Ton des ersten Clips', i.ton_behalten === false ? 'weggelassen' : 'behalten');
   }
+  if (i.art === 'video_hochrechnen') zeile('Hochgerechnet', `${i.quell_breite} × ${i.quell_hoehe} → ${i.breite} × ${i.hoehe}, Ton aus dem Original`);
   if (i.art === 'video_zeitlupe') zeile('Zeitlupe', `${stZahl(i.faktor)}-fach so lang (${i.quell_bilder} → ${i.laenge_bilder} Bilder, ohne Ton)`);
   if (i.art === 'video_freistellen') zeile('Freigestellt', `„${i.motiv}“ (${i.verfahren === 'kombi' ? 'SAM3 wählt aus, BiRefNet zieht die Kanten' : i.verfahren}), WebM mit Transparenz`);
-  if (!VIDEO_HILFEN.includes(i.art)) zeile('Variationsnummer', i.variation);
+  if (!VIDEO_HILFEN.includes(i.art) || i.art === 'video_hochrechnen') zeile('Variationsnummer', i.variation);
   zeile('Modell', i.modell ? i.modell + (i.int8 ? ' · INT8' : '') : null);
   zeile('Vorlagen', vorlagenText(i));
   zeile('Rechenzeit', i.rechenzeit_s ? dauer(i.rechenzeit_s) : null);
@@ -1798,8 +1803,11 @@ function detailOeffnen(pfad) {
     stMelden(text, true);
     d.close();
   };
-  const hilfeZeile = video && /\.(mp4|mov)$/i.test(e.pfad) && (EIN()?.zeitlupe_verfuegbar || EIN()?.video_freistellen_verfuegbar)
+  const hilfeZeile = video && /\.(mp4|mov)$/i.test(e.pfad) && (EIN()?.zeitlupe_verfuegbar || EIN()?.video_freistellen_verfuegbar || EIN()?.hochrechnen_verfuegbar)
     ? [['Bearbeiten:',
+      ...(EIN()?.hochrechnen_verfuegbar ? [stKnopf('Hochrechnen 1080p',
+        hilfe('video_hochrechnen', {}, 'Das Video wird hochgerechnet (1920 × 1088, etwa 6 Minuten).'),
+        { titel: 'Rechnet das Video in 1920 × 1088 neu: viel schärfer, Ton bleibt. Nicht ganz originalgetreu – Gesichter oft glatter und jünger, kleine Gegenstände können sich ändern. Etwa 6 Minuten. Bis 5 s.' })] : []),
       ...(EIN()?.zeitlupe_verfuegbar ? [
         stKnopf('Zeitlupe 1,5×', hilfe('video_zeitlupe', { faktor: 1.5 }, 'Zeitlupe wird erstellt (1,5-fach so lang, ohne Ton).'),
           { titel: 'Langsamer und länger ohne neu zu rechnen: Zwischenbilder (RIFE), in Sekunden fertig. Für ruhige Videos ohne Ton, etwa Hintergründe' }),
@@ -1899,7 +1907,8 @@ function detailOeffnen(pfad) {
             { aus: !!grund || ohneStufe,
               titel: grund || (ohneStufe ? 'Ohne Qwen gerechnet: jede Nummer ergibt dasselbe Ergebnis' : 'Gleiche Einstellungen, neue Variationsnummer') }),
           stKnopf('Mit Änderungen …', async () => mitAenderungen(e),
-            { aus: !i.prompt, titel: 'Alle Einstellungen ins Formular übernehmen' }),
+            { aus: !i.prompt || i.art === 'video_hochrechnen', titel: i.art === 'video_hochrechnen'
+              ? 'Für Hochgerechnet nicht verfügbar – Nochmal oder neu hochrechnen' : 'Alle Einstellungen ins Formular übernehmen' }),
           stKnopf('Prompt kopieren', async () => { await navigator.clipboard.writeText(i.prompt || ''); stMelden('Prompt kopiert.', true); },
             { aus: !i.prompt || i.art === 'pose' }),
           ...(i.art === 'bild' && i.prompt_ausformuliert ? [stKnopf('Ausformuliert übernehmen …', async () => mitAenderungen(e, true),

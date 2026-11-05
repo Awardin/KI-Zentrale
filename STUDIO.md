@@ -82,6 +82,7 @@ hintereinander, Szene für Szene geprüft).
 | Video aus Bild (`video_bild`) | Clip, der mit einem Bild beginnt (optional endet) | `start` (Pflicht), `ende` | Videoformat; das Startbild wird mittig zugeschnitten, nicht verzerrt |
 | Video mit Referenz (`video_referenz`) | Personen/Dinge aus Bildern, Bewegung/Timing aus Clips übernehmen; mit Häkchen „Person tauschen“ (`tauschen: true`, seit 09.10.2026) eine Person im Clip durch die Person aus Bild 1 ersetzen | bis 9 `bild`, bis 3 `clip` (2–15 s); beim Tauschen genau 1 Clip und mindestens 1 Bild | Videoformat; „Wie genau kopieren“ normal/so genau wie möglich (viel langsamer), Ton des ersten Clips behalten/weglassen |
 | Zeitlupe (`video_zeitlupe`, seit 09.10.2026, nur aus der Großansicht bzw. dem Skill) | ein Video 1,5-fach oder doppelt so lang und entsprechend langsamer, mit Zwischenbildern (RIFE), ohne neu zu rechnen; ohne Ton | 1 Video (`original`, MP4) | wie das Video; `faktor` 1,5 oder 2 |
+| Video hochrechnen (`video_hochrechnen`, seit 05.11.2026, nur aus der Großansicht bzw. dem Skill) | ein Studio-Video (mit Ton, bis 5 s) in 1920 × 1088 neu rechnen: viel schärfer, Originalton – nicht ganz originalgetreu (Gesichter oft glatter/jünger, kleine Gegenstände können sich ändern); etwa 6 min, beide RTX 3090 | 1 Video (`original`, MP4) | Zielgröße automatisch (960 × 544 → 1920 × 1088); `variation` |
 | Video freistellen (`video_freistellen`, seit 09.10.2026, nur aus der Großansicht bzw. dem Skill) | Personen (oder ein anderes Motiv, englisch) behalten, Rest durchsichtig | 1 Video (`original`, MP4) | wie das Video; WebM (VP9) mit Transparenz, ohne Ton |
 | Szenenfolge (seit 05.10.2026, eigene Aktion `folge_neu`) | ein längeres Video aus mehreren Szenen: gemeinsamer Teil (Figuren, Ort, Licht, Stil) + je Szene Handlung, Kamera, Gesprochenes; Szene 1 eigener Clip, jede weitere verlängert die freigegebene Szene davor; nach jeder Szene „Passt“ oder „Nochmal“ | freiwillig `start` (Startbild) **oder** `bild` (Referenzbilder) für Szene 1 | Videoformat; Szene 1 5–15 s, weitere 3,5–12,8 s neu, zusammen bis 60 s |
 | Video weiterführen (`video_weiter`, seit 27.09.2026) | ein Studio-Video verlängern, ein Stück davor setzen, zwei Clips mit einem neuen Übergang verbinden oder zur Schleife schließen; der Clip bleibt unverändert | nur aus der Bibliothek: `ausgang` (Clip davor) und/oder `ziel` (Clip danach), je nach `modus` | wie die Clips; neues Stück 3,5–14,3 s, fertiges Video bis 60 s |
@@ -350,6 +351,23 @@ hintereinander, Szene für Szene geprüft).
 - Schnittstelle: `tauschen: true` (nur `video_referenz`, genau 1 Clip und mindestens 1 Bild); Skill `studio.py tauschen
   <clip> <bild> "<wer, englisch>"`. Lizenz wie MiniMax-H3.
 
+### Video hochrechnen im Detail (seit 05.11.2026)
+
+- Großansicht eines MP4: „Hochrechnen 1080p“; Skill `studio.py hochrechnen <video> [--variation n]`. Neu entsteht
+  `Hochgerechnet_…mp4` mit Begleit-JSON; das Original bleibt.
+- Verfahren (Open-H3-Regenerate-2K von NVIDIA, Lizenz wie H3): Bilder lanczos ×2 → H3-VAE kodieren → auf σ 0,909
+  verrauschen → 3 Euler-Schritte mit ref2va INT8 + umgerechneter Refiner-LoRA → INT8-VAE. Der Originalton wird
+  bildgenau übernommen.
+- **Geht:** Haare, Haut, Augen, Fensterkreuze, Bäume viel schärfer; Bildaufbau, Bewegung und Mundformen bleiben.
+- **Geht nicht ganz:** originalgetreu – bei 91 % Neurechnen werden Gesichter oft glatter und jünger (wie stark,
+  schwankt mit der Variationsnummer), kleine Gegenstände können sich ändern (Monstera → Palme, Kerze → Pflanze).
+  „Nochmal“ ergibt fast dasselbe Video, nicht bitgleich (PSNR 35,6 dB). „Mit Änderungen“ gibt es hier nicht.
+- Grenzen: nur Videos mit Ton, 17k+5 Bilder, bis 5 s (124 Bilder); nur Prozess 1 über beide 3090, Modell nie auf der
+  Monitorkarte; braucht ≥ 36 GiB freien Commit-Spielraum (sonst wartet der Auftrag). 6 min für 5 s.
+- Schnittstelle: `art: 'video_hochrechnen'`, `vorlagen: [{art: 'bibliothek', pfad, rolle: 'original'}]`, optional
+  `variation`; „Nochmal“ schickt `hochrechnen`, `prompt`, `variation`, `quell_sha256` mit. Status:
+  `hochrechnen_verfuegbar`. Befunde: PLAN.md, „Video hochrechnen“ und Test A.
+
 ### Zeitlupe im Detail (seit 09.10.2026)
 
 - **Wozu:** ein ruhiges Video länger und langsamer machen, ohne neu zu rechnen – etwa ein Hintergrundvideo für eine
@@ -526,6 +544,7 @@ geladen: Bearbeitungsprompts sind meist schon genau (Rezepte). Am 05.10.2026 auf
 | `sdpose_wholebody_fp16.safetensors` (1,92 GB) | `checkpoints` | Pose-Skelett |
 | `qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors` (9,47 GB) | `text_encoders` | Wunsch ausformulieren |
 | `qwen_image_2.1_int8_convrot.safetensors` (7,26 GB) / `qwen3vl_8b_int8_convrot.safetensors` (9,35 GB) | `diffusion_models` / `text_encoders` | INT8-Fassungen für neue Aufträge |
+| `open_h3_regenerate_2k_comfy_bf16.safetensors` (9,4 GB, umgerechnet aus Efficient-Large-Model/Open-H3-Regenerate-2K mit `werkstatt\regenerate_lora.py`, seit 05.11.2026) | `loras` | Video hochrechnen |
 | `rife_v4.25.safetensors` (23 MB, Comfy-Org/frame_interpolation, MIT/Apache, seit 09.10.2026) | `frame_interpolation` | Zeitlupe (Zwischenbilder) |
 | `qwen_image_2.1_turbo_int8_convrot.safetensors` (7,26 GB, Comfy-Org/Qwen-Image-2.1, seit 11.10.2026) | `diffusion_models` | Stufe „Turbo“ für neue Bildaufträge |
 

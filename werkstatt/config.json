@@ -419,6 +419,24 @@
         "zeitfaktor": 0.6,
         "grund": "Seit 17.10.2026 (Stufe 3u, Anlass Video „MiniMax H3 Just Got 2.6x Faster“): Kernknoten ModelAttentionBackend (INT8) wie bei Bildern, für neue MiniMax-Videos (Text, Bild, Referenz, Weiterführen, Szenenfolge; nicht Zeitlupe/Freistellen). Gemessen auf der Suprim, 960×544, 5 s, gleiche Nummer: Schnell (DMAD, 4 Schritte) 64,6 → 49,0 s, Referenz 8 Schritte 117,8 → 83,6 s, Beste (20) 245,1 → 167,0 s; Zeit je Schritt ohne Grundzeit ×0,55–0,64 (zeitfaktor 0,6); zweite Nummer gleich (49,0 / 83,2 / 167,3 s). Gleiche Nummer ohne Knoten bleibt bitgleich; mit Knoten eine leicht andere Fassung derselben Szene (gleiche Person, gleicher Raum, gleiche Worte – Whisper 5 von 6 Paaren wortgleich; Gesten oder nicht beschriebene Kleidung können abweichen), gleichwertige Qualität. Nur für neue Aufträge (Feld schnell), damit „Nochmal“ älterer Videos gleich bleibt. Abschalten: aktiv auf false."
       },
+      "hochrechnen": {
+        "aktiv": true,
+        "lora": "open_h3_regenerate_2k_comfy_bf16.safetensors",
+        "lora_sha256": "0291f98110844496fdef4f3b9a8cd3a47cbf66b0dc8de9e59378ca37502532cd",
+        "sigmas": "0.909375, 0.857143, 0.666667, 0.0",
+        "ziel_pixel": 2088960,
+        "max_bilder": 124,
+        "zeit": {
+          "grund_s": 120,
+          "je_bild_s": 2.0
+        },
+        "bedarf_mib": {
+          "haupt": 22528,
+          "neben": 9216
+        },
+        "commit_frei_mib": 36864,
+        "grund": "Test A 05.11.2026: 124 Bilder 960 × 544 → 1920 × 1088 in 369–373 s mit Laden; Modellkarte 23,8 GiB mit Auslagerung, Nebenkarte 7,4 GiB. Gesichter oft glatter und jünger, kleine Gegenstände können sich ändern. Nur bis 5 s geprüft."
+      },
       "zeitlupe": {
         "modell": "rife_v4.25.safetensors",
         "zeit": {"grund_s": 3, "je_bild_s": 0.03},

@@ -95,6 +95,10 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   `vae_dekoder`, Kennung `int8_v1` mit Datei + SHA-256; Dekodieren 36–40 % kürzer, gleichwertig); solche Videos dürfen
   ganz auf die Monitorkarte (19.456 MiB). Alte Videos bleiben bei „Nochmal“ gleich. Sol-VAE/ComfyUI 0.44 nicht
   eingebaut ([SPEC-comfyui-044.md](SPEC-comfyui-044.md), Phase B). PLAN.md, Stufe 3v.
+  3w (05.11.2026, nach Test A): Knopf „Hochrechnen 1080p“ (`video_hochrechnen`, Open-H3-Regenerate-2K, LoRA umgerechnet
+  mit `werkstatt\regenerate_lora.py`): Studio-Video bis 5 s in 1920 × 1088, Originalton, ~6 min auf Prozess 1 (Modell nie
+  auf der Monitorkarte); nicht ganz originalgetreu (Gesichter jünger). [SPEC-video-hochrechnen.md](SPEC-video-hochrechnen.md),
+  PLAN.md „Video hochrechnen“.
 - **Zwei Studio-Aufträge gleichzeitig** (Stufe 8, 16.10.2026): zwei ComfyUI-Prozesse (8188 beide Karten, 8189 nur Suprim),
   je ein Arbeiter im Studio; Dateien aus Prozess 2 mit `-2`; Anmeldung je Prozess (`bild-video`, `bild-video-2`).
   MiniMax-H3 passt auf eine 3090 (gemessen, nicht langsamer): Videos rechnet Prozess 2 auf der Suprim, Bilder daneben
