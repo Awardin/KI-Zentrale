@@ -149,7 +149,7 @@ class Werkstatt:
 
     def fassung_oeffnen(self, aid, was):
         a = next((a for a in self.auswertung.liste if a['id'] == aid), None)
-        if a and a.get('art') == 'prompt':
+        if a and a.get('art') in ('prompt', 'schaerfen'):
             try:
                 datei = self.auswertung._belegpfad(a)
                 ziel = os.path.dirname(datei) if was == 'ordner' else datei
@@ -391,16 +391,19 @@ class Anfrage(dienst.Anfrage):
                         eintraege = daten['eintraege'] if pfad == '/api/prompts' else [daten]
                         for e in eintraege:
                             zugeordnet = []
-                            belegpfade = {os.path.normcase(p.beleg_pfad(e['id'], b['datei']))
-                                          for b in e['tests']}
+                            dateien = ([('tests', b) for b in e['tests']]
+                                       + [('schaerfen', b) for b in e['schaerfen']])
+                            belegpfade = {os.path.normcase(p.beleg_pfad(e['id'], b['datei'], art_ordner))
+                                          for art_ordner, b in dateien}
                             for a in schlange:
                                 if os.path.normcase(a.get('datei') or '') in belegpfade:
                                     zugeordnet.append(dict(a, prompt=dict(a['prompt'], eintrag=e['id'])))
                                 elif a.get('prompt', {}).get('eintrag') == e['id']:
                                     zugeordnet.append(a)
-                            for b in e['tests']:
+                            for art_ordner, b in dateien:
                                 b['verwaist'] = not any((a.get('prompt', {}).get('beleg') or '') + '.md'
-                                                       == b['datei'] for a in zugeordnet)
+                                                       == b['datei'] and a.get('prompt', {}).get('art_ordner', 'tests')
+                                                       == art_ordner for a in zugeordnet)
                             e['warteschlange'] = zugeordnet
                 return self._senden(200, daten)
             except anweisungen.Konflikt as ex:

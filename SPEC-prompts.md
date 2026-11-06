@@ -590,7 +590,10 @@ Werkstatt-Abschnitt.
   Belegordner öffnen); 365 Tests grün; Browser-Abnahme mit echtem Lauf (Codex Luna), (b), (d), (f)–(n) über
   Unit-Tests mit zählenden Fake-Anbietern. Vorgemerkt außerhalb der Scheibe: `transkripte_auflisten` sieht nur die
   oberste Ebene des watch-Ordners (Bereichsordner seit 25.10. fehlen, 4 von 289 Transkripten sichtbar).
-- Scheibe 3: noch nicht begonnen.
+- **Scheibe 3 gebaut und abgenommen (06.11.2026)**: Codex Sol high, 12 min, keine Fixrunde (Claude-Nachbesserung:
+  ein `null`-Kind in der Ergebnisanzeige); 382 Tests grün; Browser-Abnahme mit echtem Schärfen-Lauf (Codex Luna als
+  Schreibmodell, Hinweise eingearbeitet, neue Fassung in `prompt.md`, Original und neu nebeneinander); (b)–(i) über
+  Unit-Tests mit zählenden Fake-Schreibmodellen. Ergebnisvermerk bei „Erst klären“: „Fragen, nicht übernommen“.
 
 ## Lehre aus diesem Lauf
 
@@ -601,3 +604,8 @@ Werkstatt-Abschnitt.
   Ausgabedateien starten (kein 10-Minuten-Limit, keine Pipe); in `codex-build` den Live-Tab mit
   `powershell -NoProfile -ExecutionPolicy Bypass -File <skript>` starten. AGENTS.md der KI-Zentrale: nichts
   (Interpreterpfad steht schon drin).
+- Scheibe 2 und 3: Zeit kostete das Neuladen alle 2,5 s, das der Builder ohne Vorgabe einbaute (Fixrunde), ein
+  vergessener Abnahme-Dienst auf Port 3897, der den Neustart blockierte, und ein `null`-Kind in `replaceChildren`,
+  das der DOM-Fake der JavaScript-Tests nicht wie ein Browser behandelt. Was sich ändert: Bauaufträge für
+  Oberflächen mit dem Satz „keine periodischen Neuladungen ohne Vorgabe“; vor jedem Neustart der Abnahme-Werkstatt
+  den alten Lauf stoppen; der DOM-Fake in `werkstatt\tests` soll `null`-Kinder wie der Browser als Text anhängen.

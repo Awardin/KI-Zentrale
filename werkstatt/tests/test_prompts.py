@@ -329,7 +329,79 @@ class Sammlung(Basis):
         self.assertEqual(self.index.lesen('schatten:A')['fehler'], 'Sammlungseintrag nicht mehr gefunden')
 
 
+class Schaerfen(unittest.TestCase):
+    def test_skill_mit_ohne_frontmatter_und_fehlend_leer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            datei = Path(tmp) / 'SKILL.md'
+            cfg = {'skill': str(datei)}
+            for roh, erwartet in [('Regeln\n', 'Regeln\n'),
+                                  ('---\nname: Test\n---\n\nRegeln\n', '\nRegeln\n')]:
+                datei.write_text(roh, encoding='utf-8', newline='')
+                s = prompts.skill_lesen(cfg)
+                self.assertEqual((s['wert'], s['stand'], s['pfad']), (erwartet, prompts.stand(erwartet), str(datei)))
+            for text in ('', ' \n', '---\nname: Test\n---\n'):
+                datei.write_text(text, encoding='utf-8')
+                with self.assertRaises(prompts.PromptFehler) as ex:
+                    prompts.skill_lesen(cfg)
+                self.assertEqual(ex.exception.code, 'skill_fehlt')
+            datei.unlink()
+            with self.assertRaises(prompts.PromptFehler):
+                prompts.skill_lesen(cfg)
+
+    def test_bauen_material_verlaengerter_zaun_und_zielhinweise(self):
+        material = 'Antwort\n~~~\n  ~~~\n   ~~~~~\n```\n[Beispiel]'
+        e = {'skill': {'wert': 'Skilltext'}, 'aktion': 'Schärfen', 'hinweise': '',
+             'material': {'wert': material, 'erstellt': '2026-11-06'},
+             'zielmodell': {'name': 'Ziel', 'anbieter': 'lokal', 'verarbeitung': 'lokal', 'kontext': 131072}}
+        f = {'name': 'Eins', 'text': 'Original [A]'}
+        text, gs = prompts.schaerfen_bauen(f, e)
+        self.assertTrue(text.startswith('Skilltext\n\n---\nAuftrag der Werkstatt: Schärfen'))
+        self.assertIn('Kasten mit 6 Tilden', text)
+        self.assertIn('Hinweise von Sascha: keine', text)
+        self.assertIn('frischer Chat; ohne Werkzeuge und ohne Projektgedächtnis', text)
+        self.assertEqual(gs, prompts.sha(text))
+        self.assertEqual([b['text'] for b in prompts.bloecke(text)], ['Original [A]', material])
+        for anbieter, hinweis in [('claude', 'Systemprompt „Du bist ein sorgfältiger Assistent.“'),
+                                  ('codex', 'Sandbox nur lesend mit Werkzeugen')]:
+            e['zielmodell'].update(anbieter=anbieter, verarbeitung='Cloud (Dienst)', kontext=None)
+            self.assertIn(hinweis, prompts.schaerfen_bauen(f, e)[0])
+            self.assertIn('Kontextfenster unbekannt', prompts.schaerfen_bauen(f, e)[0])
+        e['aktion'] = 'Erst klären'
+        self.assertIn('nur die Rückfragen als nummerierte Liste', prompts.schaerfen_bauen(f, e)[0])
+
+    def test_auswerten_alle_zaeune_platzhalter_und_fragen(self):
+        for antwort, grund in [('Nur Text', 'kein Kasten'), ('~~~text\noffen', 'kein Kasten'),
+                ('~~~python\nx\n~~~', 'kein Kasten'),
+                ('~~~text\n[A]\n~~~\n```\n[A]\n```', 'mehrere Kästen'),
+                ('```text\nOhne Feld\n```', 'Platzhalter verloren: [A]')]:
+            with self.subTest(antwort=antwort):
+                a = prompts.schaerfen_auswerten(antwort, 'Original [A]', 'Schärfen')
+                self.assertEqual(a['grund'], grund)
+                if grund in ('kein Kasten', 'mehrere Kästen'):
+                    self.assertIsNone(a['kasten'])
+        for text in ('[A]\n~~~', '[A]\n  ~~~', 'x' * 20001, ''):
+            a = prompts.schaerfen_auswerten(prompts.block_schreiben(text, 'text', '`'), '[A]', 'Schärfen')
+            self.assertTrue(a['grund'])
+        for zeichen, kennung in [('~', 'text'), ('`', 'text'), ('`', ''), ('~', '')]:
+            a = prompts.schaerfen_auswerten(prompts.block_schreiben('Neu [A] [Projektkontext]', kennung, zeichen),
+                                           '[A]', 'Kürzen')
+            self.assertEqual(a['grund'], '')
+            self.assertEqual(a['neue_platzhalter'], ['Projektkontext'])
+            self.assertEqual(a['kasten']['text'], 'Neu [A] [Projektkontext]')
+        self.assertIsNone(prompts.schaerfen_auswerten('~~~text\nx\n~~~', '[A]', 'Erst klären')['kasten'])
+
+
 class Oberflaeche(unittest.TestCase):
+    def test_schaerfen_dialog_und_nebeneinander(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_schaerfen_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_testdialog_nochmal_vorschau_start_ablegen_und_markdown(self):
         import shutil
         import subprocess

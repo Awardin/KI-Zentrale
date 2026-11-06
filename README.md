@@ -235,7 +235,19 @@ Ist die Antwort schon gespeichert, erledigt „Wiederholen“ nur die fehlende N
 Modellaufruf. „Entfernen“ nimmt nur den Warteschlangeneintrag heraus; die Datei bleibt erhalten.
 Urteil **offen/gut/schwach** und Notiz (beim Verlassen des Felds) ändern nur den Belegkopf.
 **Nochmal …** füllt einen neuen Testdialog aus dem Beleg und meldet geänderte oder fehlende Quelldateien
-je Feld. Schärfen folgt in Scheibe 3. Prompt-Tests zählen nicht in den Zusammenfassungs-Messungen.
+je Feld. Prompt-Tests zählen nicht in den Zusammenfassungs-Messungen.
+
+**Schärfen ▾** bietet „Schärfen“, „Erst klären“ und „Kürzen“ am Eintrag und an jeder Fassung.
+Im Dialog werden Schreibmodell, Zielmodell, Hinweise und optional eine Testantwort als Material gewählt.
+Das Schreibmodell führt die Überarbeitung aus; das Zielmodell beschreibt den späteren Einsatz im frischen Chat.
+Vor dem Start ist eine aktuelle Vorschau nötig. Der Skill wird zur Laufzeit gelesen und zusammen mit dem
+Material als Momentaufnahme unter `schaerfen\` gespeichert; Änderungen der Quellen berühren den Lauf danach nicht.
+Gültige Antworten werden bei Ordnereinträgen als neue Fassung in `prompt.md` übernommen, ohne die ursprüngliche
+Fassung zu ersetzen. Bei Sammlungseinträgen entsteht ausschließlich ein **Vorschlag, nicht übernommen** im
+Schattenordner. „Erst klären“ liefert Fragen und legt keine neue Fassung an.
+Der Abschnitt „Schärfen“ zeigt Original und neue Fassung nebeneinander, darunter die Stichpunkte und neue Platzhalter.
+Wiederholen erledigt bei vorhandener Antwort die Übernahme ohne weiteren Modellaufruf oder doppelte Fassung.
+Schärfen-Läufe haben kein Urteil; die neue Fassung wird über Tests beurteilt.
 
 ### Bild & Video
 

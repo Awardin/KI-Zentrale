@@ -76,7 +76,7 @@ def _belegkopf(text):
     return zeilen, ende, kopf, stand(''.join(zeilen[:ende + 1]))
 
 
-def beleg_lesen(datei):
+def beleg_lesen(datei, schaerfen=False):
     roh = _lesen(datei)
     zeilen, ende, kopf, ks = _belegkopf(roh)
     rest = ''.join(zeilen[ende + 1:])
@@ -97,7 +97,7 @@ def beleg_lesen(datei):
             or anzahl.get('## Fassung') != 1 or anzahl.get('## Eingaben') != 1):
         raise ValueError('Beleg beschädigt: Fassung oder Eingaben fehlen.')
     eingaben = json.loads(abschnitte['eingaben'])
-    if not isinstance(eingaben, dict) or not isinstance(eingaben.get('felder'), dict):
+    if not isinstance(eingaben, dict) or (not schaerfen and not isinstance(eingaben.get('felder'), dict)):
         raise ValueError('Beleg beschädigt: Eingaben sind ungültig.')
     return dict(kopf, kopf_stand=ks, fassung_text=abschnitte['fassung'], eingaben=eingaben,
                 antwort=abschnitte.get('antwort', ''), datei=os.path.basename(datei), datei_stand=sha(roh))
@@ -139,7 +139,7 @@ def beleg_anlegen(ordner, kopf, fassung, eingaben):
     with _SPERRE:
         os.makedirs(ordner, exist_ok=True)
         basis = (datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S') + ' – '
-                 + dateiname(kopf['fassung']) + ' – ' + dateiname(kopf['auswerter']))
+                 + dateiname(kopf.get('aktion', kopf['fassung'])) + ' – ' + dateiname(kopf['auswerter']))
         n = 1
         while True:
             name = basis + (f' ({n})' if n > 1 else '')
@@ -165,6 +165,130 @@ def antwort_schreiben(datei, text):
         i = next((i for i, z in hs if z == '## Antwort'), len(zs))
         nl = '\r\n' if '\r\n' in roh else '\n'
         _atomar(datei, ''.join(zs[:i]) + ('## Antwort\n' + block_schreiben(text, 'text')).replace('\n', nl))
+
+
+AKTIONEN = ('Schärfen', 'Erst klären', 'Kürzen')
+
+
+def skill_lesen(cfg):
+    pfad = cfg.get('skill', '')
+    try:
+        text = _lesen(pfad).lstrip('\ufeff')
+        zeilen = text.splitlines(keepends=True)
+        if zeilen and zeilen[0].strip() == '---':
+            ende = next((i for i in range(1, len(zeilen)) if zeilen[i].strip() == '---'), None)
+            if ende is not None:
+                text = ''.join(zeilen[ende + 1:])
+        if not text.strip():
+            raise ValueError('leer')
+    except (OSError, ValueError, UnicodeError) as ex:
+        raise PromptFehler('skill_fehlt', 'Der Skill zum Schärfen fehlt oder ist leer. Bitte den konfigurierten Pfad prüfen.') from ex
+    return {'wert': text, 'pfad': pfad, 'stand': stand(text)}
+
+
+def schaerfen_bauen(fassung, eingaben):
+    """Nur gespeicherte Werte verwenden, nie Skill oder Quellmaterial nachladen."""
+    ziel = eingaben['zielmodell']
+    aktion = eingaben['aktion']
+    if aktion not in AKTIONEN:
+        raise ValueError('Unbekannte Schärfen-Aktion.')
+    hinweis = ('ohne Werkzeuge, Systemprompt „Du bist ein sorgfältiger Assistent.“'
+               if ziel['anbieter'] == 'claude' else 'Sandbox nur lesend mit Werkzeugen'
+               if ziel['anbieter'] == 'codex' else 'ohne Werkzeuge und ohne Projektgedächtnis'
+               if ziel['verarbeitung'] == 'lokal' else 'ohne Werkzeuge')
+    erwartet = ('nur die Rückfragen als nummerierte Liste, keine neue Fassung, kein Kasten.'
+                if aktion == 'Erst klären' else
+                'zuerst die neue Fassung in genau einem Kasten (Zeile ~~~text davor, Zeile ~~~ danach, '
+                'keine weiteren Kästen mit ~~~), danach die wichtigsten Änderungen als Stichpunkte. '
+                'Platzhalter in eckigen Klammern zeichengetreu erhalten. Den Auftrag nicht ausführen.')
+    text = (eingaben['skill']['wert'] + '\n\n---\n'
+            + f'Auftrag der Werkstatt: {aktion}\n'
+            + f"Zielmodell: {ziel['name']} ({ziel['verarbeitung']}, Kontextfenster "
+            + (f"{ziel['kontext']} Token" if ziel.get('kontext') else 'unbekannt')
+            + f', frischer Chat; {hinweis}).\n'
+            + f"Hinweise von Sascha: {eingaben['hinweise'] or 'keine'}\n"
+            + f'Erwartete Antwort bei {aktion}: {erwartet}\n'
+            + f'Fassung „{fassung["name"]}“:\n' + block_schreiben(fassung['text'], 'text'))
+    material = eingaben.get('material')
+    if material:
+        block = block_schreiben(material['wert'], 'text')
+        n = _zaunlaenge(block.splitlines()[0])[1]
+        text += (f"\nMaterial, Antwort des Zielmodells vom {material.get('erstellt', 'unbekannt')} "
+                 f'auf diese Fassung (Kasten mit {n} Tilden):\n' + block)
+    return text, sha(text)
+
+
+def schaerfen_anlegen(ordner, kopf, fassung, eingaben):
+    return beleg_anlegen(ordner, dict(kopf, ergebnis='offen'), fassung, eingaben)
+
+
+def schaerfen_lesen(datei):
+    b = beleg_lesen(datei, schaerfen=True)
+    e = b['eingaben']
+    if (e.get('aktion') not in AKTIONEN or not isinstance(e.get('hinweise'), str)
+            or not isinstance(e.get('skill'), dict) or not isinstance(e['skill'].get('wert'), str)
+            or not isinstance(e.get('zielmodell'), dict)
+            or not all(k in e['zielmodell'] for k in ('name', 'anbieter', 'modell', 'verarbeitung'))
+            or (e.get('material') is not None and (not isinstance(e['material'], dict)
+                                                or not isinstance(e['material'].get('wert'), str)))):
+        raise ValueError('Schärfen-Datei beschädigt: Eingaben sind ungültig.')
+    return b
+
+
+def schaerfen_auswerten(antwort, original_text, aktion):
+    ergebnis = {'kasten': None, 'grund': '', 'neue_platzhalter': []}
+    if aktion == 'Erst klären':
+        return ergebnis
+    kaesten = [b for b in bloecke(antwort) if b['kennung'] in ('text', '') and b['geschlossen']]
+    if len(kaesten) != 1:
+        ergebnis['grund'] = 'mehrere Kästen' if len(kaesten) > 1 else 'kein Kasten'
+        return ergebnis
+    b = kaesten[0]
+    ergebnis['kasten'] = b
+    try:
+        text = text_pruefen(b['text'])
+    except ValueError as ex:
+        ergebnis['grund'] = str(ex)
+        return ergebnis
+    alt, neu = felder_erkennen(original_text), felder_erkennen(text)
+    verloren = [n for n in alt if n not in neu]
+    if verloren:
+        ergebnis['grund'] = 'Platzhalter verloren: ' + ', '.join('[' + n + ']' for n in verloren)
+        return ergebnis
+    ergebnis.update(kasten=dict(b, text=text), neue_platzhalter=[n for n in neu if n not in alt])
+    return ergebnis
+
+
+def schaerfen_uebernehmen(eintrag, datei):
+    with _SPERRE:
+        b = schaerfen_lesen(datei)
+        aktion = b['eingaben']['aktion']
+        a = schaerfen_auswerten(b['antwort'], b['fassung_text'], aktion)
+        if b['herkunft'] == 'sammlung':
+            ergebnis = 'Vorschlag, nicht übernommen'
+        elif aktion == 'Erst klären':
+            ergebnis = 'Fragen, nicht übernommen'
+        elif a['grund']:
+            ergebnis = 'ungültig (' + a['grund'] + ')'
+        else:
+            try:
+                datum = datetime.datetime.strptime(b['erstellt'], '%Y-%m-%d %H:%M:%S').strftime('%d.%m.')
+                basis = _name(f"{aktion} {datum} {b['auswerter']}")
+                _, d = eintrag._frisch()
+                vorhanden = next((f for f in d['fassungen'] if f['stand'] == stand(a['kasten']['text'])), None)
+                if vorhanden:
+                    name = vorhanden['name']
+                else:
+                    name, n = basis, 2
+                    while any(f['name'] == name for f in d['fassungen']):
+                        name = _name(basis + f' ({n})')
+                        n += 1
+                    eintrag.fassung_neu(name, a['kasten']['text'])
+                ergebnis = f'übernommen ({name})'
+            except ValueError as ex:
+                ergebnis = f'ungültig ({ex})'
+        _kopf_setzen(datei, {'ergebnis': ergebnis})
+        return ergebnis
 
 
 def html_erkennen(antwort):
@@ -471,11 +595,13 @@ class Index:
         self.auswertung = auswertung
         self.watch = auswertung.w['arbeitsordner']
 
-    def beleg_pfad(self, eid, datei):
+    def beleg_pfad(self, eid, datei, art_ordner='tests'):
+        if art_ordner not in ('tests', 'schaerfen'):
+            raise ValueError('Unbekannter Belegordner.')
         if (not isinstance(datei, str) or not datei or _STEUERZEICHEN.search(datei)
                 or re.search(r'[/\\:]', datei) or not datei.lower().endswith('.md')):
             raise ValueError('Bitte einen reinen Belegdateinamen angeben.')
-        pfad = os.path.join(self._ordner(eid), 'tests', datei)
+        pfad = os.path.join(self._ordner(eid), art_ordner, datei)
         if not pfad_erlaubt(pfad, [self.ordner]):
             raise ValueError('Belegpfad nicht erlaubt.')
         return pfad
@@ -640,23 +766,110 @@ class Index:
             self.auswertung.einreihen(auftrag)
         return {'neu': len(neu), 'auftraege': neu}
 
-    def auftrag_aus_beleg(self, eid, datei):
+    def schaerfen_vorschau(self, daten):
+        d = self.lesen(daten.get('id', ''))
+        f = next((f for f in d['fassungen'] if f['name'] == daten.get('fassung')), None)
+        if d.get('fehler') or not f:
+            raise ValueError('Bitte eine lesbare Fassung wählen.')
+        aktion = daten.get('schaerfen_aktion', 'Schärfen')
+        if aktion not in AKTIONEN:
+            raise ValueError('Unbekannte Schärfen-Aktion.')
+        hinweise = daten.get('hinweise', '')
+        if not isinstance(hinweise, str) or len(hinweise) > 2000:
+            raise ValueError('Hinweise dürfen höchstens 2.000 Zeichen enthalten.')
+        def profil(pid):
+            p = next((p for p in self.auswertung.profile if p['id'] == pid), None)
+            if not p:
+                raise ValueError('Bitte Schreibmodell und Zielmodell wählen.')
+            info = self.auswertung.profil_info(p)
+            anbieter = self.auswertung.anbieter[p['anbieter']]
+            # Das Zielmodell muss zum Überarbeiten nicht laufen; nur das Schreibmodell sendet.
+            if info['verfuegbar']:
+                kontext, quelle, modell = anbieter.kontext_geladen(p)
+            else:
+                kontext, quelle, modell = info.get('kontext'), 'Anbieter', p['modell']
+            return dict(info, kontext=kontext, kontext_quelle=quelle, modell_tatsaechlich=modell,
+                        verarbeitung='Cloud (' + anbieter.cloud + ')' if anbieter.cloud else 'lokal',
+                        hinweis='ohne Werkzeuge' if p['anbieter'] == 'claude' else
+                        'Sandbox nur lesend, kann Dateien lesen und Befehle ausführen, liest seine globale AGENTS.md mit'
+                        if p['anbieter'] == 'codex' else '')
+        skill = skill_lesen(self.cfg)
+        schreibmodell = profil(daten.get('schreibmodell'))
+        ziel = profil(daten.get('zielmodell'))
+        material = None
+        if daten.get('material'):
+            b = beleg_lesen(self.beleg_pfad(d['id'], daten['material']))
+            if not b['antwort'].strip():
+                raise ValueError('Der gewählte Beleg hat keine Antwort.')
+            material = {'wert': b['antwort'][:30000], 'beleg': b['datei'], 'eintrag': d['id'],
+                        'erstellt': b.get('erstellt', 'unbekannt')}
+        eingaben = {'hinweise': hinweise, 'skill': skill, 'material': material,
+                    'zielmodell': {k: ziel.get(k) for k in ('name', 'anbieter', 'modell', 'kontext', 'verarbeitung')},
+                    'aktion': aktion}
+        text, gs = schaerfen_bauen(f, eingaben)
+        if schreibmodell['verfuegbar']:
+            schaetzung, reserve = kontext_pruefen(text, schreibmodell['kontext'])
+            schreibmodell.update(geschaetzt=schaetzung, reserve=reserve)
+        return {'auftrag': text, 'gesendet_stand': gs, 'fassung': f, 'eingaben': eingaben,
+                'schreibmodell': schreibmodell, 'zielmodell': ziel}
+
+    def schaerfen(self, daten):
+        with _SPERRE:
+            v = self.schaerfen_vorschau(daten)
+            if v['gesendet_stand'] != daten.get('gesendet_stand'):
+                raise Konflikt('Der Inhalt hat sich seit der Vorschau geändert.')
+            p, f, e = v['schreibmodell'], v['fassung'], v['eingaben']
+            if not p['verfuegbar']:
+                raise PromptFehler('anbieter', p['grund'])
+            d = self.lesen(daten['id'])
+            tests = self._testordner(d['id'])
+            ordner = os.path.join(os.path.dirname(tests), 'schaerfen')
+            if not pfad_erlaubt(ordner, [self.ordner]):
+                raise ValueError('Schärfen-Ordner nicht erlaubt.')
+            kopf = dict(prompt=d['titel'], eintrag=d['id'], herkunft=d['herkunft'], fassung=f['name'],
+                        fassung_stand=f['stand'], rahmen='nein', gesendet_stand=v['gesendet_stand'],
+                        auswerter=p['name'], anbieter=p['anbieter'], modell=p['modell'],
+                        kontext=p['kontext'], kontext_quelle=p['kontext_quelle'], verarbeitung=p['verarbeitung'],
+                        zustand='wartet', meldung='', erstellt=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        hinweis='', status='Entwurf, automatisch erstellt, nicht geprüft', aktion=e['aktion'],
+                        skill_stand=e['skill']['stand'], zielmodell=e['zielmodell']['name'],
+                        zielmodell_anbieter=e['zielmodell']['anbieter'], zielmodell_modell=e['zielmodell']['modell'],
+                        zielmodell_kontext=e['zielmodell']['kontext'])
+            if p.get('stufe'):
+                kopf['denkstufe'] = p['stufe']
+            datei = schaerfen_anlegen(ordner, kopf, f['text'], e)
+            a = self.auftrag_aus_beleg(d['id'], os.path.basename(datei), 'schaerfen')
+        self.auswertung.einreihen(a)
+        return {'neu': 1, 'auftraege': [a['id']]}
+
+    def auftrag_aus_beleg(self, eid, datei, art_ordner='tests'):
         import secrets
         import time
-        pfad = self.beleg_pfad(eid, datei)
-        b = beleg_lesen(pfad)
+        pfad = self.beleg_pfad(eid, datei, art_ordner)
+        b = schaerfen_lesen(pfad) if art_ordner == 'schaerfen' else beleg_lesen(pfad)
         p = next((p for p in self.auswertung.profile if p['name'] == b['auswerter']
                   and p['anbieter'] == b['anbieter'] and p['modell'] == b['modell']
                   and p.get('stufe') == b.get('denkstufe')), None)
         p = p or {'id': '', 'name': b['auswerter'], 'anbieter': b['anbieter'], 'modell': b['modell'],
                   'stufe': b.get('denkstufe')}
-        return {'id': secrets.token_hex(4), 'art': 'prompt', 'titel': b['prompt'], 'auswerter': dict(p),
+        return {'id': secrets.token_hex(4), 'art': 'schaerfen' if art_ordner == 'schaerfen' else 'prompt',
+                'titel': b['prompt'], 'auswerter': dict(p),
                 'prompt': {'eintrag': eid, 'herkunft': b['herkunft'], 'titel': b['prompt'],
                            'fassung': b['fassung'], 'stand': b['fassung_stand'], 'beleg': datei[:-3],
-                           'gesendet_stand': b['gesendet_stand']}, 'datei': pfad,
+                           'gesendet_stand': b['gesendet_stand'], 'art_ordner': art_ordner}, 'datei': pfad,
                 'zustand': 'wartet', 'meldung': '', 'erstellt': time.time()}
 
     def datei_inhalt(self, eid, was, datei):
+        if was == 'schaerfen':
+            pfad = self.beleg_pfad(eid, datei, 'schaerfen')
+            b = schaerfen_lesen(pfad)
+            a = schaerfen_auswerten(b['antwort'], b['fassung_text'], b['eingaben']['aktion'])
+            k = a['kasten']
+            zeilen = b['antwort'].splitlines(keepends=True)
+            stichpunkte = ''.join(zeilen[:k['auf']] + zeilen[k['zu'] + 1:]) if k else b['antwort']
+            return dict(b, text=_lesen(pfad), original=b['fassung_text'], neue_fassung=k['text'] if k else '',
+                        stichpunkte=stichpunkte, neue_platzhalter=a['neue_platzhalter'], grund=a['grund'],
+                        fragen=b['antwort'] if b['eingaben']['aktion'] == 'Erst klären' else '')
         pfad = self.beleg_pfad(eid, datei)
         b = beleg_lesen(pfad)
         if was == 'gesendet':
@@ -693,19 +906,20 @@ class Index:
         import copy
         return copy.deepcopy(alt[1])
 
-    def _belege(self, ordner):
-        tests = self._pfad(ordner, 'tests')
+    def _belege(self, ordner, art_ordner='tests'):
+        tests = self._pfad(ordner, art_ordner)
         ergebnis = []
         if os.path.isdir(tests):
             for name in sorted(os.listdir(tests), reverse=True):
                 if not name.lower().endswith('.md'):
                     continue
                 try:
-                    pfad = self._pfad(ordner, 'tests', name)
+                    pfad = self._pfad(ordner, art_ordner, name)
                     def lesen():
                         _, _, kopf, ks = _belegkopf(_lesen(pfad))
                         try:
-                            beleg_lesen(pfad)
+                            b = schaerfen_lesen(pfad) if art_ordner == 'schaerfen' else beleg_lesen(pfad)
+                            kopf['antwort_vorhanden'] = bool(b['antwort'].strip())
                         except (ValueError, KeyError, TypeError):
                             kopf['fehler'] = 'Beleg beschädigt'
                         return dict(kopf, kopf_stand=ks)
@@ -731,7 +945,7 @@ class Index:
                     d = self._gecacht(pfad, lambda: Eintrag(pfad).lesen())
                 except (OSError, ValueError, UnicodeError):
                     d = {'titel': name, 'fehler': 'nicht lesbar', 'bearbeitbar': False, 'fassungen': []}
-                d.update(id=name, herkunft='ordner', tests=self._belege(name))
+                d.update(id=name, herkunft='ordner', tests=self._belege(name), schaerfen=self._belege(name, 'schaerfen'))
                 eintraege.append(d)
             except ValueError:
                 fehler.append(f'„{name}“: Pfad nicht erlaubt.')
@@ -752,6 +966,7 @@ class Index:
         eintraege += sammlung + schatten
         for d in eintraege:
             d.setdefault('tests', [])
+            d.setdefault('schaerfen', [])
             staende = {f['stand'] for f in d['fassungen']}
             for t in d['tests']:
                 t['geaendert'] = t.get('fassung_stand') not in staende
@@ -782,8 +997,10 @@ class Index:
                 ziel = None
             ordner = os.path.join('_Sammlung', name)
             tests = self._belege(ordner)
+            schaerfen = self._belege(ordner, 'schaerfen')
             if ziel:
                 ziel['tests'] = tests
+                ziel['schaerfen'] = schaerfen
                 ziel['schatten'] = name
                 ziel['hinweis'] = ('seit dem Test geändert' if ziel['fassungen'][0]['stand'] != meta['stand'] else '')
                 if meta.get('nummer') != ziel['nummer']:
@@ -791,7 +1008,7 @@ class Index:
                     self._meta_schreiben(name, meta)
             else:
                 ergebnis.append({'id': 'schatten:' + name, 'titel': meta.get('ueberschrift', name),
-                                 'herkunft': 'sammlung', 'fassungen': [], 'tests': tests,
+                                 'herkunft': 'sammlung', 'fassungen': [], 'tests': tests, 'schaerfen': schaerfen,
                                  'bearbeitbar': False, 'kandidaten': [s['id'] for s in kandidaten],
                                  'fehler': ('Zuordnung ungeklärt' if kandidaten
                                             else 'Sammlungseintrag nicht mehr gefunden')})
@@ -884,7 +1101,7 @@ class Index:
 
     def aktion(self, daten):
         aktion, eid = daten.get('aktion'), daten.get('id', '')
-        if aktion in ('vorschau', 'testen'):
+        if aktion in ('vorschau', 'testen', 'schaerfen_vorschau', 'schaerfen'):
             return getattr(self, aktion)(daten)
         if aktion == 'datei_lesen':
             return self.datei_lesen(daten.get('pfad', ''))
@@ -899,10 +1116,10 @@ class Index:
                 'urteil': daten['urteil'], 'notiz': daten.get('notiz', '')}, daten.get('kopf_stand', ''))
             return {'kopf_stand': ks}
         if aktion == 'wiederholen_beleg':
-            a = self.auftrag_aus_beleg(eid, daten.get('datei'))
+            a = self.auftrag_aus_beleg(eid, daten.get('datei'), daten.get('art_ordner', 'tests'))
             with self.auswertung._lock:
                 if any(os.path.normcase(x.get('datei') or '') == os.path.normcase(a['datei'])
-                       for x in self.auswertung.liste if x.get('art') == 'prompt'):
+                       for x in self.auswertung.liste if x.get('art') in ('prompt', 'schaerfen')):
                     raise Konflikt('Dieser Beleg steht bereits in der Warteschlange.')
                 beleg_zustand(a['datei'], 'wartet')
                 self.auswertung.einreihen(a)

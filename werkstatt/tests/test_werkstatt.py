@@ -403,7 +403,8 @@ class PromptRouten(unittest.TestCase):
             starten.assert_called_once_with(a['datei'])
 
     def test_neue_aktionen_ohne_herkunft_und_dateidialog(self):
-        for aktion in ('vorschau', 'testen', 'urteil', 'datei_lesen', 'datei_waehlen', 'wiederholen_beleg'):
+        for aktion in ('vorschau', 'testen', 'urteil', 'datei_lesen', 'datei_waehlen', 'wiederholen_beleg',
+                       'schaerfen_vorschau', 'schaerfen'):
             del self.h.headers['X-Werkstatt']
             self.assertEqual(self.post({'aktion': aktion})[0], 403)
             self.h.headers['X-Werkstatt'] = '1'
@@ -420,6 +421,53 @@ class PromptRouten(unittest.TestCase):
         with patch.object(self.p, 'transkripte', side_effect=RuntimeError('MARKIERUNG')):
             self.assertEqual(self.get('/api/transkripte?prompts=1')[0], 400)
         self.h.werkstatt.log.assert_not_called()
+
+    def test_schaerfen_routen_datei_herkunft_und_oeffnen(self):
+        from pathlib import Path
+        from urllib.parse import urlencode
+        from werkstatt import server, prompts
+        from werkstatt.tests.test_auswertung_prompts import SchaerfenLaeufe
+        basis = SchaerfenLaeufe('test_a_uebernahme_datei_index_und_anzeigedaten')
+        basis.setUp()
+        try:
+            basis.vorbereiten()
+            self.p = basis.p
+            self.h.werkstatt.prompts = self.p
+            self.h.werkstatt.auswertung = basis.au
+            code, v = self.post(dict(basis.sd, aktion='schaerfen_vorschau'))
+            self.assertEqual(code, 200)
+            self.assertIn('Regeln zum Schärfen', v['auftrag'])
+            self.assertEqual(self.post(dict(basis.sd, aktion='schaerfen', gesendet_stand='alt'))[0], 409)
+            code, r = self.post(dict(basis.sd, aktion='schaerfen', gesendet_stand=v['gesendet_stand']))
+            self.assertEqual((code, r['neu']), (200, 1))
+            a = basis.au.liste[0]
+            url = '/api/prompt-datei?' + urlencode({'id': basis.e['id'], 'was': 'schaerfen', 'datei': Path(a['datei']).name})
+            self.assertEqual(self.get(url)[1]['original'], 'Baue [A].')
+            basis.arbeiten()
+            code, b = self.get(url)
+            self.assertEqual((code, b['neue_fassung']), (200, 'Besser 1 [A] [Projektkontext]'))
+            self.assertIn('- Klarer', b['stichpunkte'])
+            for pfad in ('/api/prompts', '/api/prompt?' + urlencode({'id': basis.e['id']})):
+                code, d = self.get(pfad)
+                e = d['eintraege'][0] if 'eintraege' in d else d
+                self.assertEqual((code, len(e['schaerfen']), d['warteschlange'][0]['art']), (200, 1, 'schaerfen'))
+            w = server.Werkstatt.__new__(server.Werkstatt)
+            w.auswertung = basis.au
+            for was, ziel in [('oeffnen', a['datei']), ('ordner', str(Path(a['datei']).parent))]:
+                with patch('werkstatt.server.os.startfile') as starten:
+                    self.assertEqual(w.fassung_oeffnen(a['id'], was)[0], 200)
+                    starten.assert_called_once_with(ziel)
+            for name in ('../x.md', 'C:\\x.md', 'x.cmd', 'x.md:strom'):
+                self.assertEqual(self.get('/api/prompt-datei?' + urlencode(
+                    {'id': basis.e['id'], 'was': 'schaerfen', 'datei': name}))[0], 400)
+            basis.au.aktion(a['id'], 'entfernen')
+            d = self.get('/api/prompt?' + urlencode({'id': basis.e['id']}))[1]
+            self.assertTrue(d['schaerfen'][0]['verwaist'])
+            daten = {'aktion': 'wiederholen_beleg', 'id': basis.e['id'], 'datei': b['datei'], 'art_ordner': 'schaerfen'}
+            self.assertEqual(self.post(daten)[0], 200)
+            self.assertEqual(self.post(daten)[0], 409)
+        finally:
+            basis.doCleanups()
 
     def test_prompt_fassung_oeffnen_sicher_und_messungen_filter(self):
         from werkstatt import server

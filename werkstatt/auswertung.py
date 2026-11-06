@@ -752,19 +752,20 @@ class Auswertungen:
             self.prompts.verbinden(self)
             bekannt = set()
             for a in self.liste:
-                if a['art'] != 'prompt':
+                if a['art'] not in ('prompt', 'schaerfen'):
                     continue
                 try:
                     pfad = self._belegpfad(a)
                     bekannt.add(os.path.normcase(pfad))
-                    prompts.beleg_lesen(pfad)
+                    (prompts.schaerfen_lesen if a['art'] == 'schaerfen' else prompts.beleg_lesen)(pfad)
                     self._belegzustand(a)
                 except Exception as ex:
                     self._belegfehler(a, ex)
             for e in self.prompts.alle()['eintraege']:
-                for b in e['tests']:
+                for art_ordner, b in ([('tests', b) for b in e['tests']]
+                                      + [('schaerfen', b) for b in e['schaerfen']]):
                     try:
-                        pfad = self.prompts.beleg_pfad(e['id'], b['datei'])
+                        pfad = self.prompts.beleg_pfad(e['id'], b['datei'], art_ordner)
                         if os.path.normcase(pfad) not in bekannt and b.get('zustand') in ('wartet', 'laeuft'):
                             prompts.beleg_zustand(pfad, 'abgebrochen', 'Einreihung unvollständig')
                     except Exception:
@@ -830,7 +831,7 @@ class Auswertungen:
         if not a or not a.get('datei'):
             return None
         try:
-            pfad = self._belegpfad(a) if a.get('art') == 'prompt' else a['datei']
+            pfad = self._belegpfad(a) if a.get('art') in ('prompt', 'schaerfen') else a['datei']
             with open(pfad, encoding='utf-8') as f:
                 return f.read()
         except (OSError, ValueError):
@@ -920,17 +921,20 @@ class Auswertungen:
     def _belegpfad(self, a):
         from . import prompts
         p = a['prompt']
+        art_ordner = p.get('art_ordner', 'tests')
+        if art_ordner not in ('tests', 'schaerfen') or (a.get('art') == 'schaerfen' and art_ordner != 'schaerfen'):
+            raise ValueError('Ungültiger Belegordner.')
         # Sammlungskästen können ihre Nummer ändern. Der beim Einreihen serverseitig
         # gebaute Dateipfad bleibt dann die stabile Verbindung zum Schattenordner.
         datei = a.get('datei')
         if (datei and os.path.basename(datei) == p['beleg'] + '.md'
-                and os.path.basename(os.path.dirname(datei)) == 'tests'
+                and os.path.basename(os.path.dirname(datei)) == art_ordner
                 and prompts.pfad_erlaubt(datei, [self.prompts.ordner])):
             return os.path.join(os.path.dirname(datei), p['beleg'] + '.md')
-        return self.prompts.beleg_pfad(p['eintrag'], p['beleg'] + '.md')
+        return self.prompts.beleg_pfad(p['eintrag'], p['beleg'] + '.md', art_ordner)
 
     def _belegzustand(self, a, **kopf):
-        if a.get('art') == 'prompt':
+        if a.get('art') in ('prompt', 'schaerfen'):
             from . import prompts
             prompts.beleg_zustand(self._belegpfad(a), a['zustand'], a.get('meldung', ''), **kopf)
 
@@ -1036,7 +1040,7 @@ class Auswertungen:
         a.update(zustand='abgebrochen' if isinstance(ex, _Abbruch) else 'fehler',
                  meldung='Abgebrochen.' if isinstance(ex, _Abbruch) else str(ex),
                  code=code)
-        if a.get('art') == 'prompt' and isinstance(ex, (OSError, ValueError)):
+        if a.get('art') in ('prompt', 'schaerfen') and isinstance(ex, (OSError, ValueError)):
             self._belegfehler(a, ex)
         try:
             self._belegzustand(a)
@@ -1045,6 +1049,8 @@ class Auswertungen:
         self._fehler_log(a, ex)
 
     def _ausfuehren(self, a):
+        if a.get('art') == 'schaerfen':
+            return self._schaerfen_ausfuehren(a)
         if a.get('art') == 'prompt':
             return self._prompt_ausfuehren(a)
         p = a['auswerter']
@@ -1086,18 +1092,28 @@ class Auswertungen:
         self.log(f"Fassung {a['id']}: fertig in {round(time.time() - a['begonnen'])} s")
 
     def _prompt_ausfuehren(self, a):
+        return self._promptlauf_ausfuehren(a)
+
+    def _schaerfen_ausfuehren(self, a):
+        return self._promptlauf_ausfuehren(a, schaerfen=True)
+
+    def _promptlauf_ausfuehren(self, a, schaerfen=False):
         from . import prompts
         datei = self._belegpfad(a)
-        b = prompts.beleg_lesen(datei)
+        b = prompts.schaerfen_lesen(datei) if schaerfen else prompts.beleg_lesen(datei)
         p = a['auswerter']
         anbieter = self.anbieter[p['anbieter']]
-        ergebnis = {k: b.get(k) for k in ('tokens', 'kosten_usd', 'modell_tatsaechlich')}
+        ergebnis = {k: b.get(k) if b.get(k) is not None else a.get(k)
+                    for k in ('tokens', 'kosten_usd', 'modell_tatsaechlich')}
         antwort = b['antwort']
         hinweis = b.get('hinweis', '')
         kontext_kopf = {}
         if not antwort.strip():
-            texte = self.prompts.transkripte_lesen(b['eingaben'])
-            text, gs = prompts.auftrag_bauen(b['fassung_text'], b['eingaben'], texte)
+            if schaerfen:
+                text, gs = prompts.schaerfen_bauen({'name': b['fassung'], 'text': b['fassung_text']}, b['eingaben'])
+            else:
+                texte = self.prompts.transkripte_lesen(b['eingaben'])
+                text, gs = prompts.auftrag_bauen(b['fassung_text'], b['eingaben'], texte)
             if gs != a['prompt']['gesendet_stand']:
                 raise prompts.PromptFehler('beleg_geaendert', 'Der Beleg wurde seit dem Einreihen geändert.')
             a['zeichen'] = len(text)
@@ -1122,7 +1138,17 @@ class Auswertungen:
             if not ergebnis.get('modell_tatsaechlich'):
                 ergebnis['modell_tatsaechlich'] = modell
             prompts.antwort_schreiben(datei, antwort)
-        html = prompts.html_schreiben(datei, antwort)
+            # Die Antwort bleibt auch bei einem Absturz in der anschließenden Übernahme erhalten.
+            with self._lock:
+                a.update(**ergebnis)
+                a.pop('text', None)
+                self._speichern()
+        if schaerfen:
+            pfad = os.path.join(os.path.dirname(os.path.dirname(datei)), 'prompt.md')
+            if not prompts.pfad_erlaubt(pfad, [self.prompts.ordner]):
+                raise ValueError('Promptpfad nicht erlaubt.')
+            prompts.schaerfen_uebernehmen(prompts.Eintrag(pfad), datei)
+        html = 'nein' if schaerfen else prompts.html_schreiben(datei, antwort)
         dauer = b.get('dauer_s') or round(time.time() - a['begonnen'])
         kopf = {k: ergebnis[k] for k in ('tokens', 'kosten_usd') if ergebnis.get(k) is not None}
         if ergebnis.get('modell_tatsaechlich') and ergebnis['modell_tatsaechlich'] != p['modell']:

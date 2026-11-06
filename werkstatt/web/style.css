@@ -1509,3 +1509,7 @@ main::before {
 .p-transkripte .knopf { display: block; margin: 6px 0; text-align: left; }
 .p-fassung details { margin-top: 12px; }
 .p-fassung .f-text pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.p-vergleich { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.p-vergleich section { min-width: 0; }
+.p-schaerfen-menue { margin-left: 8px; }
+@media (max-width: 700px) { .p-vergleich { grid-template-columns: minmax(0, 1fr); } }

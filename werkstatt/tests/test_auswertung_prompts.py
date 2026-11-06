@@ -387,6 +387,229 @@ class PromptLaeufe(unittest.TestCase):
         self.assertEqual(self.fake.texte, ['Sammlung HTML'])
 
 
+class SchaerfenLaeufe(unittest.TestCase):
+    # Dieselbe isolierte Warteschlange und derselbe zählende Fake wie bei Scheibe 2.
+    setUp = PromptLaeufe.setUp
+    neu = PromptLaeufe.neu
+    arbeiten = PromptLaeufe.arbeiten
+
+    def vorbereiten(self, aktion='Schärfen', eid=None, fassung='Fassung 1'):
+        skill = self.basis / 'SKILL.md'
+        skill.write_text('---\nname: Test\n---\nRegeln zum Schärfen\n', encoding='utf-8')
+        self.cfg['prompts']['skill'] = str(skill)
+        self.sd = {'id': eid or self.e['id'], 'fassung': fassung, 'schaerfen_aktion': aktion,
+                   'schreibmodell': 'p', 'zielmodell': 'p', 'hinweise': ''}
+        self.antwort = None
+        def senden(profil, text, lauf):
+            self.fake.aufrufe += 1
+            self.fake.texte.append(text)
+            if self.fake.waehrend:
+                self.fake.waehrend()
+            return {'text': self.antwort or f'~~~text\nBesser {self.fake.aufrufe} [A] [Projektkontext]\n~~~\n- Klarer formuliert.',
+                    'tokens': 22, 'kosten_usd': 0.1}
+        self.fake.ausfuehren = senden
+
+    def schaerfen(self):
+        v = self.p.schaerfen_vorschau(self.sd)
+        self.p.schaerfen(dict(self.sd, gesendet_stand=v['gesendet_stand']))
+        return self.au.liste[-1]
+
+    def beleg(self, a):
+        return prompts.schaerfen_lesen(self.au._belegpfad(a))
+
+    def test_a_uebernahme_datei_index_und_anzeigedaten(self):
+        self.vorbereiten()
+        a = self.schaerfen()
+        self.assertEqual((a['art'], a['prompt']['art_ordner'], self.beleg(a)['zustand']), ('schaerfen', 'schaerfen', 'wartet'))
+        self.assertIn(' – Schärfen – Fake', a['datei'])
+        with patch('werkstatt.auswertung.pruefung.nachpruefen', side_effect=AssertionError('Keine Nachprüfung')):
+            self.arbeiten()
+        b = self.beleg(a)
+        self.assertEqual((a['zustand'], b['zustand'], b['tokens']), ('fertig', 'fertig', 22))
+        self.assertIn('übernommen (Schärfen ', b['ergebnis'])
+        d = self.p.lesen(self.e['id'])
+        self.assertEqual(len(d['fassungen']), 2)
+        self.assertEqual(len(d['schaerfen']), 1)
+        self.assertEqual(d['tests'], [])
+        self.assertNotIn('urteil', b)
+        ansicht = self.p.datei_inhalt(d['id'], 'schaerfen', b['datei'])
+        self.assertEqual((ansicht['original'], ansicht['neue_fassung']), ('Baue [A].', 'Besser 1 [A] [Projektkontext]'))
+        self.assertIn('- Klarer formuliert.', ansicht['stichpunkte'])
+        self.assertNotIn('~~~', ansicht['stichpunkte'])
+        self.assertEqual(ansicht['neue_platzhalter'], ['Projektkontext'])
+        self.assertEqual(b['skill_stand'], prompts.stand(b['eingaben']['skill']['wert']))
+
+    def test_b_sammlung_bytegleich_nur_vorschlag(self):
+        self.vorbereiten(eid='sammlung:Wissen#1', fassung='Sammlung')
+        vorher = self.sammlung.read_bytes()
+        a = self.schaerfen()
+        self.arbeiten()
+        self.assertEqual(self.sammlung.read_bytes(), vorher)
+        self.assertEqual(self.beleg(a)['ergebnis'], 'Vorschlag, nicht übernommen')
+        self.assertIn('_Sammlung', a['datei'])
+        self.assertEqual(len(self.p.lesen(self.sd['id'])['schaerfen']), 1)
+        self.assertFalse((Path(a['datei']).parent.parent / 'prompt.md').exists())
+
+    def test_c_erst_klaeren_fragen_auch_bei_geliefertem_kasten(self):
+        self.vorbereiten('Erst klären')
+        for antwort in ('1. Welches Ziel?\n2. Welches Format?', '~~~text\n[A]\n~~~\n1. Welches Ziel?'):
+            self.antwort = antwort
+            a = self.schaerfen()
+            self.arbeiten()
+            self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 1)
+            b = self.p.datei_inhalt(self.e['id'], 'schaerfen', Path(a['datei']).name)
+            self.assertEqual((b['fragen'], b['neue_fassung']), (antwort, ''))
+            self.assertIn('nicht übernommen', b['ergebnis'])
+
+    def test_d_ungueltige_antworten_und_namen_dopplungen(self):
+        self.vorbereiten()
+        for antwort, grund in [('Text', 'kein Kasten'),
+                ('```\n[A]\n```\n~~~text\n[A]\n~~~', 'mehrere Kästen'),
+                ('```text\n[A]\n~~~\n```', '~~~'), ('~~~text\nOhne Feld\n~~~', 'Platzhalter verloren')]:
+            self.antwort = antwort
+            a = self.schaerfen()
+            self.arbeiten()
+            self.assertTrue(self.beleg(a)['ergebnis'].startswith('ungültig ('), self.beleg(a))
+            self.assertIn(grund, self.beleg(a)['ergebnis'])
+        self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 1)
+        self.au.profile[0]['name'] = 'Fake\rName'
+        self.antwort = '```text\nNeu [A]\n```'
+        a = self.schaerfen()
+        self.arbeiten()
+        self.assertIn('Steuerzeichen', self.beleg(a)['ergebnis'])
+        self.au.profile[0]['name'] = 'Fake'
+        self.antwort = None
+        a = self.schaerfen()
+        self.arbeiten()
+        b = self.schaerfen()
+        self.arbeiten()
+        self.assertIn(' (2))', self.beleg(b)['ergebnis'])
+        self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 3)
+        # Derselbe Kasten wird auch in einem weiteren Lauf über seinen Stand erkannt.
+        self.antwort = self.beleg(a)['antwort']
+        c = self.schaerfen()
+        self.arbeiten()
+        self.assertEqual(self.beleg(c)['ergebnis'], self.beleg(a)['ergebnis'])
+        self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 3)
+
+    def test_e_absturz_nach_anhaengen_wiederholen_ohne_aufruf(self):
+        self.vorbereiten()
+        a = self.schaerfen()
+        setzen = prompts._kopf_setzen
+        def absturz(datei, werte, *args, **kwargs):
+            if 'ergebnis' in werte:
+                raise RuntimeError('Absturz vor Ergebnis')
+            return setzen(datei, werte, *args, **kwargs)
+        with patch('werkstatt.prompts._kopf_setzen', side_effect=absturz):
+            self.arbeiten()
+        self.assertEqual((a['zustand'], self.fake.aufrufe, self.beleg(a)['ergebnis']), ('fehler', 1, 'offen'))
+        self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 2)
+        self.au.aktion(a['id'], 'wiederholen')
+        self.arbeiten()
+        self.assertEqual((a['zustand'], self.fake.aufrufe), ('fertig', 1))
+        self.assertEqual((self.beleg(a)['tokens'], self.beleg(a)['kosten_usd']), (22, 0.1))
+        self.assertEqual(len(self.p.lesen(self.e['id'])['fassungen']), 2)
+        self.assertTrue(self.beleg(a)['ergebnis'].startswith('übernommen'))
+
+    def test_f_skill_fehlt_vor_einreihen_und_vorschaukonflikt(self):
+        self.vorbereiten()
+        v = self.p.schaerfen_vorschau(self.sd)
+        skill = Path(self.cfg['prompts']['skill'])
+        skill.write_text('Andere Regeln', encoding='utf-8')
+        with self.assertRaises(prompts.Konflikt):
+            self.p.schaerfen(dict(self.sd, gesendet_stand=v['gesendet_stand']))
+        skill.unlink()
+        with self.assertRaises(prompts.PromptFehler) as ex:
+            self.p.schaerfen(dict(self.sd, gesendet_stand=v['gesendet_stand']))
+        self.assertEqual(ex.exception.code, 'skill_fehlt')
+        self.assertEqual(self.au.liste, [])
+        self.assertFalse((self.basis / 'Prompts' / self.e['id'] / 'schaerfen').exists())
+
+    def test_g_claude_nicht_angemeldet_grund_und_kein_lauf(self):
+        self.vorbereiten()
+        self.au.profile[0]['anbieter'] = 'claude'
+        claude = self.au.anbieter['claude']
+        with patch.object(claude, 'exe', return_value='claude.exe'), patch.object(claude, 'anmeldung', return_value=None), \
+                patch.object(claude, 'kontext', return_value=200000):
+            v = self.p.schaerfen_vorschau(self.sd)
+            self.assertFalse(v['schreibmodell']['verfuegbar'])
+            self.assertIn('auth login', v['schreibmodell']['grund'])
+            with self.assertRaisesRegex(prompts.PromptFehler, 'auth login'):
+                self.p.schaerfen(dict(self.sd, gesendet_stand=v['gesendet_stand']))
+        self.assertEqual(self.au.liste, [])
+
+    def test_h_i_material_snapshot_geaendert_geloescht_und_skill_snapshot(self):
+        self.vorbereiten()
+        for loeschen in (False, True):
+            datei = prompts.beleg_anlegen(str(self.basis / 'Prompts' / self.e['id'] / 'tests'),
+                {'fassung': 'Fassung 1', 'auswerter': 'Fake', 'erstellt': '2026-11-06'}, 'Baue [A].', {'felder': {}})
+            material = 'Material\n~~~\n  ~~~\n' + 'x' * 31000
+            prompts.antwort_schreiben(datei, material)
+            self.sd['material'] = Path(datei).name
+            a = self.schaerfen()
+            b = self.beleg(a)
+            self.assertEqual(b['eingaben']['material']['wert'], material[:30000])
+            if loeschen:
+                Path(datei).unlink()
+            else:
+                prompts.antwort_schreiben(datei, 'Geändertes Material')
+            Path(self.cfg['prompts']['skill']).write_text('Späterer Skill', encoding='utf-8')
+            self.arbeiten()
+            self.assertEqual(a['zustand'], 'fertig')
+            self.assertIn(material[:30000], self.fake.texte[-1])
+            self.assertNotIn('Geändertes Material', self.fake.texte[-1])
+            self.assertIn('Kasten mit 4 Tilden', self.fake.texte[-1])
+
+    def test_i_hand_geaendert_fehler_kein_modellaufruf(self):
+        self.vorbereiten()
+        for alt, neu in [('Baue [A].', 'Anders [A].'), ('Regeln zum Schärfen', 'Andere Regeln')]:
+            a = self.schaerfen()
+            pfad = Path(a['datei'])
+            pfad.write_text(pfad.read_text(encoding='utf-8').replace(alt, neu), encoding='utf-8')
+            self.arbeiten()
+            self.assertEqual((a['zustand'], a['code'], self.fake.aufrufe), ('fehler', 'beleg_geaendert', 0))
+
+    def test_neustart_verwaist_wiederholen_und_entfernen(self):
+        self.vorbereiten()
+        a = self.schaerfen()
+        self.au._naechste()
+        b = self.schaerfen()
+        self.au.liste.remove(b)
+        self.au._speichern()
+        self.au = self.neu()
+        self.p = self.au.prompts
+        a = self.au.liste[0]
+        self.assertEqual((a['zustand'], self.beleg(a)['zustand']), ('abgebrochen', 'abgebrochen'))
+        self.assertEqual(self.beleg(b)['meldung'], 'Einreihung unvollständig')
+        self.au.aktion(a['id'], 'wiederholen')
+        self.p.aktion({'aktion': 'wiederholen_beleg', 'id': self.e['id'], 'datei': Path(b['datei']).name,
+                       'art_ordner': 'schaerfen'})
+        with self.assertRaises(prompts.Konflikt):
+            self.p.aktion({'aktion': 'wiederholen_beleg', 'id': self.e['id'], 'datei': Path(b['datei']).name,
+                           'art_ordner': 'schaerfen'})
+        self.fake = self.au.anbieter['fake']
+        self.vorbereiten()
+        self.arbeiten()
+        self.assertEqual([x['zustand'] for x in self.au.liste], ['fertig', 'fertig'])
+        self.assertTrue(all(self.beleg(x)['ergebnis'].startswith('übernommen') for x in self.au.liste))
+        self.assertEqual(self.fake.aufrufe, 2)
+        vorher = Path(a['datei']).read_bytes()
+        self.au.aktion(a['id'], 'entfernen')
+        self.assertEqual(Path(a['datei']).read_bytes(), vorher)
+
+    def test_kontext_und_anbieter_vor_senden_erneut_geprueft(self):
+        self.vorbereiten()
+        a = self.schaerfen()
+        self.fake.kontextwert = 64
+        self.arbeiten()
+        self.assertEqual((a['code'], self.beleg(a)['zustand'], self.fake.aufrufe), ('kontext', 'fehler', 0))
+        self.fake.kontextwert = 131072
+        self.au.aktion(a['id'], 'wiederholen')
+        with patch.object(self.fake, 'verfuegbar', return_value=(False, 'Nicht verfügbar')):
+            self.arbeiten()
+        self.assertEqual((a['code'], self.fake.aufrufe), ('anbieter', 0))
+
+
 class GeladenerKontext(unittest.TestCase):
     def test_health_gleicher_name_zwei_varianten(self):
         lokal = auswertung.Lokal({})

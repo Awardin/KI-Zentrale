@@ -13,7 +13,7 @@ function pGeschuetzt() {
 function pLaeuft() {
   const aktiv = (a) => a.zustand === 'wartet' || a.zustand === 'laeuft';
   return (P.warteschlange || []).some(aktiv)
-    || (P.eintraege.find((e) => e.id === P.gewaehlt)?.tests || []).some(aktiv);
+    || ['tests', 'schaerfen'].some((art) => (P.eintraege.find((e) => e.id === P.gewaehlt)?.[art] || []).some(aktiv));
 }
 
 function pLadenFaellig() {
@@ -102,7 +102,7 @@ async function pWaehlen(id) {
       e.herkunft === 'ordner' || id.startsWith('schatten:') ? 'ordner' : 'sammlung'))];
     if (e.bearbeitbar) knoepfe.push(pKnopf('Kopfzeilen bearbeiten …', () => pDialog(e, 'kopf')),
       pKnopf('Neue Fassung …', () => pDialog(e, 'fassung_neu')));
-    if (!e.fehler && e.fassungen.length) knoepfe.push(pKnopf('Testen …', () => pTestdialog(e)));
+    if (!e.fehler && e.fassungen.length) knoepfe.push(pKnopf('Testen …', () => pTestdialog(e)), pSchaerfenMenue(e));
     const quelle = /^https?:\/\//i.test(e.quelle || '')
       ? h('a', { href: e.quelle, target: '_blank', rel: 'noopener', text: e.quelle })
       : h('span', { text: e.quelle || '' });
@@ -125,7 +125,7 @@ async function pWaehlen(id) {
       if (e.bearbeitbar) karte.append(h('div', { class: 'p-knoepfe' },
         pKnopf('Bearbeiten …', () => pDialog(e, 'fassung_speichern', f)),
         pKnopf('Als bevorzugt', () => pAktion({ aktion: 'bevorzugt', id, name: f.name, kopf_stand: e.kopf_stand }))));
-      if (!e.fehler) karte.append(pKnopf('Testen …', () => pTestdialog(e, f.name)));
+      if (!e.fehler) karte.append(pKnopf('Testen …', () => pTestdialog(e, f.name)), pSchaerfenMenue(e, f.name));
       inhalt.push(karte);
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Tests' }));
@@ -169,13 +169,31 @@ async function pWaehlen(id) {
         pAktion({ aktion: 'wiederholen_beleg', id: e.id, datei: t.datei })));
       inhalt.push(karte);
     }
+    inhalt.push(h('h3', { class: 'abschnitt', text: 'Schärfen' }));
+    for (const t of e.schaerfen || []) {
+      const antwort = h('div', { class: 'f-text' });
+      const ansicht = JSON.stringify([t.datei, 'schaerfen']);
+      if (offen.has(ansicht)) antwort.innerHTML = offen.get(ansicht);
+      const details = h('details', { 'data-p-ansicht': ansicht }, h('summary', { text: 'Ergebnis anzeigen' }), antwort);
+      details.addEventListener('toggle', async () => {
+        if (details.open) {
+          try { pSchaerfenErgebnis(antwort, await pBeleg(e, t, 'schaerfen')); }
+          catch (err) { antwort.textContent = err.message; }
+        }
+      });
+      inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text: [t.erstellt, t.aktion, t.auswerter,
+        t.zielmodell, ZUSTAND[t.zustand] || t.zustand, t.ergebnis, t.fehler].filter(Boolean).join(' · ') }),
+      pKnopf('Öffnen', () => pOeffnen(e, 'schaerfen', t.datei)), details,
+      !t.fehler && t.verwaist && ['abgebrochen', 'fehler'].includes(t.zustand) ? pKnopf('Wiederholen', () =>
+        pAktion({ aktion: 'wiederholen_beleg', id: e.id, datei: t.datei, art_ordner: 'schaerfen' })) : null));
+    }
     for (const a of (e.warteschlange || []).filter((a) => a.prompt?.eintrag === e.id
       && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))) {
       const aktion = (was) => async () => { await api('/api/fassung', { id: a.id, aktion: was }); await pLaden(); };
       inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text:
-        `${a.prompt.fassung} · ${a.auswerter.name} · ${ZUSTAND[a.zustand] || a.zustand} · ${a.meldung || ''}` }),
+        `${a.art === 'schaerfen' ? 'Schärfen · ' : ''}${a.prompt.fassung} · ${a.auswerter.name} · ${ZUSTAND[a.zustand] || a.zustand} · ${a.meldung || ''}` }),
       ...(['wartet', 'laeuft'].includes(a.zustand) ? [pKnopf('Abbrechen', aktion('abbrechen'))]
-        : e.tests.some((t) => t.datei === `${a.prompt.beleg}.md` && t.fehler) ? []
+        : (a.art === 'schaerfen' ? e.schaerfen || [] : e.tests).some((t) => t.datei === `${a.prompt.beleg}.md` && t.fehler) ? []
           : [pKnopf('Wiederholen', aktion('wiederholen'))]),
       a.zustand !== 'laeuft' ? pKnopf('Entfernen', aktion('entfernen')) : null));
     }
@@ -232,6 +250,93 @@ function pDialog(e, aktion, f = null) {
 
 function pBeleg(e, t, was = 'beleg') {
   return api(`/api/prompt-datei?id=${encodeURIComponent(e.id)}&was=${was}&datei=${encodeURIComponent(t.datei)}`);
+}
+
+function pSchaerfenMenue(e, name) {
+  const menue = h('span', { class: 'p-schaerfen-menue', hidden: true });
+  const b = pKnopf('Schärfen ▾', () => {
+    menue.hidden = !menue.hidden;
+    b.setAttribute('aria-expanded', String(!menue.hidden));
+  });
+  b.setAttribute('aria-expanded', 'false');
+  for (const aktion of ['Schärfen', 'Erst klären', 'Kürzen']) menue.append(pKnopf(aktion, async () => {
+    menue.hidden = true; b.setAttribute('aria-expanded', 'false');
+    await pSchaerfendialog(e, name, aktion);
+  }));
+  return h('span', {}, b, menue);
+}
+
+function pSchaerfenErgebnis(box, b) {
+  if (b.aktion === 'Erst klären') {
+    const fragen = h('div'); fragen.innerHTML = markdown(b.fragen || 'Noch keine Antwort.');
+    box.replaceChildren(fragen); return;
+  }
+  const stichpunkte = h('div'); stichpunkte.innerHTML = markdown(b.stichpunkte || 'Noch keine Antwort.');
+  box.replaceChildren(h('div', { class: 'p-vergleich' },
+    h('section', {}, h('h4', { text: 'Original' }), h('pre', { class: 'p-text', text: b.original })),
+    h('section', {}, h('h4', { text: 'Neue Fassung' }), h('pre', { class: 'p-text', text: b.neue_fassung || 'Keine gültige neue Fassung.' }))),
+  // replaceChildren würde ein null als Text „null“ anhängen, darum vorher herausfiltern.
+  ...[stichpunkte, b.neue_platzhalter?.length ? h('p', { text: `Neue Platzhalter: ${b.neue_platzhalter.map((n) => `[${n}]`).join(', ')}` }) : null].filter(Boolean));
+}
+
+async function pSchaerfendialog(e, name, aktion = 'Schärfen') {
+  const stand = await api('/api/zusammenfassung');
+  const auswahl = (beschriftung, optionen) => {
+    const s = h('select', { 'aria-label': beschriftung }, ...optionen);
+    return s;
+  };
+  const fassung = auswahl('Fassung', e.fassungen.map((f) => h('option', { value: f.name, text: f.name })));
+  fassung.value = name || e.bevorzugt || e.fassungen[0].name;
+  const art = auswahl('Aktion', ['Schärfen', 'Erst klären', 'Kürzen'].map((a) => h('option', { value: a, text: a })));
+  art.value = aktion;
+  const profile = () => stand.auswerter.map((p) => h('option', { value: p.id,
+    text: `${p.name} · ${p.cloud ? `Cloud (${p.cloud})` : 'lokal'}${p.verfuegbar ? '' : ` · ${p.grund}`}` }));
+  const schreibmodell = auswahl('Schreibmodell', profile());
+  const zielmodell = auswahl('Zielmodell', profile());
+  let zuletzt = '', tests = [];
+  try {
+    zuletzt = localStorage.getItem('werkstatt.prompt-schreibmodell') || '';
+    tests = JSON.parse(localStorage.getItem('werkstatt.prompt-auswerter') || '[]');
+  } catch { /* Ohne Speicher die Vorgaben verwenden. */ }
+  schreibmodell.value = (stand.auswerter.find((p) => p.id === zuletzt && p.verfuegbar)
+    || stand.auswerter.find((p) => p.verfuegbar && ['claude', 'codex'].includes(p.anbieter))
+    || stand.auswerter.find((p) => p.verfuegbar) || stand.auswerter[0])?.id || '';
+  zielmodell.value = stand.auswerter.find((p) => tests.includes(p.id))?.id || stand.auswerter[0]?.id || '';
+  const hinweise = h('textarea', { rows: '4', maxlength: '2000', 'aria-label': 'Hinweise' });
+  const material = auswahl('Letzte Antwort als Material', [h('option', { value: '', text: 'Kein Material' }),
+    ...e.tests.filter((t) => t.antwort_vorhanden && !t.fehler).map((t) => h('option', { value: t.datei,
+      text: `${t.erstellt} · ${t.fassung} · ${t.auswerter}` }))]);
+  const rueck = h('p', { class: 'warnung', 'aria-live': 'polite' });
+  const vorschauInhalt = h('div');
+  const vorschau = h('details', {}, h('summary', { text: 'Vorschau' }), vorschauInhalt);
+  let geprueft = null;
+  const eingabe = () => ({ id: e.id, fassung: fassung.value, schaerfen_aktion: art.value,
+    schreibmodell: schreibmodell.value, zielmodell: zielmodell.value, hinweise: hinweise.value, material: material.value });
+  const feld = (text, input) => h('label', { class: 'dialog-feld' }, text, input);
+  const d = dialogOeffnen(`Schärfen: ${e.titel}`, [feld('Fassung', fassung), feld('Aktion', art),
+    feld('Schreibmodell', schreibmodell), feld('Zielmodell', zielmodell), feld('Hinweise', hinweise),
+    feld('Letzte Antwort als Material', material), vorschau, rueck], [
+    pKnopf('Abbrechen', () => d.close()), pKnopf('Vorschau berechnen', async () => {
+      try {
+        const daten = eingabe();
+        const v = await api('/api/prompt', { ...daten, aktion: 'schaerfen_vorschau' });
+        const p = v.schreibmodell;
+        geprueft = p.verfuegbar ? { eingabe: JSON.stringify(daten), stand: v.gesendet_stand } : null;
+        vorschauInhalt.replaceChildren(h('pre', { class: 'p-text', text: v.auftrag }),
+          h('p', { text: `Stand: ${v.gesendet_stand}` }), h('p', { text:
+            `${p.name} · ${p.verarbeitung} · etwa ${Math.ceil(p.geschaetzt || 0)} Token / ${p.kontext || 'unbekannt'} Kontext · ${p.kontext_quelle} · ${p.hinweis || ''} · ${p.grund || ''}` }));
+        vorschau.open = true; rueck.textContent = p.verfuegbar ? '' : p.grund;
+      } catch (err) { geprueft = null; rueck.textContent = err.message; }
+    }), pKnopf('Start', async () => {
+      try {
+        const daten = eingabe();
+        if (!geprueft || geprueft.eingabe !== JSON.stringify(daten)) throw Error('Bitte zuerst die aktuelle Vorschau prüfen.');
+        await api('/api/prompt', { ...daten, aktion: 'schaerfen', gesendet_stand: geprueft.stand });
+        try { localStorage.setItem('werkstatt.prompt-schreibmodell', daten.schreibmodell); } catch { /* egal */ }
+        d.close(); await pLaden();
+      } catch (err) { rueck.textContent = err.message; }
+    }),
+  ], true);
 }
 
 async function pTestdialog(e, name, beleg = null) {
