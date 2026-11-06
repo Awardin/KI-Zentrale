@@ -170,7 +170,9 @@ Start: Doppelklick auf **Werkstatt starten** in `C:\Workstation` (Dienst auf
 
 Reiter **Zusammenfassung** (oder „Zusammenfassen“ an einem fertigen Auftrag):
 
-- **Links** alle Transkripte aus `Arbeitsmaterial\watch`, durchsuchbar.
+- **Links** alle Transkripte aus `Arbeitsmaterial\watch`, durchsuchbar – oben im Arbeitsordner und eine Ebene
+  tiefer in den Bereichsordnern des Skills watch (`<Bereichsordner>\<Titel> [ID]`, seit 25.10.2026); der Bereich
+  steht leise in der Listenzeile, Ordner mit `_` bleiben außen vor.
 - **Auswerter** anhaken, mehrere zugleich: Codex (Modelle und Denkstufen aus der Codex-App),
   Claude (eigene Anmeldung der Kommandozeile, Abo), DeepSeek direkt (Flash, V4 Pro; Schlüssel wird aus
   DSH Desktop gelesen, `~\.dsh\.credentials.yaml`; Denkstufe ohne Nachdenken/niedrig/hoch/maximal),

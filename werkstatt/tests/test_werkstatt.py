@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from werkstatt import auftraege, platz, quellen, watch_lauf  # noqa: E402
+from werkstatt import auftraege, auswertung, platz, quellen, watch_lauf  # noqa: E402
 
 W = 2800
 
@@ -119,6 +119,18 @@ class YouTube(unittest.TestCase):
         self.assertEqual(teile[2][1], 'C:\\Kurs\\Modul 1.mp4')
 
 
+def lauf_schreiben(ordner, start=0, ende=270.6, status='complete', sha='abc'):
+    """Ein watch-Lauf wie auf der Platte: run.json mit Signatur und Abschnitten plus die Transkriptdateien."""
+    os.makedirs(ordner, exist_ok=True)
+    with open(os.path.join(ordner, 'run.json'), 'w', encoding='utf-8') as f:
+        json.dump({'status': status, 'signature': {'start': start, 'end': ende, 'source_sha256': sha,
+                                                   'language': 'de', 'model': 'x/faster-whisper-medium'},
+                   'chunks': [{'index': 0, 'start': 0, 'end': 150, 'status': 'complete'},
+                              {'index': 1, 'start': 150, 'end': ende, 'status': 'pending'}]}, f)
+    for n in watch_lauf.TRANSKRIPT_DATEIEN:
+        open(os.path.join(ordner, n), 'w').close()
+
+
 class Vorhandenes(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -127,15 +139,8 @@ class Vorhandenes(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def lauf(self, ordner, start=0, ende=270.6, status='complete', sha='abc'):
-        os.makedirs(ordner, exist_ok=True)
-        with open(os.path.join(ordner, 'run.json'), 'w', encoding='utf-8') as f:
-            json.dump({'status': status, 'signature': {'start': start, 'end': ende, 'source_sha256': sha,
-                                                       'language': 'de', 'model': 'x/faster-whisper-medium'},
-                       'chunks': [{'index': 0, 'start': 0, 'end': 150, 'status': 'complete'},
-                                  {'index': 1, 'start': 150, 'end': ende, 'status': 'pending'}]}, f)
-        for n in watch_lauf.TRANSKRIPT_DATEIEN:
-            open(os.path.join(ordner, n), 'w').close()
+    def lauf(self, ordner, **laufdaten):
+        lauf_schreiben(ordner, **laufdaten)
 
     def test_videoordner_mit_titel_und_alt(self):
         os.makedirs(os.path.join(self.o, 'Titel [aiS5IUE42G8]'))
@@ -194,6 +199,79 @@ class Vorhandenes(unittest.TestCase):
             self.skipTest('watch nicht vorhanden')
         o = watch_lauf.lokaler_ordner('C:\\A', 'C:\\Kurs\\Modul: 1?.mp4', 'f' * 64, skript)
         self.assertEqual(o, 'C:\\A\\Modul - 1 [datei-ffffffffffff]')
+
+
+class TranskripteAuflisten(unittest.TestCase):
+    """Reiter Zusammenfassung: Videoordner oben im Arbeitsordner und eine Ebene tiefer in Bereichsordnern."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.o = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def pfad(self, *teile):
+        return os.path.join(self.o, *teile)
+
+    def medien(self, ordner, titel, unterordner='audio'):
+        """source.json wie von watch geschrieben, mit vorhandener Mediendatei."""
+        ziel = os.path.join(ordner, unterordner) if unterordner else ordner
+        os.makedirs(ziel, exist_ok=True)
+        medium = os.path.join(ziel, 'ton.webm')
+        open(medium, 'w').close()
+        with open(os.path.join(ziel, 'source.json'), 'w', encoding='utf-8') as f:
+            json.dump({'media_kind': 'audio', 'media_path': medium, 'title': titel, 'duration': 979.8,
+                       'language': 'de', 'source': 'https://www.youtube.com/watch?v=CATtT6NRhNE'}, f)
+
+    def test_oberste_ebene_wie_bisher(self):
+        lauf_schreiben(self.pfad('Mein Video [aiS5IUE42G8]'))
+        # Werkstatt-Ordner nach abgebrochenem Lauf: run.json direkt, der fertige Lauf im Unterordner
+        lauf_schreiben(self.pfad('Datei [datei-ffffffffffff]'), status='running')
+        lauf_schreiben(self.pfad('Datei [datei-ffffffffffff]', 'transkript-2026-11-06-120000'))
+        # Alter Ordner ohne ID mit beliebig benanntem Laufordner bleibt ein Videoordner; der Medientitel gewinnt
+        self.medien(self.pfad('neKG823h_FA'), 'Aus den Medien', unterordner='')
+        lauf_schreiben(self.pfad('neKG823h_FA', 'lauf'))
+        liste = auswertung.transkripte_auflisten(self.o)
+        self.assertEqual(sorted((t['titel'], t['bereich']) for t in liste),
+                         [('Aus den Medien', ''), ('Datei', ''), ('Mein Video', '')])
+        datei = next(t for t in liste if t['titel'] == 'Datei')
+        self.assertEqual(datei['ordner'], self.pfad('Datei [datei-ffffffffffff]'))
+        self.assertEqual(datei['transkript'], self.pfad('Datei [datei-ffffffffffff]', 'transkript-2026-11-06-120000'))
+
+    def test_bereichsordner_mit_zwei_videoordnern(self):
+        self.medien(self.pfad('Privat', 'Blattlausplage [CATtT6NRhNE]'), 'Blattlausplage – 6 Mittel')
+        lauf_schreiben(self.pfad('Privat', 'Blattlausplage [CATtT6NRhNE]'))
+        lauf_schreiben(self.pfad('Privat', 'Mulch im Garten [u8wOXGjAoBc]', 'transkript'))
+        os.makedirs(self.pfad('Privat', 'Mulch im Garten [u8wOXGjAoBc]', 'zusammenfassungen'))
+        open(self.pfad('Privat', 'Mulch im Garten [u8wOXGjAoBc]', 'zusammenfassungen', 'Kurz – Codex.md'), 'w').close()
+        lauf_schreiben(self.pfad('Privat', 'Webinar 2026-10-13'))  # von Hand benannt, ohne ID
+        liste = auswertung.transkripte_auflisten(self.o)
+        self.assertEqual(sorted((t['titel'], t['bereich'], t['fassungen']) for t in liste),
+                         [('Blattlausplage – 6 Mittel', 'Privat', 0), ('Mulch im Garten', 'Privat', 1),
+                          ('Webinar 2026-10-13', 'Privat', 0)])
+        mulch = next(t for t in liste if t['titel'] == 'Mulch im Garten')
+        self.assertEqual(mulch['ordner'], self.pfad('Privat', 'Mulch im Garten [u8wOXGjAoBc]'))
+        self.assertEqual(mulch['transkript'], self.pfad('Privat', 'Mulch im Garten [u8wOXGjAoBc]', 'transkript'))
+
+    def test_bereichsordner_ohne_laeufe_erscheint_nicht(self):
+        lauf_schreiben(self.pfad('Ernaehrung-und-Lebensstil', 'Noch nicht fertig [xxxxxxxxxxx]'), status='running')
+        os.makedirs(self.pfad('Quellen-und-Archiv'))
+        self.assertEqual(auswertung.transkripte_auflisten(self.o), [])
+
+    def test_unterstrich_ordner_uebersprungen(self):
+        lauf_schreiben(self.pfad('_unzugeordnet', 'Video_00020_ [datei-09d758a5323e]'))
+        lauf_schreiben(self.pfad('_sammlungen', 'Projekt'))
+        lauf_schreiben(self.pfad('Privat', '_alt [CATtT6NRhNE]'))
+        self.assertEqual(auswertung.transkripte_auflisten(self.o), [])
+
+    def test_sortierung_nach_aenderungszeit_bleibt(self):
+        zeiten = {('Oben [aaaaaaaaaaa]',): 1_700_000_200, ('Privat', 'Neu [bbbbbbbbbbb]'): 1_700_000_300,
+                  ('Technik-und-KI', 'Alt [ccccccccccc]', 'transkript'): 1_700_000_100}
+        for teile, zeit in zeiten.items():
+            lauf_schreiben(self.pfad(*teile))
+            os.utime(self.pfad(*teile, 'run.json'), (zeit, zeit))
+        self.assertEqual([t['titel'] for t in auswertung.transkripte_auflisten(self.o)], ['Neu', 'Oben', 'Alt'])
 
 
 class Abgleich(unittest.TestCase):

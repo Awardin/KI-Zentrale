@@ -612,28 +612,58 @@ def ollama_senden(url, daten, oeffnen=None, melden=None, timeout=3600):
 
 # ---------------------------------------------------------------- Transkripte
 
-def transkripte_auflisten(arbeitsordner):
-    """Alle vollständigen Transkripte im watch-Arbeitsordner, neueste zuerst."""
-    out = []
+_ID_ANHANG = re.compile(r'\s*\[[^\]]+\]$')
+
+
+def _sichtbare_unterordner(ordner):
+    """Unterordner ohne `_`-Präfix (Sammlungen, Umzugsprotokolle und Unzugeordnetes bleiben außen vor)."""
     try:
-        eintraege = [e for e in os.scandir(arbeitsordner) if e.is_dir() and not e.name.startswith('_')]
+        return [e for e in os.scandir(ordner) if e.is_dir() and not e.name.startswith('_')]
     except OSError:
-        return out
-    for e in eintraege:
-        laeufe = watch_lauf.transkripte(e.path)
-        lauf = watch_lauf.transkript_passend(laeufe) or (laeufe[0] if laeufe else None)
-        if not lauf:
-            continue
-        medien = watch_lauf.medien_im_ordner(e.path)
-        try:
-            geaendert = os.path.getmtime(os.path.join(lauf['ordner'], 'run.json'))
-        except OSError:
-            geaendert = 0
-        fassungen = len(glob.glob(os.path.join(glob.escape(e.path), 'zusammenfassungen', '*.md')))
-        out.append({'ordner': e.path, 'transkript': lauf['ordner'],
-                    'titel': medien['titel'] or re.sub(r'\s*\[[^\]]+\]$', '', e.name),
-                    'quelle': medien['quelle'] or '', 'dauer': medien['dauer'] or lauf['ende'],
-                    'sprache': lauf['sprache'], 'geaendert': geaendert, 'fassungen': fassungen})
+        return []
+
+
+def _ist_bereichsordner(ordner):
+    """Bereichsordner von watch enthalten Videoordner `<Titel> [ID]` (so benennt der Skill jeden Lauf); ein
+    Videoordner selbst hat nur Unterordner wie `audio`, `video`, `transkript…` oder `bilder…`. Ein Bereich,
+    in dem ausschließlich von Hand benannte Ordner liegen, wird nicht erkannt und zählt wie bisher."""
+    try:
+        return any(e.is_dir() and _ID_ANHANG.search(e.name) for e in os.scandir(ordner))
+    except OSError:
+        return False
+
+
+def _transkript(e, bereich):
+    """Eintrag für einen Videoordner mit vollständigem Lauf, sonst None."""
+    laeufe = watch_lauf.transkripte(e.path)
+    lauf = watch_lauf.transkript_passend(laeufe) or (laeufe[0] if laeufe else None)
+    if not lauf:
+        return None
+    medien = watch_lauf.medien_im_ordner(e.path)
+    try:
+        geaendert = os.path.getmtime(os.path.join(lauf['ordner'], 'run.json'))
+    except OSError:
+        geaendert = 0
+    fassungen = len(glob.glob(os.path.join(glob.escape(e.path), 'zusammenfassungen', '*.md')))
+    return {'ordner': e.path, 'transkript': lauf['ordner'], 'titel': medien['titel'] or _ID_ANHANG.sub('', e.name),
+            'quelle': medien['quelle'] or '', 'dauer': medien['dauer'] or lauf['ende'], 'sprache': lauf['sprache'],
+            'geaendert': geaendert, 'fassungen': fassungen, 'bereich': bereich}
+
+
+def transkripte_auflisten(arbeitsordner):
+    """Alle vollständigen Transkripte im watch-Arbeitsordner, neueste zuerst.
+
+    Videoordner liegen oben im Arbeitsordner (Werkstatt, Übergangszeit) oder eine Ebene tiefer in Bereichsordnern
+    (Skill watch seit 25.10.2026). Ein Ordner zählt nur, wenn er selbst einen Lauf hat – der Bereichsordner als
+    Ganzes nie; `bereich` nennt seinen Namen, oben bleibt es leer.
+    """
+    out = []
+    for e in _sichtbare_unterordner(arbeitsordner):
+        if _ist_bereichsordner(e.path):
+            eintraege = [_transkript(v, e.name) for v in _sichtbare_unterordner(e.path)]
+        else:
+            eintraege = [_transkript(e, '')]
+        out += [t for t in eintraege if t]
     out.sort(key=lambda t: -t['geaendert'])
     return out
 

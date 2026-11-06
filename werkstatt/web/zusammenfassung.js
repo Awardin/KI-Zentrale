@@ -93,7 +93,7 @@ function transkripteZeichnen() {
       type: 'button', 'aria-current': ZF.gewaehlt?.ordner === t.ordner ? 'true' : 'false', title: t.titel,
       onclick: () => transkriptWaehlen(t.ordner),
     }, h('b', { text: t.titel }),
-    h('span', { text: [dauer(t.dauer), t.quelle.startsWith('http') ? 'YouTube' : 'Datei', t.fassungen ? `${t.fassungen} Fassungen` : ''].filter(Boolean).join(' · ') })))) : [h('li', { class: 'leer', text: suche ? 'Kein Titel passt.' : 'Noch keine Transkripte.' })]));
+    h('span', { text: [dauer(t.dauer), t.quelle.startsWith('http') ? 'YouTube' : 'Datei', t.bereich, t.fassungen ? `${t.fassungen} Fassungen` : ''].filter(Boolean).join(' · ') })))) : [h('li', { class: 'leer', text: suche ? 'Kein Titel passt.' : 'Noch keine Transkripte.' })]));
 }
 
 function transkriptWaehlen(ordner) {
