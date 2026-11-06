@@ -14,7 +14,7 @@ BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASIS)
 
 from gemeinsam import dienst, winapi  # noqa: E402
-from werkstatt import anweisungen, messungen, platz, quellen, studio, texterkennung  # noqa: E402
+from werkstatt import anweisungen, messungen, platz, prompts, quellen, studio, texterkennung  # noqa: E402
 from werkstatt.auftraege import Warteschlange  # noqa: E402
 from werkstatt.auswertung import Auswertungen  # noqa: E402
 
@@ -35,6 +35,7 @@ class Werkstatt:
         # Whisper und ein lokales Sprachmodell rechnen nie gleichzeitig (Regel aus watch).
         self.schlange = Warteschlange(cfg, DATEN_ORDNER, self.log, self.zentrale)
         self.auswertung = Auswertungen(cfg, DATEN_ORDNER, self.log)
+        self.prompts = prompts.Index(cfg['prompts'], cfg['promptsammlung'])
         with open(cfg['zentrale_config'], encoding='utf-8') as f:
             zc = json.load(f)
         self.messlauf = messungen.Messlauf(os.path.join(DATEN_ORDNER, 'messlaeufe.json'),
@@ -308,7 +309,7 @@ class Anfrage(dienst.Anfrage):
     statisch = dict(dienst.STATISCH_STANDARD,
                     **{f'/{n}': (n, 'text/javascript; charset=utf-8')
                        for n in ('zusammenfassung.js', 'bildvideo.js', 'maske.js', 'studio.js', 'messungen.js',
-                                 'texterkennung.js')})
+                                 'texterkennung.js', 'prompts.js')})
 
     def _datei_senden(self, pfad):
         """Mediendatei der Bibliothek, mit Teilbereichen (Range) für Videos; die Adresse enthält die Änderungszeit."""
@@ -361,6 +362,17 @@ class Anfrage(dienst.Anfrage):
             return self._senden(200, KENNUNG)
         if pfad == '/api/stand':
             return self._senden(200, self.werkstatt.stand())
+        if pfad in ('/api/prompts', '/api/prompt'):
+            from urllib.parse import parse_qs, urlparse
+            try:
+                p = self.werkstatt.prompts
+                daten = p.alle() if pfad == '/api/prompts' else p.lesen(
+                    (parse_qs(urlparse(self.path).query).get('id') or [''])[0])
+                return self._senden(200, daten)
+            except anweisungen.Konflikt as ex:
+                return self._senden(409, {'fehler': str(ex)})
+            except Exception as ex:
+                return self._senden(400, {'fehler': str(ex)})
         a = self.werkstatt.auswertung
         if pfad == '/api/zusammenfassung':
             return self._senden(200, a.stand())
@@ -405,6 +417,13 @@ class Anfrage(dienst.Anfrage):
             return self._senden(400, {'fehler': 'Ungültige Anfrage.'})
         w = self.werkstatt
         pfad = self.path
+        if pfad == '/api/prompt':
+            try:
+                return self._senden(200, w.prompts.aktion(daten))
+            except anweisungen.Konflikt as ex:
+                return self._senden(409, {'fehler': str(ex)})
+            except Exception as ex:
+                return self._senden(400, {'fehler': str(ex)})
         try:
             if pfad == '/api/hinzufuegen':
                 return self._senden(*w.hinzufuegen(daten))

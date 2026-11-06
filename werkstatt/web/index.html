@@ -20,6 +20,7 @@
   <nav class="reiter" aria-label="Bereiche">
     <button type="button" data-reiter="transkription" class="aktiv" aria-current="page">Transkription</button>
     <button type="button" data-reiter="zusammenfassung">Zusammenfassung</button>
+    <button type="button" data-reiter="prompts">Prompts</button>
     <button type="button" data-reiter="bildvideo">Bild &amp; Video</button>
     <button type="button" data-reiter="texterkennung">Texterkennung</button>
     <button type="button" data-reiter="messungen">Messungen</button>
@@ -78,6 +79,28 @@
         </div>
         <div class="fassungen nebeneinander" id="zf-fassungen"></div>
       </div>
+    </section>
+  </div>
+</main>
+
+<main id="reiter-prompts" hidden>
+  <div class="zf-raster">
+    <aside class="zf-liste" aria-labelledby="p-liste-titel">
+      <div class="zf-liste-kopf">
+        <h2 id="p-liste-titel" class="abschnitt">Prompts</h2>
+        <button class="knopf knopf-klein" id="p-neu" type="button">Neu …</button>
+        <button class="knopf knopf-klein" id="p-laden" type="button">Neu einlesen</button>
+      </div>
+      <input type="search" id="p-suche" placeholder="Aufgabe suchen …" aria-label="Prompts durchsuchen">
+      <div class="p-filter">
+        <label>Herkunft<select id="p-herkunft"><option value="">Alle</option><option value="ordner">Ordner</option><option value="sammlung">Sammlung</option></select></label>
+        <label>Status<select id="p-status"><option value="">Alle</option><option value="getestet">Getestet</option><option value="ungetestet">Ungetestet</option></select></label>
+      </div>
+      <ol class="p-liste" id="p-liste"></ol>
+    </aside>
+    <section class="zf-haupt" aria-live="polite">
+      <div id="p-rueck" class="warnung"></div>
+      <div id="p-inhalt"><p class="zf-leer">Links einen Prompt wählen.</p></div>
     </section>
   </div>
 </main>
@@ -378,6 +401,7 @@
 <dialog id="dialog" aria-labelledby="dialog-titel"></dialog>
 <script src="/app.js"></script>
 <script src="/zusammenfassung.js"></script>
+<script src="/prompts.js"></script>
 <script src="/bildvideo.js"></script>
 <script src="/maske.js"></script>
 <script src="/studio.js"></script>

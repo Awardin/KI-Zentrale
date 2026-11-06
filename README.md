@@ -195,6 +195,27 @@ Reiter **Zusammenfassung** (oder „Zusammenfassen“ an einem fertigen Auftrag)
   GPU-Sperre mehr); das Modell ist schon geladen und braucht keinen neuen Platz.
   Cloud-Fassungen laufen zu zweit parallel.
 
+### Prompts
+
+Der Reiter **Prompts** sammelt Coding- und Kreativprompts unter
+`C:\Workstation\Arbeitsmaterial\Prompts\<Kennung>\prompt.md`. „Neu“ legt Titel, Quelle,
+Schlagworte und „Fassung 1“ an. Links lassen sich Titel, Quelle, Schlagworte und Fassungen
+durchsuchen sowie Herkunft und getestet/ungetestet filtern. Rechts stehen Kopf und Fassungen
+als unveränderter Text. „Bearbeiten“, „Neue Fassung“ und „Als bevorzugt“ speichern in der
+Datei; Handänderungen bleiben erhalten. Bei einem veralteten Stand bitte neu einlesen.
+Mehrdeutige oder unlesbare Dateien bleiben sichtbar und lassen sich über „Im Ordner öffnen“ prüfen.
+
+Wissensprompts bleiben ausschließlich in `C:\Users\sasch\Desktop\Meine-Wissens-Prompts.md`.
+Der Reiter liest ihre Kästen außerhalb des Werkstatt-Abschnitts und öffnet die Sammlung zur
+Handbearbeitung. Vorhandene Belegköpfe unter `tests\` bestimmen den Teststatus und die Testliste;
+Belege und spätere Vorschläge zu Sammlungskästen liegen in `_Sammlung` mit `eintrag.json`.
+Bei unklarer Zuordnung zeigt die Liste die möglichen Kästen mit „Diesem Kasten zuordnen“.
+Der Sammlungstext wird dabei nicht verändert.
+
+Dies ist Scheibe 1 (Ablage und Suche). Felder wie `[Transkript]` bleiben wörtlich im Prompt.
+Testdialog, Belege schreiben, Laufzustände und Schärfen folgen in Scheibe 2 und 3.
+Für spätere Codex-Tests gilt: Sandbox nur lesend, mit lesenden Werkzeugen und globaler `AGENTS.md`.
+
 ### Bild & Video
 
 ComfyUI starten und beenden geschieht in der Modellzentrale, die vorher den Platz prüft; ist es aus,

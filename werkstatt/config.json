@@ -1,4 +1,10 @@
 {
+  "prompts": {
+    "ordner": "C:\\Workstation\\Arbeitsmaterial\\Prompts",
+    "skill": "C:\\Workstation\\Skills\\aktiv\\prompt-schaerfen\\SKILL.md",
+    "dateiwurzeln": ["C:\\Workstation", "C:\\Users\\sasch\\Desktop"],
+    "feld_max_zeichen": 400000
+  },
   "port": 3895,
   "zentrale_port": 3894,
   "watch": {

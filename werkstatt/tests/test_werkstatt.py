@@ -223,5 +223,142 @@ class Abgleich(unittest.TestCase):
             self.assertFalse(zu_viele)
 
 
+class PromptRouten(unittest.TestCase):
+    """HTTP-Handler direkt ausführen: kein Dienst, kein Zugriff auf echte Arbeitsdaten."""
+    def setUp(self):
+        from werkstatt import prompts, server
+        self.tmp = tempfile.TemporaryDirectory()
+        sammlung = os.path.join(self.tmp.name, 'Sammlung.md')
+        with open(sammlung, 'w', encoding='utf-8') as f:
+            f.write('### Wissen\n~~~text\nSuchen\n~~~\n')
+        self.p = prompts.Index({'ordner': os.path.join(self.tmp.name, 'Prompts'),
+                                'dateiwurzeln': [self.tmp.name]}, sammlung)
+        self.h = server.Anfrage.__new__(server.Anfrage)
+        self.h.server = Mock(server_address=('127.0.0.1', 3895))
+        self.h.headers = {'Host': '127.0.0.1:3895', 'X-Werkstatt': '1'}
+        self.h.werkstatt = Mock(prompts=self.p)
+        self.h._senden = Mock(side_effect=lambda code, daten: (code, daten))
+        self.h._statisch_senden = Mock(return_value=False)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def post(self, daten):
+        self.h.path = '/api/prompt'
+        self.h._json_lesen = Mock(return_value=daten)
+        return self.h.do_POST()
+
+    def get(self, pfad):
+        self.h.path = pfad
+        return self.h.do_GET()
+
+    def test_neu_liste_detail_und_alle_schreibaktionen(self):
+        code, e = self.post({'aktion': 'neu', 'titel': 'Test', 'quelle': '', 'schlagworte': 'html', 'text': 'HTML'})
+        self.assertEqual(code, 200)
+        eid = e['id']
+        self.assertEqual(self.get('/api/prompts')[0], 200)
+        self.assertEqual(self.get('/api/prompt?id=' + eid)[1]['titel'], 'Test')
+        code, e = self.post({'aktion': 'kopf', 'id': eid, 'titel': 'Titel', 'quelle': 'Quelle',
+                             'schlagworte': 'Tag', 'kopf_stand': e['kopf_stand']})
+        self.assertEqual(code, 200)
+        code, e = self.post({'aktion': 'fassung_speichern', 'id': eid, 'name': 'Fassung 1',
+                             'text': 'Neu', 'stand': e['fassungen'][0]['stand']})
+        self.assertEqual(code, 200)
+        code, e = self.post({'aktion': 'fassung_neu', 'id': eid, 'name': 'Zwei', 'text': 'Zweite'})
+        self.assertEqual(code, 200)
+        code, e = self.post({'aktion': 'bevorzugt', 'id': eid, 'name': 'Zwei', 'kopf_stand': e['kopf_stand']})
+        self.assertEqual((code, e['bevorzugt']), (200, 'Zwei'))
+
+    def test_conflict_kopf_inklusive_titel_und_fassung(self):
+        e = self.p.neu('Test', '', '', 'Alt')
+        daten = {'aktion': 'fassung_speichern', 'id': e['id'], 'name': 'Fassung 1',
+                 'text': 'Neu', 'stand': e['fassungen'][0]['stand']}
+        self.assertEqual(self.post(daten)[0], 200)
+        code, fehler = self.post(daten)
+        self.assertEqual(code, 409)
+        self.assertIn('neu laden', fehler['fehler'])
+        pfad = os.path.join(self.p.ordner, e['id'], 'prompt.md')
+        with open(pfad, encoding='utf-8') as f:
+            text = f.read()
+        with open(pfad, 'w', encoding='utf-8') as f:
+            f.write(text.replace('# Test', '# Extern'))
+        self.assertEqual(self.post({'aktion': 'kopf', 'id': e['id'], 'titel': 'Neu',
+                                    'kopf_stand': e['kopf_stand']})[0], 409)
+
+    def test_oeffnen_unzulaessig_startet_nichts(self):
+        e = self.p.neu('Test', '', '', 'Text')
+        with patch('werkstatt.prompts.os.startfile') as starten:
+            for was in ('beleg', 'schaerfen', 'html'):
+                for name in ('..\\x.cmd', 'C:\\x.md', 'x.cmd', '..\\x.md', 'C:/x.html', 'x.md:strom'):
+                    code, d = self.post({'aktion': 'oeffnen', 'id': e['id'], 'was': was, 'datei': name})
+                    self.assertEqual(code, 400, (was, name))
+                    self.assertIn('fehler', d)
+            starten.assert_not_called()
+            self.assertEqual(self.post({'aktion': 'oeffnen', 'id': e['id'], 'was': 'ordner'})[0], 200)
+            starten.assert_called_once_with(os.path.join(self.p.ordner, e['id']))
+
+    def test_oeffnen_erlaubte_dateien_und_sammlung(self):
+        e = self.p.neu('Test', '', '', 'Text')
+        for unterordner, datei, was in (('tests', 'Beleg.md', 'beleg'), ('tests', 'Beleg.html', 'html'),
+                                       ('schaerfen', 'Vorschlag.md', 'schaerfen')):
+            ordner = os.path.join(self.p.ordner, e['id'], unterordner)
+            os.makedirs(ordner, exist_ok=True)
+            pfad = os.path.join(ordner, datei)
+            with open(pfad, 'w', encoding='utf-8') as f:
+                f.write('Test')
+            with patch('werkstatt.prompts.os.startfile') as starten:
+                self.assertEqual(self.post({'aktion': 'oeffnen', 'id': e['id'], 'was': was, 'datei': datei})[0], 200)
+                starten.assert_called_once_with(pfad)
+        with patch('werkstatt.prompts.os.startfile') as starten:
+            self.assertEqual(self.post({'aktion': 'oeffnen', 'id': 'sammlung:Wissen#1', 'was': 'sammlung',
+                                        'pfad': 'C:\\beliebig.cmd'})[0], 200)
+            starten.assert_called_once_with(self.p.sammlung)
+
+    def test_herkunft_fehler_und_statische_freigabe(self):
+        from werkstatt import server
+        self.assertIn('/prompts.js', server.Anfrage.statisch)
+        del self.h.headers['X-Werkstatt']
+        for aktion in ('neu', 'kopf', 'fassung_speichern', 'fassung_neu', 'bevorzugt', 'oeffnen', 'zuordnen'):
+            self.assertEqual(self.post({'aktion': aktion})[0], 403)
+        self.h.headers['X-Werkstatt'] = '1'
+        self.h.headers['Origin'] = 'http://fremd.example'
+        self.assertEqual(self.post({'aktion': 'neu'})[0], 403)
+        del self.h.headers['Origin']
+        self.assertEqual(self.post({'aktion': 'unbekannt', 'id': 'fehlt'})[0], 400)
+        self.assertEqual(self.get('/api/prompt?id=fehlt')[0], 400)
+        with patch.object(self.p, 'alle', side_effect=RuntimeError('MARKIERUNG')):
+            self.assertEqual(self.get('/api/prompts')[0], 400)
+        self.h.werkstatt.log.assert_not_called()
+
+    def test_oeffnen_junction_ausserhalb(self):
+        import _winapi
+        e = self.p.neu('Test', '', '', 'Text')
+        with tempfile.TemporaryDirectory() as ausserhalb:
+            pfad = os.path.join(ausserhalb, 'Beleg.md')
+            with open(pfad, 'w', encoding='utf-8') as f:
+                f.write('Text')
+            junction = os.path.join(self.p.ordner, e['id'], 'tests')
+            _winapi.CreateJunction(ausserhalb, junction)
+            try:
+                with patch('werkstatt.prompts.os.startfile') as starten:
+                    self.assertEqual(self.post({'aktion': 'oeffnen', 'id': e['id'], 'was': 'beleg',
+                                                'datei': 'Beleg.md'})[0], 400)
+                    starten.assert_not_called()
+            finally:
+                os.rmdir(junction)
+
+    def test_sammlung_zuordnen_route(self):
+        from werkstatt import prompts
+        ordner = os.path.join(self.p.ordner, '_Sammlung', 'Wissen')
+        os.makedirs(ordner)
+        pfad = os.path.join(ordner, 'eintrag.json')
+        with open(pfad, 'w', encoding='utf-8') as f:
+            json.dump({'ueberschrift': 'Wissen', 'nummer': 2, 'stand': 'alt', 'kaesten_vorher': 2}, f)
+        code, d = self.post({'aktion': 'zuordnen', 'id': 'schatten:Wissen', 'ziel': 'sammlung:Wissen#1'})
+        self.assertEqual((code, d['schatten']), (200, 'Wissen'))
+        with open(pfad, encoding='utf-8') as f:
+            self.assertEqual(json.load(f)['stand'], prompts.stand('Suchen'))
+
+
 if __name__ == '__main__':
     unittest.main()

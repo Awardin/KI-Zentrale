@@ -1,0 +1,341 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from werkstatt import prompts  # noqa: E402
+
+
+class Zaun(unittest.TestCase):
+    def test_rundlauf(self):
+        for text in ('', 'Text', 'Text\n', 'Text\r\n',
+                     '~~~\n ~~~\n  ~~~\n   ~~~\n~~~~\n```\n#### kein Kopf',
+                     'Anfang\r\n   ~~~~~text\r\nEnde'):
+            for zeichen in ('~', '`'):
+                with self.subTest(text=text, zeichen=zeichen):
+                    b, = prompts.bloecke(prompts.block_schreiben(text, 'text', zeichen))
+                    self.assertEqual(b['text'], text)
+                    self.assertTrue(b['geschlossen'])
+
+    def test_commonmark_zaunzustand(self):
+        text = '  ~~~~text\n#### innen\n~~~\n```\n   ~~~~~ \n```python\na\n```\n~~~\noffen'
+        a, b, c = prompts.bloecke(text)
+        self.assertEqual((a['auf'], a['zu'], a['laenge']), (0, 4, 4))
+        self.assertIn('#### innen', a['text'])
+        self.assertEqual((b['zeichen'], b['kennung']), ('`', 'python'))
+        self.assertFalse(c['geschlossen'])
+        self.assertEqual(prompts.bloecke('    ~~~text\nx\n    ~~~'), [])
+        self.assertEqual(prompts.bloecke('```a`b\nx'), [])
+
+
+class Kennungen(unittest.TestCase):
+    def test_geraete_reserviert_und_dopplungen(self):
+        for name in ('CON', 'con.txt', 'PRN', 'AUX', 'NUL', 'COM1', 'LPT9.md'):
+            wert = prompts.kennung(name)
+            self.assertIn('_', wert)
+            self.assertFalse(wert.startswith('_'))
+            self.assertNotEqual(wert.split('.')[0].upper(), name.split('.')[0].upper())
+        self.assertEqual(prompts.kennung('A/B'), 'A B')
+        self.assertEqual(prompts.kennung('A:B', ['A B']), 'A B (2)')
+        self.assertEqual(prompts.kennung('hallo', ['Hallo', 'HALLO (2)']), 'hallo (3)')
+        self.assertLessEqual(len(prompts.kennung('a' * 100, ['a' * 70])), 70)
+        with self.assertRaises(ValueError):
+            prompts.kennung('_Sammlung')
+
+
+class Basis(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.basis = Path(self.tmp.name)
+        self.sammlung = self.basis / 'Sammlung.md'
+        self.sammlung.write_text('### Wissen\n~~~text\nSuche\n~~~\n', encoding='utf-8')
+        self.cfg = {'ordner': str(self.basis / 'Prompts'), 'dateiwurzeln': [str(self.basis)]}
+        self.index = prompts.Index(self.cfg, str(self.sammlung))
+        self.d = self.index.neu('Hühnerfarm', 'https://example.org', 'html, spiel', 'Baue HTML.')
+        self.pfad = Path(self.cfg['ordner']) / self.d['id'] / 'prompt.md'
+        self.e = prompts.Eintrag(self.pfad)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def schreiben(self, text):
+        with self.pfad.open('w', encoding='utf-8', newline='') as f:
+            f.write(text)
+
+    def roh(self):
+        with self.pfad.open(encoding='utf-8', newline='') as f:
+            return f.read()
+
+class Ablage(Basis):
+    def test_anlegen_index_sammlung_suchfelder(self):
+        self.index.neu('Videoanalyse', '', 'Video', '[Transkript]\n[Projektkontext]')
+        alle = self.index.alle()['eintraege']
+        self.assertEqual(len(alle), 3)
+        self.assertEqual(sum(d['herkunft'] == 'sammlung' for d in alle), 1)
+        self.assertIn('html', self.d['schlagworte'])
+        self.assertEqual(self.d['bevorzugt'], 'Fassung 1')
+        self.assertEqual(len(list((self.basis / 'Prompts').iterdir())), 2)
+
+    def test_stand_kopfstand_und_neuladen(self):
+        alt = self.e.lesen()
+        self.e.fassung_speichern('Fassung 1', 'Neu', alt['fassungen'][0]['stand'])
+        with self.assertRaises(prompts.Konflikt):
+            self.e.fassung_speichern('Fassung 1', 'Alt', alt['fassungen'][0]['stand'])
+        self.schreiben(self.roh().replace('# Hühnerfarm', '# Geänderter Titel'))
+        with self.assertRaises(prompts.Konflikt):
+            self.e.kopf('Titel', '', '', alt['kopf_stand'])
+        frisch = self.e.lesen()
+        self.e.kopf('Titel', 'Quelle', 'neu', frisch['kopf_stand'])
+        self.e.fassung_speichern('Fassung 1', 'Nach Neuladen', self.e.lesen()['fassungen'][0]['stand'])
+        self.assertEqual(self.e.lesen()['titel'], 'Titel')
+
+    def test_fremde_notiz_nach_laden_bytegleich_crlf(self):
+        self.e.fassung_neu('Zweite', 'Text zwei')
+        self.schreiben(self.roh().replace('\n', '\r\n'))
+        geladen = self.e.lesen()
+        notiz = '\r\nNotiz mit ä, zwei  Leerzeichen.\r\n\r\n'
+        self.schreiben(self.roh().replace('#### Zweite', notiz + '#### Zweite'))
+        vorher = self.pfad.read_bytes()
+        f = geladen['fassungen'][0]
+        self.e.fassung_speichern(f['name'], 'Neu\nzweite Zeile', f['stand'])
+        nachher = self.pfad.read_bytes()
+        self.assertIn(notiz.encode(), nachher)
+        self.assertEqual(vorher.split(notiz.encode())[1], nachher.split(notiz.encode())[1])
+        self.assertNotIn(b'\n', nachher.replace(b'\r\n', b''))
+        self.assertFalse(Path(str(self.pfad) + '.werkstatt.tmp').exists())
+
+    def test_kopf_unbekannte_zeilen_und_notizen_bleiben(self):
+        self.schreiben(self.roh().replace('Quelle:', 'Unbekannt: bleibt\nQuelle:') + '\nNotiz\n')
+        d = self.e.lesen()
+        self.e.kopf('Neu', 'frei', 'Tag', d['kopf_stand'])
+        self.assertIn('Unbekannt: bleibt\n', self.roh())
+        self.assertTrue(self.roh().endswith('\nNotiz\n'))
+        self.e.fassung_neu('Zwei', 'Anderer Text')
+        self.e.bevorzugt('Zwei', self.e.lesen()['kopf_stand'])
+        self.assertEqual(self.e.lesen()['bevorzugt'], 'Zwei')
+        with self.assertRaises(prompts.Konflikt):
+            self.e.bevorzugt('Fassung 1', d['kopf_stand'])
+
+    def test_unlesbar_mehrdeutig_und_notizbloecke(self):
+        roh = self.roh()
+        for zusatz in ('\n~~~text\nzweiter\n~~~\n', '\n~~~python\noffen'):
+            self.schreiben(roh + zusatz)
+            d = self.e.lesen()
+            self.assertEqual(d['fehler'], 'nicht eindeutig lesbar')
+            with self.assertRaises(ValueError):
+                self.e.fassung_neu('Neu', 'x')
+        self.schreiben(roh + '\n```\n#### falsch\n```\n~~~python\n#### auch falsch\n~~~\n')
+        self.assertTrue(self.e.lesen()['bearbeitbar'])
+        self.schreiben('Kein Titel')
+        self.assertEqual(self.index.lesen(self.d['id'])['fehler'], 'nicht lesbar')
+        self.pfad.write_bytes(b'\xff')
+        self.assertEqual(self.index.lesen(self.d['id'])['fehler'], 'nicht lesbar')
+
+    def test_validierung_und_sammlung_schreibgeschuetzt(self):
+        for name in ('a\rb', 'a\tb', 'a\x00b', 'a\u2028#### b', 'a\x85b', 'a' * 61, 'Fassung 1'):
+            with self.assertRaises(ValueError):
+                self.e.fassung_neu(name, 'x')
+        with self.assertRaises(ValueError):
+            self.e.kopf('Titel\u2029#### X', '', '', self.e.lesen()['kopf_stand'])
+        for text in ('', 'x' * 20001, 'Text\n ~~~\nEnde'):
+            with self.assertRaises(ValueError):
+                self.e.fassung_neu('Neu', text)
+        vorher = self.sammlung.read_bytes()
+        with self.assertRaises(ValueError):
+            self.index.aktion({'aktion': 'fassung_neu', 'id': 'sammlung:Wissen#1', 'name': 'Neu', 'text': 'x'})
+        self.assertEqual(vorher, self.sammlung.read_bytes())
+
+    def test_index_frisch_und_belegkoepfe_nur_lesen(self):
+        tests = self.pfad.parent / 'tests'
+        tests.mkdir()
+        beleg = tests / 'test.md'
+        beleg.write_text('---\nerstellt: "2026-11-06"\nfassung: "Fassung 1"\nfassung_stand: '
+                         + self.d['fassungen'][0]['stand'] + '\nzustand: fertig\n---\nAntwort', encoding='utf-8')
+        vorher = beleg.read_bytes()
+        d = self.index.lesen(self.d['id'])
+        self.assertTrue(d['getestet'])
+        self.assertFalse(d['tests'][0]['geaendert'])
+        self.e.fassung_speichern('Fassung 1', 'Andere Fassung', self.d['fassungen'][0]['stand'])
+        self.assertTrue(self.index.lesen(self.d['id'])['tests'][0]['geaendert'])
+        self.assertEqual(vorher, beleg.read_bytes())
+        self.schreiben(self.roh().replace('# Hühnerfarm', '# Editor'))
+        self.assertEqual(self.index.lesen(self.d['id'])['titel'], 'Editor')
+
+    def test_pfade_und_junction(self):
+        self.assertTrue(prompts.pfad_erlaubt(self.pfad, [self.basis]))
+        self.assertFalse(prompts.pfad_erlaubt(str(self.basis) + '-andere\\x', [self.basis]))
+        for pfad in ('\\\\?\\C:\\x', '\\\\.\\C:\\x', '\\\\server\\x', str(self.pfad) + ':strom'):
+            self.assertFalse(prompts.pfad_erlaubt(pfad, [self.basis]), pfad)
+        import _winapi
+        with tempfile.TemporaryDirectory() as ausserhalb:
+            junction = self.basis / 'Junction'
+            _winapi.CreateJunction(ausserhalb, str(junction))
+            try:
+                self.assertFalse(prompts.pfad_erlaubt(junction / 'neu.md', [self.basis]))
+                self.assertTrue(prompts.pfad_erlaubt(Path(ausserhalb) / 'neu.md', [junction]))
+            finally:
+                os.rmdir(junction)
+
+    def test_schreiben_serialisiert_ueber_instanzgrenzen(self):
+        import threading
+        fehler = []
+        def neu(n):
+            try:
+                prompts.Eintrag(self.pfad).fassung_neu(f'Parallel {n}', f'Text {n}')
+            except Exception as ex:
+                fehler.append(ex)
+        faeden = [threading.Thread(target=neu, args=(n,)) for n in range(8)]
+        for f in faeden:
+            f.start()
+        for f in faeden:
+            f.join()
+        self.assertEqual(fehler, [])
+        self.assertEqual(len(self.e.lesen()['fassungen']), 9)
+
+
+class Sammlung(Basis):
+    def sammlung_setzen(self, texte, titel='Wissen'):
+        text = f'### {titel}\n' + ''.join(prompts.block_schreiben(t, 'text') for t in texte)
+        self.sammlung.write_text(text, encoding='utf-8')
+
+    def schatten(self, name, text, nummer, anzahl, titel='Wissen'):
+        ordner = self.basis / 'Prompts' / '_Sammlung' / name
+        ordner.mkdir(parents=True)
+        meta = {'ueberschrift': titel, 'nummer': nummer, 'stand': prompts.stand(text),
+                'kaesten_vorher': anzahl, 'aktualisiert': ''}
+        (ordner / 'eintrag.json').write_text(json.dumps(meta), encoding='utf-8')
+        return ordner / 'eintrag.json'
+
+    def test_werkstatt_ausgeschlossen_zaunzustand_nummern(self):
+        self.sammlung.write_text('### Vorne\n~~~text\n### innen\n~~~\n~~~text\nZwei\n~~~\n'
+                                 + prompts.ABSCHNITT + '\n#### Rahmen\n~~~text\nWerkstatt\n~~~\n'
+                                 '### Danach\n```\n### falscher Kopf\n```\n~~~text\nEnde\n~~~\n', encoding='utf-8')
+        kaesten = prompts.sammlung_kaesten(self.sammlung)
+        self.assertEqual([k['id'] for k in kaesten], ['sammlung:Vorne#1', 'sammlung:Vorne#2', 'sammlung:Danach#1'])
+        self.assertEqual(kaesten[1]['titel'], 'Vorne (Kasten 2)')
+
+    def test_nummer_verschoben_ueber_stand(self):
+        self.sammlung_setzen(['A', 'B'])
+        meta = self.schatten('B', 'B', 2, 2)
+        self.sammlung_setzen(['Neu', 'A', 'B'])
+        d = self.index.lesen('sammlung:Wissen#3')
+        self.assertEqual(d['schatten'], 'B')
+        self.assertEqual(json.loads(meta.read_text())['nummer'], 3)
+        self.assertEqual(json.loads(meta.read_text())['kaesten_vorher'], 2)
+
+    def test_einkasten_bearbeitet(self):
+        self.schatten('A', 'Alt', 1, 1)
+        self.sammlung_setzen(['Neu'])
+        self.assertEqual(self.index.lesen('sammlung:Wissen#1')['hinweis'], 'seit dem Test geändert')
+
+    def test_mehrkaesten_unklar_und_manuelle_zuordnung(self):
+        meta = self.schatten('B', 'B', 2, 2)
+        self.sammlung_setzen(['Davor', 'A', 'Bearbeitet'])
+        d = self.index.lesen('schatten:B')
+        self.assertEqual(d['fehler'], 'Zuordnung ungeklärt')
+        self.assertEqual(len(d['kandidaten']), 3)
+        vorher = self.sammlung.read_bytes()
+        self.index.zuordnen('schatten:B', 'sammlung:Wissen#3')
+        m = json.loads(meta.read_text())
+        self.assertEqual((m['stand'], m['kaesten_vorher'], m['nummer']), (prompts.stand('Bearbeitet'), 3, 3))
+        self.assertEqual(self.index.lesen('sammlung:Wissen#3')['schatten'], 'B')
+        self.assertEqual(vorher, self.sammlung.read_bytes())
+
+    def test_a_geloescht_nie_b_zuweisen(self):
+        self.schatten('A', 'A', 1, 2)
+        self.schatten('B', 'B', 2, 2)
+        self.sammlung_setzen(['B'])
+        self.assertEqual(self.index.lesen('sammlung:Wissen#1')['schatten'], 'B')
+        self.assertEqual(self.index.lesen('schatten:A')['fehler'], 'Zuordnung ungeklärt')
+
+    def test_ueberschrift_geloescht_und_kollision(self):
+        self.schatten('A', 'Suche', 1, 1)
+        self.schatten('B', 'Suche', 1, 1)
+        self.assertEqual(self.index.lesen('schatten:A')['fehler'], 'Zuordnung ungeklärt')
+        self.assertEqual(self.index.lesen('schatten:B')['fehler'], 'Zuordnung ungeklärt')
+        self.sammlung_setzen([], 'Andere Überschrift')
+        self.assertEqual(self.index.lesen('schatten:A')['fehler'], 'Sammlungseintrag nicht mehr gefunden')
+
+
+class Oberflaeche(unittest.TestCase):
+    def test_laden_suche_filter_und_fassungstext(self):
+        """Echtes prompts.js mit app.js-Hilfen gegen ein kleines DOM und Fake-HTTP."""
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
+        skript = r'''
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+class Element {
+  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; }
+  append(...k) { this.children.push(...k); }
+  replaceChildren(...k) { this.children = k; }
+  setAttribute(k, v) { this[k] = v; }
+  addEventListener(k, f) { (this.events ||= {})[k] = f; }
+}
+const ids = new Map();
+const document = {
+  querySelector: (s) => { if (!ids.has(s)) ids.set(s, new Element('div')); return ids.get(s); },
+  createElement: (t) => new Element(t),
+};
+const eintraege = [
+  {id: 'Hühnerfarm', titel: 'Hühnerfarm', quelle: 'https://example.org', schlagworte: 'HTML',
+   herkunft: 'ordner', bearbeitbar: true, bevorzugt: 'Fassung 1', tests: [], getestet: false,
+   fassungen: [{name: 'Fassung 1', stand: '123', text: '<script>unverändert</script>\n' + 'Zeile\n'.repeat(21)}]},
+  {id: 'Video', titel: 'Videoanalyse', herkunft: 'ordner', tests: [], getestet: false,
+   fassungen: [{name: 'Fassung 1', stand: '456', text: '[Transkript]\n[Projektkontext]'}]},
+  {id: 'sammlung:Wissen#1', titel: 'Wissen', herkunft: 'sammlung', tests: [], getestet: false,
+   fassungen: [{name: 'Sammlung', stand: '789', text: 'Suche'}]},
+];
+let anfragen = [];
+const kontext = vm.createContext({document, window: {}, console,
+  fetch: async (pfad) => {
+    anfragen.push(pfad);
+    if (pfad === '/api/prompts') return {ok: true, json: async () => ({eintraege, fehler: []})};
+    if (pfad.startsWith('/api/prompt?id=')) return {ok: true,
+      json: async () => eintraege.find((e) => e.id === decodeURIComponent(pfad.split('=')[1]))};
+    throw Error('Unerwartete Anfrage: ' + pfad);
+  }, aktualisieren() {}, fehlerMelden(t) { throw Error(t); },
+});
+const app = fs.readFileSync('werkstatt/web/app.js', 'utf8');
+vm.runInContext(app.split('let STAND =')[0], kontext);
+vm.runInContext(app.slice(app.indexOf('function knopf('), app.indexOf('const auftrag =')), kontext);
+vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
+function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k === 'object' ? elemente(k, tag) : [])]
+  .filter((k) => k.tag === tag); }
+(async () => {
+  await vm.runInContext('pLaden()', kontext);
+  assert.equal(ids.get('#p-liste').children.length, 3);
+  assert.equal(ids.get('#p-rueck').textContent, '');
+  ids.get('#p-suche').value = 'html';
+  vm.runInContext('pListe()', kontext);
+  assert.equal(ids.get('#p-liste').children.length, 1);
+  ids.get('#p-suche').value = '';
+  ids.get('#p-herkunft').value = 'sammlung';
+  vm.runInContext('pListe()', kontext);
+  assert.equal(ids.get('#p-liste').children.length, 1);
+  assert.equal(elemente(ids.get('#p-liste'), 'strong')[0].textContent, 'Wissen');
+  ids.get('#p-herkunft').value = '';
+  ids.get('#p-status').value = 'getestet';
+  vm.runInContext('pListe()', kontext);
+  assert.equal(ids.get('#p-liste').children[0].textContent, 'Keine passenden Prompts.');
+  ids.get('#p-status').value = '';
+  await vm.runInContext("pWaehlen('Hühnerfarm')", kontext);
+  assert.equal(elemente(ids.get('#p-inhalt'), 'pre')[0].textContent, eintraege[0].fassungen[0].text);
+  assert.equal(elemente(ids.get('#p-inhalt'), 'details').length, 1);
+  assert.equal(ids.get('#p-rueck').textContent, '');
+  assert.equal(anfragen.length, 2);
+})().catch((e) => { console.error(e); process.exitCode = 1; });
+'''
+        lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8',
+                              capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+
+if __name__ == '__main__':
+    unittest.main()
