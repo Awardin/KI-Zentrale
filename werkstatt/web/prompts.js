@@ -5,10 +5,29 @@ const P = { eintraege: [], gewaehlt: null, anfrage: 0 };
 
 function pFehler(err) { $('#p-rueck').textContent = err.message; }
 
+function pGeschuetzt() {
+  return !!document.querySelector('dialog[open]')
+    || !!document.activeElement?.matches('#p-inhalt textarea, #p-inhalt input');
+}
+
+function pLaeuft() {
+  const aktiv = (a) => a.zustand === 'wartet' || a.zustand === 'laeuft';
+  return (P.warteschlange || []).some(aktiv)
+    || (P.eintraege.find((e) => e.id === P.gewaehlt)?.tests || []).some(aktiv);
+}
+
+function pLadenFaellig() {
+  return P.letztesLaden == null || pLaeuft() || Date.now() - P.letztesLaden >= 30000;
+}
+
 async function pLaden() {
+  if (pGeschuetzt()) return;
+  P.letztesLaden = Date.now();
   try {
     const d = await api('/api/prompts');
+    if (pGeschuetzt()) return;
     P.eintraege = d.eintraege;
+    P.warteschlange = d.warteschlange || [];
     $('#p-rueck').textContent = d.fehler.join(' · ');
     pListe();
     if (P.gewaehlt) await pWaehlen(P.gewaehlt);
@@ -16,6 +35,7 @@ async function pLaden() {
 }
 
 function pListe() {
+  if (pGeschuetzt()) return;
   const suche = $('#p-suche').value.toLocaleLowerCase('de');
   const herkunft = $('#p-herkunft').value;
   const status = $('#p-status').value;
@@ -23,12 +43,21 @@ function pListe() {
     && (!status || e.getestet === (status === 'getestet'))
     && [e.titel, e.schlagworte, e.quelle, ...e.fassungen.map((f) => f.text)]
       .join('\n').toLocaleLowerCase('de').includes(suche));
+  const stand = JSON.stringify([P.gewaehlt, liste.map((e) => ({ id: e.id, titel: e.titel,
+    herkunft: e.herkunft, getestet: e.getestet, fehler: e.fehler }))]);
+  if (stand === P.listeStand) return;
+  const box = $('#p-liste');
+  const oben = box.scrollTop;
+  const links = box.scrollLeft;
   $('#p-liste').replaceChildren(...liste.map((e) => h('li', {}, h('button', {
     type: 'button', class: e.id === P.gewaehlt ? 'aktiv' : '',
     onclick: () => pWaehlen(e.id), 'aria-pressed': String(e.id === P.gewaehlt),
   }, h('strong', { text: e.titel }), h('span', { class: 'leise',
     text: [e.herkunft === 'sammlung' ? 'Sammlung' : 'Ordner', e.getestet ? 'getestet' : 'ungetestet', e.fehler].filter(Boolean).join(' · ') })))));
   if (!liste.length) $('#p-liste').append(h('li', { class: 'leise', text: 'Keine passenden Prompts.' }));
+  box.scrollTop = oben;
+  box.scrollLeft = links;
+  P.listeStand = stand;
 }
 
 function pKnopf(text, aktion) {
@@ -50,17 +79,30 @@ function pOeffnen(e, was, datei = '') {
 }
 
 async function pWaehlen(id) {
+  if (pGeschuetzt()) return;
   const anfrage = ++P.anfrage;
   try {
     const e = await api(`/api/prompt?id=${encodeURIComponent(id)}`);
-    if (anfrage !== P.anfrage) return;
+    if (anfrage !== P.anfrage || pGeschuetzt()) return;
     P.gewaehlt = id;
     pListe();
+    const { warteschlange, ...eintrag } = e;
+    const stand = JSON.stringify({ eintrag, warteschlange: (warteschlange || [])
+      .filter((a) => a.prompt?.eintrag === id && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))
+      .map((a) => ({ id: a.id, fassung: a.prompt.fassung, beleg: a.prompt.beleg,
+        auswerter: a.auswerter.name, zustand: a.zustand, meldung: a.meldung })) });
+    if (stand === P.inhaltStand) return;
+    const box = $('#p-inhalt');
+    const gleicherEintrag = P.inhaltId === id;
+    const offen = new Map(gleicherEintrag ? [...box.querySelectorAll('details[data-p-ansicht]')]
+      .filter((d) => d.open).map((d) => [d.getAttribute('data-p-ansicht'), d.querySelector('.f-text')?.innerHTML || '']) : []);
+    const position = { oben: box.scrollTop, links: box.scrollLeft, x: window.scrollX, y: window.scrollY };
     const knoepfe = [pKnopf(e.herkunft === 'ordner' || id.startsWith('schatten:')
       ? 'Im Ordner öffnen' : 'In der Sammlung öffnen', () => pOeffnen(e,
       e.herkunft === 'ordner' || id.startsWith('schatten:') ? 'ordner' : 'sammlung'))];
     if (e.bearbeitbar) knoepfe.push(pKnopf('Kopfzeilen bearbeiten …', () => pDialog(e, 'kopf')),
       pKnopf('Neue Fassung …', () => pDialog(e, 'fassung_neu')));
+    if (!e.fehler && e.fassungen.length) knoepfe.push(pKnopf('Testen …', () => pTestdialog(e)));
     const quelle = /^https?:\/\//i.test(e.quelle || '')
       ? h('a', { href: e.quelle, target: '_blank', rel: 'noopener', text: e.quelle })
       : h('span', { text: e.quelle || '' });
@@ -76,24 +118,79 @@ async function pWaehlen(id) {
       const pre = h('pre', { class: 'p-text', text: f.text });
       const karte = h('article', { class: 'p-fassung' }, h('h3', { text: f.name }),
         h('p', { class: 'leise', text: f.stand }));
-      if (f.text.split('\n').length > 20) karte.append(h('details', {}, h('summary', { text: 'Fassung anzeigen' }), pre));
+      if (f.text.split('\n').length > 20) karte.append(h('details', {
+        'data-p-ansicht': JSON.stringify(['fassung', f.name]),
+      }, h('summary', { text: 'Fassung anzeigen' }), pre));
       else karte.append(pre);
       if (e.bearbeitbar) karte.append(h('div', { class: 'p-knoepfe' },
         pKnopf('Bearbeiten …', () => pDialog(e, 'fassung_speichern', f)),
         pKnopf('Als bevorzugt', () => pAktion({ aktion: 'bevorzugt', id, name: f.name, kopf_stand: e.kopf_stand }))));
+      if (!e.fehler) karte.append(pKnopf('Testen …', () => pTestdialog(e, f.name)));
       inhalt.push(karte);
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Tests' }));
     for (const t of e.tests) {
-      inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text: [t.erstellt, t.fassung,
-        t.geaendert ? 'seit dem Test geändert' : '', t.auswerter, dauer(Number(t.dauer_s)),
+      const karte = h('article', { class: 'p-fassung' }, h('p', { text: [t.erstellt, t.fassung,
+        t.geaendert ? 'seit dem Test geändert' : '', t.auswerter, t.dauer_s != null ? dauer(Number(t.dauer_s)) : '',
         t.tokens != null ? `${t.tokens} Token` : '', t.kosten_usd != null ? `${t.kosten_usd} USD` : '',
-        t.zustand, t.urteil, t.notiz, t.fehler].filter(Boolean).join(' · ') }),
+        ZUSTAND[t.zustand] || t.zustand, t.urteil ? `Urteil: ${t.urteil}` : '', t.notiz, t.fehler].filter(Boolean).join(' · ') }),
       pKnopf('Öffnen', () => pOeffnen(e, 'beleg', t.datei)),
-      t.html === 'ja' ? pKnopf('Im Browser öffnen', () => pOeffnen(e, 'html', t.datei.replace(/\.md$/i, '.html'))) : null));
+      t.html === 'ja' ? pKnopf('Im Browser öffnen', () => pOeffnen(e, 'html', t.datei.replace(/\.md$/i, '.html'))) : null);
+      karte.append(pKnopf('Gesendet anzeigen', async () => {
+        const b = await pBeleg(e, t, 'gesendet');
+        const d = dialogOeffnen('Gesendet', [h('pre', { class: 'p-text', text: b.text })],
+          [pKnopf('Schließen', () => d.close())], true);
+      }), !t.fehler ? pKnopf('Nochmal …', async () => pTestdialog(e, t.fassung, await pBeleg(e, t))) : null);
+      const notiz = h('textarea', { 'aria-label': 'Notiz', rows: '2' });
+      notiz.value = t.notiz || '';
+      let ks = t.kopf_stand;
+      const speichern = async (urteil) => {
+        if (!ks) ks = (await pBeleg(e, t)).kopf_stand;
+        const d = await api('/api/prompt', { aktion: 'urteil', id: e.id, datei: t.datei,
+          kopf_stand: ks, urteil, notiz: notiz.value });
+        ks = d.kopf_stand;
+        t.urteil = urteil;
+      };
+      karte.append(h('div', { class: 'p-knoepfe' }, ...['offen', 'gut', 'schwach'].map((u) =>
+        pKnopf(u, () => speichern(u)))), notiz);
+      notiz.addEventListener('blur', () => speichern(t.urteil || 'offen').catch(pFehler));
+      const antwort = h('div', { class: 'f-text' });
+      const ansicht = JSON.stringify([t.datei, 'antwort']);
+      if (offen.has(ansicht)) antwort.innerHTML = offen.get(ansicht);
+      const details = h('details', { 'data-p-ansicht': ansicht }, h('summary', { text: 'Antwort anzeigen' }), antwort);
+      details.addEventListener('toggle', async () => {
+        if (details.open) {
+          try { antwort.innerHTML = markdown((await pBeleg(e, t)).antwort || 'Noch keine Antwort.'); }
+          catch (err) { antwort.textContent = err.message; }
+        }
+      });
+      karte.append(details);
+      if (!t.fehler && t.verwaist && ['abgebrochen', 'fehler'].includes(t.zustand)) karte.append(pKnopf('Wiederholen', () =>
+        pAktion({ aktion: 'wiederholen_beleg', id: e.id, datei: t.datei })));
+      inhalt.push(karte);
+    }
+    for (const a of (e.warteschlange || []).filter((a) => a.prompt?.eintrag === e.id
+      && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))) {
+      const aktion = (was) => async () => { await api('/api/fassung', { id: a.id, aktion: was }); await pLaden(); };
+      inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text:
+        `${a.prompt.fassung} · ${a.auswerter.name} · ${ZUSTAND[a.zustand] || a.zustand} · ${a.meldung || ''}` }),
+      ...(['wartet', 'laeuft'].includes(a.zustand) ? [pKnopf('Abbrechen', aktion('abbrechen'))]
+        : e.tests.some((t) => t.datei === `${a.prompt.beleg}.md` && t.fehler) ? []
+          : [pKnopf('Wiederholen', aktion('wiederholen'))]),
+      a.zustand !== 'laeuft' ? pKnopf('Entfernen', aktion('entfernen')) : null));
     }
     if (!e.tests.length) inhalt.push(h('p', { class: 'leise', text: 'Noch keine Testbelege.' }));
-    $('#p-inhalt').replaceChildren(...inhalt);
+    box.replaceChildren(...inhalt);
+    for (const d of box.querySelectorAll('details[data-p-ansicht]')) {
+      if (offen.has(d.getAttribute('data-p-ansicht'))) d.open = true;
+    }
+    if (gleicherEintrag) {
+      box.scrollTop = position.oben;
+      box.scrollLeft = position.links;
+      window.scrollTo({ left: position.x, top: position.y, behavior: 'instant' });
+    }
+    P.inhaltStand = stand;
+    P.inhaltId = id;
   } catch (err) { if (anfrage === P.anfrage) pFehler(err); }
 }
 
@@ -133,9 +230,144 @@ function pDialog(e, aktion, f = null) {
   Object.values(felder)[0].focus();
 }
 
+function pBeleg(e, t, was = 'beleg') {
+  return api(`/api/prompt-datei?id=${encodeURIComponent(e.id)}&was=${was}&datei=${encodeURIComponent(t.datei)}`);
+}
+
+async function pTestdialog(e, name, beleg = null) {
+  const stand = await api('/api/zusammenfassung');
+  const gewaehlt = new Set();
+  try { JSON.parse(localStorage.getItem('werkstatt.prompt-auswerter') || '[]').forEach((id) => gewaehlt.add(id)); }
+  catch { /* Ohne Speicher bleibt die Auswahl leer. */ }
+  if (beleg) {
+    for (const p of stand.auswerter) if (p.name === beleg.auswerter) gewaehlt.add(p.id);
+  }
+  const fassungen = new Map();
+  const auswerter = new Map();
+  const felder = new Map();
+  const rahmen = h('input', { type: 'checkbox' });
+  rahmen.checked = beleg?.rahmen === 'ja';
+  const rueck = h('p', { class: 'warnung', 'aria-live': 'polite' });
+  const vorschau = h('details', { 'data-p-ansicht': JSON.stringify([beleg?.datei || '', 'vorschau']) },
+    h('summary', { text: 'Vorschau' }));
+  const vorschauInhalt = h('div');
+  vorschau.append(vorschauInhalt);
+  let geprueft = null;
+  const start = pKnopf('Start', async () => {
+    try {
+      const daten = eingabe();
+      if (!geprueft || geprueft.eingabe !== JSON.stringify(daten)) throw Error('Bitte zuerst die aktuelle Vorschau prüfen.');
+      await api('/api/prompt', { ...daten, aktion: 'testen', gesendet_stand: geprueft.staende });
+      try { localStorage.setItem('werkstatt.prompt-auswerter', JSON.stringify(daten.auswerter)); } catch { /* egal */ }
+      d.close(); await pLaden();
+    } catch (err) { rueck.textContent = err.message; }
+  });
+  const namen = [...new Set(e.fassungen.flatMap((f) => [...f.text.matchAll(/\[([^\[\]\n]{1,60})\](?!\()/g)]
+    .map((m) => m[1]).filter((n) => !n.includes(':') && /\p{L}/u.test(n))).concat(Object.keys(beleg?.eingaben.felder || {})))];
+  const feldBox = h('div');
+  const auswahlBox = h('div', { class: 'p-test-auswahl' });
+  for (const f of e.fassungen) {
+    const cb = h('input', { type: 'checkbox' });
+    cb.checked = f.name === (name || e.bevorzugt || e.fassungen[0].name);
+    fassungen.set(f.name, cb);
+    auswahlBox.append(h('label', { class: 'wahl' }, cb, f.name));
+  }
+  for (const p of stand.auswerter) {
+    const cb = h('input', { type: 'checkbox', disabled: !p.verfuegbar });
+    cb.checked = p.verfuegbar && gewaehlt.has(p.id);
+    auswerter.set(p.id, cb);
+    auswahlBox.append(h('label', { class: 'wahl' }, cb,
+      `${p.name} · ${p.cloud ? `Cloud (${p.cloud})` : 'lokal'}${p.verfuegbar ? '' : ` · ${p.grund}`}`));
+  }
+  async function transkriptWahl(feld) {
+    try {
+      const ts = await api('/api/transkripte?prompts=1');
+      const suche = h('input', { type: 'search', placeholder: 'Transkripttitel suchen', 'aria-label': 'Transkripttitel suchen' });
+      const liste = h('div');
+      const waehlen = h('div', { class: 'p-transkripte' }, suche, liste);
+      feld.box.append(waehlen);
+      const zeichnen = () => liste.replaceChildren(...ts.filter((t) => t.titel.toLocaleLowerCase('de')
+        .includes(suche.value.toLocaleLowerCase('de'))).map((t) => pKnopf(`${t.titel} · ${t.zeichen} Zeichen`, () => {
+        feld.quelle = { art: 'transkript', datei: t.datei, sha: t.sha, zeichen: t.zeichen };
+        feld.text.value = `[Transkript: ${t.titel} · ${t.zeichen} Zeichen]`;
+        waehlen.remove();
+      })));
+      suche.addEventListener('input', zeichnen); zeichnen(); suche.focus();
+    } catch (err) { rueck.textContent = err.message; }
+  }
+  for (const n of namen) {
+    const text = h('textarea', { rows: '5', 'data-prompt-feld': n, 'aria-label': n });
+    const woertlich = h('input', { type: 'checkbox' });
+    const alt = beleg?.eingaben.felder[n];
+    woertlich.checked = alt?.art === 'woertlich';
+    text.value = alt?.wert || (alt?.art === 'transkript' ? `[Transkript: ${alt.datei}]` : '');
+    const feld = { text, woertlich, quelle: alt || null };
+    felder.set(n, feld);
+    text.promptEingabe = feld;
+    text.addEventListener('input', () => { feld.quelle = null; });
+    const pfad = h('input', { type: 'text', placeholder: 'Oder Dateipfad eingeben', 'aria-label': `Dateipfad für ${n}` });
+    const ausDatei = async (waehlen) => {
+      try {
+        const datei = await api('/api/prompt', { aktion: waehlen ? 'datei_waehlen' : 'datei_lesen', pfad: pfad.value });
+        if (!datei.abgebrochen) { feld.quelle = datei; text.value = datei.wert; }
+      } catch (err) { rueck.textContent = err.message; }
+    };
+    feld.box = h('section', { class: 'p-test-feld' }, h('h3', { text: `[${n}]` }),
+      h('label', {}, woertlich, 'wörtlich lassen'), text,
+      h('div', { class: 'p-knoepfe' }, pKnopf('Aus Datei …', () => ausDatei(true)),
+        pKnopf('Aus Transkript …', () => transkriptWahl(feld))), pfad,
+      pKnopf('Pfad lesen', () => ausDatei(false)),
+      beleg?.hinweise[n] ? h('p', { class: 'warnung', text: beleg.hinweise[n] }) : null);
+    feldBox.append(feld.box);
+  }
+  function eingabe() {
+    return { id: e.id, fassungen: [...fassungen].filter(([, cb]) => cb.checked).map(([n]) => n),
+      auswerter: [...auswerter].filter(([, cb]) => cb.checked).map(([n]) => n), rahmen: rahmen.checked,
+      eingaben: { felder: Object.fromEntries([...felder].map(([n, f]) => [n,
+        f.woertlich.checked ? { art: 'woertlich' } : f.quelle || { art: 'text', wert: f.text.value }])) } };
+  }
+  const d = dialogOeffnen(`Testen: ${e.titel}`, [auswahlBox,
+    h('label', { class: 'wahl' }, rahmen, 'Rahmen der Zusammenfassung voranstellen'), feldBox,
+    vorschau, rueck], [pKnopf('Abbrechen', () => d.close()), pKnopf('Vorschau berechnen', async () => {
+    try {
+      const daten = eingabe();
+      const v = await api('/api/prompt', { ...daten, aktion: 'vorschau' });
+      geprueft = { eingabe: JSON.stringify(daten), staende: Object.fromEntries(v.fassungen.map((f) => [f.name, f.gesendet_stand])) };
+      vorschauInhalt.replaceChildren(h('p', { text: `${v.leer} Felder leer` }), ...v.fassungen.map((f) =>
+        h('section', {}, h('h3', { text: f.name }), h('pre', { class: 'p-text', text: f.auftrag }),
+          h('p', { class: 'leise', text: `Stand: ${f.gesendet_stand}` }), ...f.auswerter.map((p) =>
+            h('p', { text: `${p.modell} · ${p.verarbeitung} · etwa ${Math.ceil(p.geschaetzt)} Token / ${p.kontext || 'unbekannt'} Kontext · ${p.kontext_quelle} · ${p.hinweis}` })))));
+      vorschau.open = true; rueck.textContent = '';
+    } catch (err) { geprueft = null; rueck.textContent = err.message; }
+  }), start], true);
+  if (!beleg && felder.has('Transkript')) await transkriptWahl(felder.get('Transkript'));
+}
+
+window.promptsAblegen = async (e, feld) => {
+  try {
+    const datei = e.dataTransfer.files[0];
+    if (!datei) return;
+    const text = await datei.text();
+    feld.value = text;
+    feld.promptEingabe.quelle = { art: 'text', name: datei.name, wert: text };
+  } catch (err) { pFehler(err); }
+};
+
 $('#p-suche').addEventListener('input', pListe);
 $('#p-herkunft').addEventListener('change', pListe);
 $('#p-status').addEventListener('change', pListe);
 $('#p-neu').addEventListener('click', () => pDialog(null, 'neu'));
 $('#p-laden').addEventListener('click', pLaden);
-window.promptsAktiv = (aktiv) => { if (aktiv) pLaden(); };
+window.promptsAktiv = (aktiv) => {
+  P.aktiv = aktiv;
+  if (aktiv && pLadenFaellig()) pLaden();
+  if (!P.timer && typeof setTimeout === 'function') {
+    const weiter = () => {
+      P.timer = setTimeout(async () => {
+        if (P.aktiv && !pGeschuetzt() && pLadenFaellig()) await pLaden();
+        weiter();
+      }, 2500);
+    };
+    weiter();
+  }
+};

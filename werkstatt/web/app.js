@@ -184,6 +184,11 @@ function einrichtenAblegen() {
     tiefe = 0;
     ueberall.hidden = true;
     ablage.classList.remove('ueber');
+    const promptFeld = e.target.closest?.('[data-prompt-feld]');
+    if (!$('#reiter-prompts').hidden && promptFeld) {
+      window.promptsAblegen?.(e, promptFeld);
+      return;
+    }
     const zurTexterkennung = texterkennung();
     if (!zurTexterkennung && $('#reiter-transkription').hidden) reiterZeigen('transkription');
     const eintraege = [];

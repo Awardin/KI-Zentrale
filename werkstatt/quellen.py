@@ -132,3 +132,8 @@ def abgleichen(abgelegt, markiert):
 def dateien_waehlen(endungen):
     besitzer = winapi.fenster_mit_titel('Werkstatt')
     return winapi.dateien_waehlen('Audio- oder Videodateien wählen', 'Audio und Video', endungen, besitzer)
+
+
+def textdatei_waehlen():
+    besitzer = winapi.fenster_mit_titel('Werkstatt')
+    return winapi.dateien_waehlen('Datei für ein Feld wählen', 'Alle Dateien', ['.*'], besitzer)

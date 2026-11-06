@@ -1497,3 +1497,15 @@ main::before {
 #reiter-bildvideo::before { content: "Bild & Video"; }
 #reiter-texterkennung::before { content: "Texterkennung"; }
 #reiter-messungen::before { content: "Messungen"; }
+
+/* Prompt-Tests verwenden dieselben Felder und Karten wie die vorhandenen Dialoge. */
+.p-test-auswahl { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+.p-test-feld { margin: 18px 0; padding: 14px; border: 1px solid var(--linie); border-radius: 8px; }
+.p-test-feld textarea, .p-fassung > textarea { display: block; width: 100%; margin: 8px 0; min-height: 70px; }
+.p-test-feld input[type="text"] { width: 100%; margin: 8px 0; }
+.p-test-feld label { display: flex; align-items: center; gap: 7px; }
+.p-transkripte { max-height: 300px; overflow: auto; margin-top: 12px; }
+.p-transkripte input { width: 100%; }
+.p-transkripte .knopf { display: block; margin: 6px 0; text-align: left; }
+.p-fassung details { margin-top: 12px; }
+.p-fassung .f-text pre { white-space: pre-wrap; overflow-wrap: anywhere; }

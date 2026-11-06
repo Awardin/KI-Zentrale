@@ -1,5 +1,6 @@
 """Promptdateien und schreibgeschützter Blick auf die gemeinsame Sammlung."""
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -12,6 +13,176 @@ _SPERRE = threading.RLock()
 # Steuerzeichen und alles, was str.splitlines() als Zeilenumbruch nimmt (NEL, LS, PS): sonst könnte ein Name
 # oder eine Kopfzeile beim nächsten Lesen als eigene Zeile oder Überschrift erscheinen.
 _STEUERZEICHEN = re.compile(r'[\x00-\x1f\x7f\x85\u2028\u2029]')
+
+_FELD = re.compile(r'\[([^\[\]\n]{1,60})\](?!\()')
+
+
+def sha(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+class PromptFehler(RuntimeError):
+    def __init__(self, code, meldung):
+        super().__init__(meldung)
+        self.code = code
+
+
+def kontext_pruefen(text, kontext):
+    geschaetzt = (len(text) + 600) / 3.0
+    reserve = min(32768, kontext // 4) if kontext else 0
+    if kontext and geschaetzt + reserve > kontext:
+        raise PromptFehler('kontext', f'Der Auftrag ist zu lang für {kontext:,} Token Kontext.'.replace(',', '.'))
+    return geschaetzt, reserve
+
+
+def felder_erkennen(text):
+    return list(dict.fromkeys(m[1] for m in _FELD.finditer(text)
+                              if ':' not in m[1] and any(c.isalpha() for c in m[1])))
+
+
+def auftrag_bauen(fassung, eingaben, transkripte):
+    """Ein Durchgang: eingesetztes Material wird nie erneut ersetzt."""
+    namen = felder_erkennen(fassung)
+    def ersetzen(m):
+        name = m[0][1:-1]
+        feld = eingaben.get('felder', {}).get(name, {})
+        if feld.get('art') == 'woertlich' or name in eingaben.get('leer', []):
+            return m[0]
+        wert = transkripte.get(name, '') if feld.get('art') == 'transkript' else feld.get('wert', '')
+        return wert if wert else m[0]
+    muster = '|'.join(re.escape('[' + n + ']') + r'(?!\()' for n in namen)
+    text = re.sub(muster, ersetzen, fassung) if muster else fassung
+    rahmen = eingaben.get('rahmen', {}).get('wert', '')
+    if rahmen:
+        text = rahmen + '\n\n' + text
+    return text, sha(text)
+
+
+def _belegkopf(text):
+    zeilen = text.splitlines(keepends=True)
+    if not zeilen or zeilen[0].strip() != '---':
+        raise ValueError('Beleg beschädigt: Kopf fehlt.')
+    ende = next((i for i in range(1, len(zeilen)) if zeilen[i].strip() == '---'), None)
+    if ende is None:
+        raise ValueError('Beleg beschädigt: Kopf ist offen.')
+    kopf = {}
+    for z in zeilen[1:ende]:
+        k, trenner, v = z.partition(':')
+        if trenner:
+            try:
+                kopf[k] = json.loads(v)
+            except ValueError:
+                kopf[k] = v.strip()
+    return zeilen, ende, kopf, stand(''.join(zeilen[:ende + 1]))
+
+
+def beleg_lesen(datei):
+    roh = _lesen(datei)
+    zeilen, ende, kopf, ks = _belegkopf(roh)
+    rest = ''.join(zeilen[ende + 1:])
+    zs, bs, hs = _zeilenkopf(rest)
+    abschnitte = {}
+    anzahl = {}
+    for i, titel in hs:
+        if titel not in ('## Fassung', '## Eingaben', '## Antwort'):
+            continue
+        anzahl[titel] = anzahl.get(titel, 0) + 1
+        bis = next((j for j, _ in hs if j > i), len(zs))
+        kandidaten = [b for b in bs if i < b['auf'] < bis]
+        if len(kandidaten) == 1 and not ''.join(zs[i + 1:kandidaten[0]['auf']]).strip():
+            b = kandidaten[0]
+            if b['geschlossen']:
+                abschnitte[titel[3:].lower()] = b['text']
+    if ('fassung' not in abschnitte or 'eingaben' not in abschnitte
+            or anzahl.get('## Fassung') != 1 or anzahl.get('## Eingaben') != 1):
+        raise ValueError('Beleg beschädigt: Fassung oder Eingaben fehlen.')
+    eingaben = json.loads(abschnitte['eingaben'])
+    if not isinstance(eingaben, dict) or not isinstance(eingaben.get('felder'), dict):
+        raise ValueError('Beleg beschädigt: Eingaben sind ungültig.')
+    return dict(kopf, kopf_stand=ks, fassung_text=abschnitte['fassung'], eingaben=eingaben,
+                antwort=abschnitte.get('antwort', ''), datei=os.path.basename(datei), datei_stand=sha(roh))
+
+
+def _kopf_setzen(datei, werte, kopf_stand=None):
+    with _SPERRE:
+        roh = _lesen(datei)
+        zs, ende, _, ks = _belegkopf(roh)
+        if kopf_stand is not None and ks != kopf_stand:
+            raise Konflikt('Der Belegkopf wurde inzwischen geändert, bitte neu laden.')
+        nl = '\r\n' if '\r\n' in roh else '\n'
+        for k, v in werte.items():
+            ziel = next((i for i in range(1, ende) if zs[i].startswith(k + ':')), ende)
+            zs[ziel:ziel + (ziel < ende)] = [k + ': ' + _kopfwert(v, k) + nl]
+            if ziel == ende:
+                ende += 1
+        _atomar(datei, ''.join(zs))
+        return _belegkopf(_lesen(datei))[3]
+
+
+def beleg_zustand(datei, zustand, meldung='', **kopf):
+    return _kopf_setzen(datei, dict(kopf, zustand=zustand, meldung=meldung))
+
+
+def _kopfwert(wert, schluessel):
+    if (isinstance(wert, str) and schluessel in {
+            'eintrag', 'herkunft', 'fassung_stand', 'rahmen', 'gesendet_stand', 'anbieter', 'modell',
+            'modell_tatsaechlich', 'kontext_quelle', 'denkstufe', 'verarbeitung', 'zustand',
+            'erstellt', 'html', 'urteil', 'status'} and not _STEUERZEICHEN.search(wert)):
+        return wert
+    text = json.dumps(wert, ensure_ascii=False)
+    for c in ('\x85', '\u2028', '\u2029'):
+        text = text.replace(c, '\\u%04x' % ord(c))
+    return text
+
+
+def beleg_anlegen(ordner, kopf, fassung, eingaben):
+    with _SPERRE:
+        os.makedirs(ordner, exist_ok=True)
+        basis = (datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S') + ' – '
+                 + dateiname(kopf['fassung']) + ' – ' + dateiname(kopf['auswerter']))
+        n = 1
+        while True:
+            name = basis + (f' ({n})' if n > 1 else '')
+            datei = os.path.join(ordner, name + '.md')
+            if not pfad_erlaubt(datei, [ordner]):
+                raise ValueError('Belegpfad nicht erlaubt.')
+            try:
+                with open(datei, 'x', encoding='utf-8', newline='') as f:
+                    k = {'auftrag': name, **kopf}
+                    f.write('---\n' + ''.join(key + ': ' + _kopfwert(v, key) + '\n'
+                                             for key, v in k.items()) + '---\n## Fassung\n'
+                            + block_schreiben(fassung, 'text') + '## Eingaben\n'
+                            + block_schreiben(json.dumps(eingaben, ensure_ascii=False, indent=2), 'json'))
+                return datei
+            except FileExistsError:
+                n += 1
+
+
+def antwort_schreiben(datei, text):
+    with _SPERRE:
+        roh = _lesen(datei)
+        zs, _, hs = _zeilenkopf(roh)
+        i = next((i for i, z in hs if z == '## Antwort'), len(zs))
+        nl = '\r\n' if '\r\n' in roh else '\n'
+        _atomar(datei, ''.join(zs[:i]) + ('## Antwort\n' + block_schreiben(text, 'text')).replace('\n', nl))
+
+
+def html_erkennen(antwort):
+    if re.match(r'\s*(?:<!doctype html\b|<html\b)', antwort, re.I):
+        return antwort
+    kandidaten = [b['text'] for b in bloecke(antwort) if b['kennung'].lower() == 'html']
+    return max(kandidaten, key=len) if kandidaten else ''
+
+
+def html_schreiben(datei, antwort):
+    text = html_erkennen(antwort)
+    if text:
+        ziel = os.path.splitext(datei)[0] + '.html'
+        if not pfad_erlaubt(ziel, [os.path.dirname(datei)]):
+            raise ValueError('HTML-Pfad nicht erlaubt.')
+        with _SPERRE:
+            _atomar(ziel, text)
+    return 'ja' if text else 'nein'
 
 
 def _zaunlaenge(zeile):
@@ -293,6 +464,217 @@ class Index:
         self.ordner = cfg['ordner']
         os.makedirs(self.ordner, exist_ok=True)
         self._cache = {}
+        self.auswertung = None
+        self.watch = ''
+
+    def verbinden(self, auswertung):
+        self.auswertung = auswertung
+        self.watch = auswertung.w['arbeitsordner']
+
+    def beleg_pfad(self, eid, datei):
+        if (not isinstance(datei, str) or not datei or _STEUERZEICHEN.search(datei)
+                or re.search(r'[/\\:]', datei) or not datei.lower().endswith('.md')):
+            raise ValueError('Bitte einen reinen Belegdateinamen angeben.')
+        pfad = os.path.join(self._ordner(eid), 'tests', datei)
+        if not pfad_erlaubt(pfad, [self.ordner]):
+            raise ValueError('Belegpfad nicht erlaubt.')
+        return pfad
+
+    def datei_lesen(self, pfad):
+        wurzeln = self.cfg['dateiwurzeln'] + ([self.watch] if self.watch else [])
+        if not pfad_erlaubt(pfad, wurzeln) or not os.path.isfile(pfad):
+            raise ValueError('Die Datei fehlt oder liegt außerhalb der erlaubten Ordner.')
+        # Zugangsdaten gehören nie in einen Prompt (AGENTS.md): gesperrte Ordner aus der Konfiguration und .env-Dateien.
+        gesperrt = self.cfg.get('gesperrt') or []
+        if (gesperrt and pfad_erlaubt(pfad, gesperrt)) or os.path.basename(pfad).lower().endswith('.env'):
+            raise ValueError('Diese Datei enthält Zugangsdaten oder liegt in einem gesperrten Ordner; '
+                             'sie geht nicht in einen Prompt.')
+        grenze = self.cfg.get('feld_max_zeichen', 400000)
+        with open(pfad, encoding='utf-8', errors='replace') as f:
+            text = f.read(grenze + 1)
+        if len(text) > grenze:
+            raise ValueError(f'Die Datei überschreitet {grenze} Zeichen je Feld.')
+        return {'art': 'datei', 'pfad': pfad, 'wert': text, 'sha': sha(text), 'zeichen': len(text)}
+
+    def transkripte(self):
+        from werkstatt.auswertung import transkripte_auflisten
+        ergebnis = []
+        for t in transkripte_auflisten(self.watch):
+            pfad = os.path.join(t['transkript'], 'transcript-timestamps.txt')
+            try:
+                feld = self._transkript(pfad)
+                feld.pop('wert')
+                ergebnis.append(dict(t, **feld))
+            except (OSError, ValueError):
+                continue
+        return ergebnis
+
+    def _transkript(self, datei):
+        if (not self.watch or not pfad_erlaubt(datei, [self.watch])
+                or os.path.basename(datei) != 'transcript-timestamps.txt'):
+            raise ValueError('Dieses Transkript liegt nicht im watch-Arbeitsordner.')
+        with open(datei, encoding='utf-8', errors='replace') as f:
+            text = f.read()
+        return {'art': 'transkript', 'datei': datei, 'sha': sha(text), 'zeichen': len(text), 'wert': text}
+
+    def transkripte_lesen(self, eingaben):
+        texte = {}
+        for name, feld in eingaben['felder'].items():
+            if feld.get('art') == 'transkript':
+                try:
+                    frisch = self._transkript(feld['datei'])
+                    if frisch['sha'] != feld['sha']:
+                        raise ValueError('Prüfsumme abweichend')
+                except (OSError, ValueError, KeyError) as ex:
+                    raise PromptFehler('transkript_geaendert', f'Transkript für „{name}“ fehlt oder wurde geändert.') from ex
+                texte[name] = frisch['wert']
+        return texte
+
+    def _eingaben(self, daten, fassungen):
+        eingaben = {'felder': {}, 'leer': []}
+        texte = {}
+        namen = list(dict.fromkeys(n for f in fassungen for n in felder_erkennen(f['text'])))
+        for name in namen:
+            feld = dict(daten.get('eingaben', {}).get('felder', {}).get(name, {'art': 'text', 'wert': ''}))
+            art = feld.get('art')
+            if art == 'datei':
+                feld = self.datei_lesen(feld.get('pfad', ''))
+            elif art == 'transkript':
+                feld = self._transkript(feld.get('datei', ''))
+                texte[name] = feld.pop('wert')
+            elif art == 'woertlich':
+                feld = {'art': 'woertlich'}
+            elif art == 'text' and isinstance(feld.get('wert', ''), str):
+                if len(feld.get('wert', '')) > self.cfg.get('feld_max_zeichen', 400000):
+                    raise ValueError(f'„{name}“ ist zu lang.')
+                feld = {k: feld[k] for k in ('art', 'wert', 'name') if k in feld}
+            else:
+                raise ValueError('Unbekannte Feldart.')
+            eingaben['felder'][name] = feld
+            if art != 'woertlich' and not (texte.get(name) if art == 'transkript' else feld.get('wert')):
+                eingaben['leer'].append(name)
+        if daten.get('rahmen'):
+            rahmen = self.auswertung.sammlung.lesen().get('rahmen')
+            if not rahmen:
+                raise ValueError('Der Rahmen der Zusammenfassung fehlt.')
+            eingaben['rahmen'] = {'art': 'text', 'wert': rahmen['text']}
+        return eingaben, texte
+
+    def vorschau(self, daten):
+        d = self.lesen(daten.get('id', ''))
+        if d.get('fehler'):
+            raise ValueError('Der Eintrag ist nicht eindeutig lesbar.')
+        fassungen = [f for f in d['fassungen'] if f['name'] in daten.get('fassungen', [])]
+        profile = [p for p in self.auswertung.profile if p['id'] in daten.get('auswerter', [])]
+        if not fassungen or not profile:
+            raise ValueError('Bitte mindestens eine Fassung und einen Auswerter anhaken.')
+        eingaben, texte = self._eingaben(daten, fassungen)
+        ergebnis = []
+        for f in fassungen:
+            text, gs = auftrag_bauen(f['text'], eingaben, texte)
+            kurz = {n: f'[Transkript: {len(t)} Zeichen]' for n, t in texte.items()}
+            anzeigen, _ = auftrag_bauen(f['text'], eingaben, kurz)
+            auswerter = []
+            for p in profile:
+                anbieter = self.auswertung.anbieter[p['anbieter']]
+                ok, grund = anbieter.verfuegbar(p)
+                if not ok:
+                    raise ValueError(grund)
+                kontext, quelle, modell = anbieter.kontext_geladen(p)
+                schaetzung, reserve = kontext_pruefen(text, kontext)
+                hinweis = ('ohne Werkzeuge' if p['anbieter'] == 'claude' else
+                           'Sandbox nur lesend, kann Dateien lesen und Befehle ausführen, liest seine globale AGENTS.md mit'
+                           if p['anbieter'] == 'codex' else '')
+                auswerter.append(dict(p, kontext=kontext, kontext_quelle=quelle, modell_tatsaechlich=modell,
+                                      verarbeitung='Cloud (' + anbieter.cloud + ')' if anbieter.cloud else 'lokal',
+                                      geschaetzt=schaetzung, reserve=reserve, hinweis=hinweis))
+            ergebnis.append(dict(f, auftrag=anzeigen, gesendet_stand=gs, auswerter=auswerter))
+        return {'fassungen': ergebnis, 'eingaben': eingaben, 'leer': len(eingaben['leer'])}
+
+    def _testordner(self, eid):
+        d = self.lesen(eid)
+        if d['herkunft'] == 'sammlung' and not d.get('schatten'):
+            basis = self._pfad('_Sammlung')
+            os.makedirs(basis, exist_ok=True)
+            name = kennung(d['ueberschrift'] + (f" #{d['nummer']}" if d['nummer'] > 1 else ''), os.listdir(basis))
+            os.mkdir(self._pfad('_Sammlung', name))
+            d['schatten'] = name
+        if d['herkunft'] == 'sammlung':
+            self._meta_schreiben(d['schatten'], {'ueberschrift': d['ueberschrift'], 'nummer': d['nummer'],
+                'stand': d['fassungen'][0]['stand'], 'kaesten_vorher': sum(s['ueberschrift'] == d['ueberschrift']
+                  for s in sammlung_kaesten(self.sammlung))})
+        ziel = os.path.join(self._ordner(eid), 'tests')
+        if not pfad_erlaubt(ziel, [self.ordner]):
+            raise ValueError('Belegordner nicht erlaubt.')
+        return ziel
+
+    def testen(self, daten):
+        auftraege = []
+        with _SPERRE:
+            v = self.vorschau(daten)
+            staende = daten.get('gesendet_stand', {})
+            if any(staende.get(f['name']) != f['gesendet_stand'] for f in v['fassungen']):
+                raise Konflikt('Der Inhalt hat sich seit der Vorschau geändert.')
+            d = self.lesen(daten['id'])
+            ordner = self._testordner(d['id'])
+            neu = []
+            for f in v['fassungen']:
+                for p in f['auswerter']:
+                    kopf = dict(prompt=d['titel'], eintrag=d['id'], herkunft=d['herkunft'], fassung=f['name'],
+                        fassung_stand=f['stand'], rahmen='ja' if 'rahmen' in v['eingaben'] else 'nein',
+                        gesendet_stand=f['gesendet_stand'], auswerter=p['name'], anbieter=p['anbieter'],
+                        modell=p['modell'], kontext=p['kontext'], kontext_quelle=p['kontext_quelle'],
+                        verarbeitung=p['verarbeitung'], zustand='wartet', meldung='',
+                        erstellt=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), hinweis='',
+                        urteil='offen', notiz='', status='Entwurf, automatisch erstellt, nicht geprüft')
+                    if p.get('stufe'):
+                        kopf['denkstufe'] = p['stufe']
+                    if p.get('modell_tatsaechlich') and p['modell_tatsaechlich'] != p['modell']:
+                        kopf['modell_tatsaechlich'] = p['modell_tatsaechlich']
+                    datei = beleg_anlegen(ordner, kopf, f['text'], v['eingaben'])
+                    auftrag = self.auftrag_aus_beleg(d['id'], os.path.basename(datei))
+                    auftraege.append(auftrag)
+                    neu.append(auftrag['id'])
+        # Nie die Dateisperre halten, während die Warteschlangensperre erworben wird.
+        for auftrag in auftraege:
+            self.auswertung.einreihen(auftrag)
+        return {'neu': len(neu), 'auftraege': neu}
+
+    def auftrag_aus_beleg(self, eid, datei):
+        import secrets
+        import time
+        pfad = self.beleg_pfad(eid, datei)
+        b = beleg_lesen(pfad)
+        p = next((p for p in self.auswertung.profile if p['name'] == b['auswerter']
+                  and p['anbieter'] == b['anbieter'] and p['modell'] == b['modell']
+                  and p.get('stufe') == b.get('denkstufe')), None)
+        p = p or {'id': '', 'name': b['auswerter'], 'anbieter': b['anbieter'], 'modell': b['modell'],
+                  'stufe': b.get('denkstufe')}
+        return {'id': secrets.token_hex(4), 'art': 'prompt', 'titel': b['prompt'], 'auswerter': dict(p),
+                'prompt': {'eintrag': eid, 'herkunft': b['herkunft'], 'titel': b['prompt'],
+                           'fassung': b['fassung'], 'stand': b['fassung_stand'], 'beleg': datei[:-3],
+                           'gesendet_stand': b['gesendet_stand']}, 'datei': pfad,
+                'zustand': 'wartet', 'meldung': '', 'erstellt': time.time()}
+
+    def datei_inhalt(self, eid, was, datei):
+        pfad = self.beleg_pfad(eid, datei)
+        b = beleg_lesen(pfad)
+        if was == 'gesendet':
+            text, _ = auftrag_bauen(b['fassung_text'], b['eingaben'], self.transkripte_lesen(b['eingaben']))
+            return {'text': text}
+        if was != 'beleg':
+            raise ValueError('Unbekannte Dateiart.')
+        hinweise = {}
+        for name, feld in b['eingaben']['felder'].items():
+            if feld.get('art') in ('datei', 'transkript'):
+                try:
+                    frisch = (self.datei_lesen(feld['pfad']) if feld['art'] == 'datei'
+                              else self._transkript(feld['datei']))
+                    if frisch['sha'] != feld['sha']:
+                        hinweise[name] = 'Datei seit dem Test geändert.'
+                except (OSError, ValueError):
+                    hinweise[name] = 'Datei fehlt oder ist nicht lesbar.'
+        return dict(b, text=_lesen(pfad), hinweise=hinweise)
 
     def _pfad(self, *teile):
         pfad = os.path.join(self.ordner, *teile)
@@ -321,21 +703,12 @@ class Index:
                 try:
                     pfad = self._pfad(ordner, 'tests', name)
                     def lesen():
-                        kopf = {}
-                        with open(pfad, encoding='utf-8') as f:
-                            if f.readline().strip() != '---':
-                                raise ValueError('Belegkopf fehlt.')
-                            for zeile in f:
-                                if zeile.strip() == '---':
-                                    return kopf
-                                k, trenner, v = zeile.partition(':')
-                                if trenner:
-                                    v = v.strip()
-                                    try:
-                                        kopf[k] = json.loads(v)
-                                    except ValueError:
-                                        kopf[k] = v
-                        raise ValueError('Belegkopf ist offen.')
+                        _, _, kopf, ks = _belegkopf(_lesen(pfad))
+                        try:
+                            beleg_lesen(pfad)
+                        except (ValueError, KeyError, TypeError):
+                            kopf['fehler'] = 'Beleg beschädigt'
+                        return dict(kopf, kopf_stand=ks)
                     ergebnis.append(dict(self._gecacht(pfad, lesen), datei=name))
                 except (OSError, ValueError, UnicodeError):
                     ergebnis.append({'datei': name, 'fehler': 'Beleg beschädigt'})
@@ -511,6 +884,29 @@ class Index:
 
     def aktion(self, daten):
         aktion, eid = daten.get('aktion'), daten.get('id', '')
+        if aktion in ('vorschau', 'testen'):
+            return getattr(self, aktion)(daten)
+        if aktion == 'datei_lesen':
+            return self.datei_lesen(daten.get('pfad', ''))
+        if aktion == 'datei_waehlen':
+            from werkstatt.quellen import textdatei_waehlen
+            pfade = textdatei_waehlen()
+            return self.datei_lesen(pfade[0]) if pfade else {'abgebrochen': True}
+        if aktion == 'urteil':
+            if daten.get('urteil') not in ('offen', 'gut', 'schwach') or not isinstance(daten.get('notiz', ''), str):
+                raise ValueError('Ungültiges Urteil oder Notiz.')
+            ks = _kopf_setzen(self.beleg_pfad(eid, daten.get('datei')), {
+                'urteil': daten['urteil'], 'notiz': daten.get('notiz', '')}, daten.get('kopf_stand', ''))
+            return {'kopf_stand': ks}
+        if aktion == 'wiederholen_beleg':
+            a = self.auftrag_aus_beleg(eid, daten.get('datei'))
+            with self.auswertung._lock:
+                if any(os.path.normcase(x.get('datei') or '') == os.path.normcase(a['datei'])
+                       for x in self.auswertung.liste if x.get('art') == 'prompt'):
+                    raise Konflikt('Dieser Beleg steht bereits in der Warteschlange.')
+                beleg_zustand(a['datei'], 'wartet')
+                self.auswertung.einreihen(a)
+            return {'ok': True}
         if aktion == 'neu':
             return self.neu(daten.get('titel', ''), daten.get('quelle', ''),
                             daten.get('schlagworte', ''), daten.get('text', ''))

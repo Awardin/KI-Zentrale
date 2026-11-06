@@ -47,6 +47,74 @@ class Kennungen(unittest.TestCase):
             prompts.kennung('_Sammlung')
 
 
+class FelderUndAuftrag(unittest.TestCase):
+    def test_regex_links_zeitmarken_dopplung_und_woertlich(self):
+        text = '[A] [A] [red, blue] [x] [ref] [00:12:34] [hh:mm:ss] [123] [Link](https://x) [Ärger]'
+        self.assertEqual(prompts.felder_erkennen(text), ['A', 'red, blue', 'x', 'ref', 'Ärger'])
+        self.assertEqual(prompts.felder_erkennen('[a\nb] [] [' + 'x' * 61 + ']'), [])
+
+    def test_ein_durchgang_leer_woertlich_zwei_transkripte_rahmen(self):
+        eingaben = {'felder': {'A': {'art': 'text', 'wert': '[B] [Klammern]'},
+            'B': {'art': 'text', 'wert': 'ersetzt'}, 'x': {'art': 'woertlich'},
+            'T1': {'art': 'transkript'}, 'T2': {'art': 'transkript'}}, 'leer': ['Leer'],
+            'rahmen': {'art': 'text', 'wert': 'Rahmen'}}
+        text, sha = prompts.auftrag_bauen('[A] [B] [x] [Leer] [T1] [T2]', eingaben,
+                                          {'T1': '[B] Transkript 1', 'T2': 'Transkript 2'})
+        self.assertEqual(text, 'Rahmen\n\n[B] [Klammern] ersetzt [x] [Leer] [B] Transkript 1 Transkript 2')
+        self.assertEqual(sha, prompts.sha(text))
+        self.assertEqual(len(sha), 64)
+
+
+class Belege(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.datei = prompts.beleg_anlegen(self.tmp.name,
+            {'fassung': 'Fassung 1', 'auswerter': 'Fake', 'zustand': 'wartet', 'urteil': 'offen', 'notiz': ''},
+            'Fassung', {'felder': {'A': {'art': 'text', 'wert': '  ~~~~\n~~~\n```'}}})
+
+    def test_rundlauf_verlaengerter_zaun_abgeschnittene_antwort(self):
+        antwort = 'Anfang\n```html\n<html>offen\n  ~~~~~\n'
+        prompts.antwort_schreiben(self.datei, antwort)
+        b = prompts.beleg_lesen(self.datei)
+        self.assertEqual(b['antwort'], antwort)
+        self.assertEqual(b['fassung_text'], 'Fassung')
+        self.assertEqual(b['eingaben']['felder']['A']['wert'], '  ~~~~\n~~~\n```')
+        self.assertTrue(all(k['geschlossen'] for k in prompts.bloecke(Path(self.datei).read_text(encoding='utf-8'))))
+
+    def test_offener_oder_leerer_antwortblock_ist_keine_antwort(self):
+        roh = Path(self.datei).read_text(encoding='utf-8')
+        for antwort in ('', '## Antwort\n~~~text\noffen', '## Antwort\n~~~text\n\n~~~\n'):
+            Path(self.datei).write_text(roh + antwort, encoding='utf-8')
+            self.assertFalse(prompts.beleg_lesen(self.datei)['antwort'].strip())
+        for pflicht in ('## Fassung', '## Eingaben'):
+            Path(self.datei).write_text(roh.replace(pflicht, '## Entfernt'), encoding='utf-8')
+            with self.assertRaises(ValueError):
+                prompts.beleg_lesen(self.datei)
+
+    def test_urteil_kopfstand_und_zustand_rest_bytegleich(self):
+        roh = Path(self.datei).read_text(encoding='utf-8').replace('\n', '\r\n')
+        Path(self.datei).write_bytes(roh.encode('utf-8'))
+        b = prompts.beleg_lesen(self.datei)
+        vorher = Path(self.datei).read_bytes()
+        prompts._kopf_setzen(self.datei, {'urteil': 'gut', 'notiz': 'Notiz\nmit Zeile'}, b['kopf_stand'])
+        nachher = Path(self.datei).read_bytes()
+        self.assertEqual(vorher.split(b'---\r\n', 2)[2], nachher.split(b'---\r\n', 2)[2])
+        self.assertEqual(vorher.replace(b'urteil: offen', b'urteil: gut').replace(
+            b'notiz: ""', b'notiz: "Notiz\\nmit Zeile"'), nachher)
+        with self.assertRaises(prompts.Konflikt):
+            prompts._kopf_setzen(self.datei, {'urteil': 'schwach'}, b['kopf_stand'])
+        prompts.beleg_zustand(self.datei, 'fehler', 'Fehler\nText', tokens=123)
+        self.assertEqual(nachher.split(b'---\r\n', 2)[2], Path(self.datei).read_bytes().split(b'---\r\n', 2)[2])
+
+    def test_html_groesster_block_und_dokument(self):
+        self.assertEqual(prompts.html_erkennen('```html\nklein\n```\n~~~html\nviel größer\n~~~'), 'viel größer')
+        self.assertEqual(prompts.html_erkennen('<!DOCTYPE html>\n<html>x</html>'), '<!DOCTYPE html>\n<html>x</html>')
+        self.assertEqual(prompts.html_erkennen('<html>x</html>'), '<html>x</html>')
+        self.assertEqual(prompts.html_erkennen('```html\noffen'), 'offen')
+        self.assertEqual(prompts.html_erkennen('```text\n<html>x</html>\n```'), '')
+
+
 class Basis(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -262,6 +330,134 @@ class Sammlung(Basis):
 
 
 class Oberflaeche(unittest.TestCase):
+    def test_testdialog_nochmal_vorschau_start_ablegen_und_markdown(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
+        skript = r'''
+const fs = require('fs'), vm = require('vm'), assert = require('assert');
+class Element {
+  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.events = {}; this.dataset = {}; this.classList = {add() {}, remove() {}}; }
+  append(...k) { this.children.push(...k); }
+  replaceChildren(...k) { this.children = k; }
+  setAttribute(k, v) { this[k] = v; }
+  addEventListener(k, f) { this.events[k] = f; }
+  focus() {}
+  remove() { this.entfernt = true; }
+  querySelector() { return null; }
+  insertBefore(kind, vor) { this.children.splice(vor ? this.children.indexOf(vor) : this.children.length, 0, kind); }
+}
+const ids = new Map(), anfragen = [];
+const document = {
+  querySelector: (s) => { if (!ids.has(s)) ids.set(s, new Element('div')); return ids.get(s); },
+  createElement: (t) => new Element(t),
+  events: {}, addEventListener(art, fn) { this.events[art] = fn; },
+};
+const e = {id: 'Test', titel: 'Test', herkunft: 'ordner', tests: [], fassungen: [
+  {name: 'Eins', text: 'Test [A] [B] [red, blue]'}, {name: 'Zwei', text: 'Test [A]'}], bevorzugt: 'Zwei'};
+const beleg = {fassung: 'Eins', auswerter: 'Fake', rahmen: 'ja', hinweise: {B: 'Datei seit dem Test geändert.'},
+  eingaben: {felder: {A: {art: 'text', wert: 'Alt'}, B: {art: 'datei', pfad: 'C:/feld.txt', wert: 'Datei alt'},
+    'red, blue': {art: 'woertlich'}}}};
+const kontext = vm.createContext({document, window: {}, console,
+  localStorage: {getItem() { return '["p"]'; }, setItem() {}}, aktualisieren() {},
+  fehlerMelden(t) { throw Error(t); },
+  fetch: async (pfad, opt) => {
+    const d = opt?.body ? JSON.parse(opt.body) : null; anfragen.push([pfad, d]);
+    let wert;
+    if (pfad === '/api/zusammenfassung') wert = {auswerter: [
+      {id: 'p', name: 'Fake', verfuegbar: true}, {id: 'aus', name: 'Aus', verfuegbar: false, grund: 'Nicht geladen'}]};
+    else if (d?.aktion === 'vorschau') wert = {leer: 0, fassungen: [{name: 'Eins', auftrag: '<html>nur Text</html>',
+      gesendet_stand: 'hash', auswerter: [{modell: 'Fake', verarbeitung: 'lokal', geschaetzt: 200, kontext: 128000,
+        kontext_quelle: '/health', hinweis: ''}]}]};
+    else if (d?.aktion === 'testen') wert = {neu: 1};
+    else if (pfad === '/api/prompts') wert = {eintraege: [], fehler: []};
+    else if (d?.aktion === 'datei_waehlen') wert = {art: 'datei', pfad: 'C:/neu.txt', wert: 'Neue Datei'};
+    else if (pfad === '/api/transkripte?prompts=1') wert = [{titel: 'Film', datei: 'C:/watch/transcript-timestamps.txt', zeichen: 123, sha: 'sha'}];
+    else throw Error('Unerwartete Anfrage: ' + pfad + ' ' + JSON.stringify(d));
+    return {ok: true, json: async () => wert};
+  },
+});
+const app = fs.readFileSync('werkstatt/web/app.js', 'utf8');
+vm.runInContext(app.split('let STAND =')[0], kontext);
+vm.runInContext(app.slice(app.indexOf('function knopf('), app.indexOf('const auftrag =')), kontext);
+const zf = fs.readFileSync('werkstatt/web/zusammenfassung.js', 'utf8');
+vm.runInContext(zf.slice(zf.indexOf('function markdown('), zf.indexOf('// ------------------------------------------------------------------ Transkripte')), kontext);
+vm.runInContext(`function dialogOeffnen(titel, inhalt, knoepfe) {
+  const d = {titel, children: [...inhalt, ...knoepfe], close() { this.geschlossen = true; }};
+  window.dialog = d; return d;
+}`, kontext);
+vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
+function alle(e) { return [e, ...e.children.flatMap((k) => k && typeof k === 'object' ? alle(k) : [])]; }
+function knopf(text, wurzel = kontext.window.dialog) { return alle(wurzel).find((k) => k.children?.includes(text)); }
+async function klicken(b) { assert(b); await b.events.click({currentTarget: b}); }
+kontext.e = e; kontext.beleg = beleg;
+(async () => {
+  const md = vm.runInContext('markdown("Vorher\\n```html\\n  <script>**roh**</script>  \\n\\n```\\nNachher")', kontext);
+  assert(md.includes('<pre><code>  &lt;script&gt;**roh**&lt;/script&gt;  \n\n</code></pre>'));
+  assert(!md.includes('<script>'));
+  assert(vm.runInContext('markdown("~~~\\n  offen  ")', kontext).includes('  offen  </code>'));
+  await vm.runInContext('pTestdialog(e, null)', kontext);
+  let d = kontext.window.dialog;
+  assert(alle(d).some((k) => k.children?.includes('Zwei') && k.children[0].checked));
+  assert(alle(d).some((k) => k.disabled && k.type === 'checkbox'));
+  assert(alle(d).find((k) => k.children?.includes('Rahmen der Zusammenfassung voranstellen')).children[0].checked === false);
+  await vm.runInContext('pTestdialog(e, "Eins", beleg)', kontext);
+  d = kontext.window.dialog;
+  let a = alle(d).find((k) => k['data-prompt-feld'] === 'A');
+  let b = alle(d).find((k) => k['data-prompt-feld'] === 'B');
+  assert.equal(a.value, 'Alt'); assert.equal(b.value, 'Datei alt');
+  assert(alle(d).some((k) => k.textContent === 'Datei seit dem Test geändert.'));
+  assert(alle(d).find((k) => k['data-prompt-feld'] === 'red, blue').promptEingabe.woertlich.checked);
+  await klicken(knopf('Vorschau berechnen'));
+  const pre = alle(d).find((k) => k.tag === 'pre'); assert.equal(pre.textContent, '<html>nur Text</html>');
+  a.value = 'Geändert'; a.events.input();
+  await klicken(knopf('Start'));
+  assert(!anfragen.some(([, d]) => d?.aktion === 'testen'));
+  kontext.dropE = {dataTransfer: {files: [{name: 'gezogen.txt', text: async () => 'Gezogener Inhalt'}]}};
+  kontext.feld = a;
+  await vm.runInContext('window.promptsAblegen(dropE, feld)', kontext);
+  assert.equal(a.promptEingabe.quelle.name, 'gezogen.txt');
+  await klicken(knopf('Vorschau berechnen'));
+  await klicken(knopf('Start'));
+  assert(d.geschlossen);
+  const gesendet = anfragen.find(([, d]) => d?.aktion === 'testen')[1];
+  assert.equal(gesendet.eingaben.felder.A.art, 'text');
+  assert.equal(gesendet.eingaben.felder.A.wert, 'Gezogener Inhalt');
+  assert.equal(gesendet.gesendet_stand.Eins, 'hash');
+  await vm.runInContext('pTestdialog(e, "Eins")', kontext);
+  await klicken(knopf('Aus Datei …'));
+  assert.equal(alle(kontext.window.dialog).find((k) => k['data-prompt-feld'] === 'A').value, 'Neue Datei');
+  await klicken(knopf('Aus Transkript …'));
+  await klicken(knopf('Film · 123 Zeichen'));
+  assert.equal(alle(kontext.window.dialog).find((k) => k['data-prompt-feld'] === 'A').promptEingabe.quelle.art, 'transkript');
+  // Der zentrale Drop-Handler bleibt im Reiter Prompts und räumt das Overlay auf.
+  vm.runInContext(app.slice(app.indexOf('function einrichtenAblegen()'), app.indexOf('// ------------------------------------------------------------------ Kopf')), kontext);
+  vm.runInContext('einrichtenAblegen()', kontext);
+  let abgelegt = false;
+  kontext.window.promptsAblegen = (ev, feld) => { abgelegt = feld === a; };
+  document.querySelector('#reiter-prompts').hidden = false;
+  document.querySelector('#ueberall').hidden = false;
+  document.events.drop({preventDefault() {}, target: {closest() { return a; }}, dataTransfer: {types: ['Files']}});
+  assert(abgelegt); assert(document.querySelector('#ueberall').hidden);
+  // Acht alte Zusammenfassungen ohne art bleiben sichtbar; Promptläufe werden ausgefiltert.
+  vm.runInContext(`const ZF = {gewaehlt: {ordner: 'Film'}, zeilen: new Map(), stand: {auswertungen:
+    Array.from({length: 8}, (_, i) => ({id: String(i), ordner: 'Film', zustand: 'fertig',
+      anweisung: {name: 'Alt'}, auswerter: {name: 'Fake'}})).concat([{id: 'prompt', art: 'prompt', ordner: 'Film'}])}};
+    function fassungStatus() { return 'fertig'; }
+    function fassungKnoepfe() { return []; }
+    function fassungText(f) { (window.gezeigt ||= []).push(f.id); }`, kontext);
+  vm.runInContext(zf.slice(zf.indexOf('function fassungenZeichnen()'), zf.indexOf('function zfZeichnen()')), kontext);
+  vm.runInContext('fassungenZeichnen()', kontext);
+  assert.equal(kontext.window.gezeigt.length, 8);
+  assert(!kontext.window.gezeigt.includes('prompt'));
+})().catch((e) => { console.error(e); process.exitCode = 1; });
+'''
+        lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8', capture_output=True,
+                              cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_laden_suche_filter_und_fassungstext(self):
         """Echtes prompts.js mit app.js-Hilfen gegen ein kleines DOM und Fake-HTTP."""
         import shutil
@@ -272,15 +468,29 @@ class Oberflaeche(unittest.TestCase):
         skript = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; }
+  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.scrollTop = 0; this.scrollLeft = 0; }
   append(...k) { this.children.push(...k); }
-  replaceChildren(...k) { this.children = k; }
+  replaceChildren(...k) {
+    this.children = k; this.scrollTop = 0; this.scrollLeft = 0;
+    if (this === ids.get('#p-inhalt')) fenster.scrollY = 0;
+  }
   setAttribute(k, v) { this[k] = v; }
+  getAttribute(k) { return this[k] ?? null; }
   addEventListener(k, f) { (this.events ||= {})[k] = f; }
+  nachkommen() { return this.children.filter((k) => k && typeof k === 'object').flatMap((k) => [k, ...k.nachkommen()]); }
+  querySelectorAll(s) { return this.nachkommen().filter((k) => s !== 'details[data-p-ansicht]'
+    || (k.tag === 'details' && k['data-p-ansicht'] != null)); }
+  querySelector(s) { return this.nachkommen().find((k) => s === '.f-text' && k.className === 'f-text') || null; }
 }
 const ids = new Map();
+let dialogOffen = false, jetzt = 0, schlange = [];
+const zeitgeber = [];
+const fenster = {scrollX: 0, scrollY: 0, scrollTo(p) { this.scrollX = p.left; this.scrollY = p.top; }};
 const document = {
-  querySelector: (s) => { if (!ids.has(s)) ids.set(s, new Element('div')); return ids.get(s); },
+  querySelector: (s) => {
+    if (s === 'dialog[open]') return dialogOffen ? new Element('dialog') : null;
+    if (!ids.has(s)) ids.set(s, new Element('div')); return ids.get(s);
+  },
   createElement: (t) => new Element(t),
 };
 const eintraege = [
@@ -293,18 +503,22 @@ const eintraege = [
    fassungen: [{name: 'Sammlung', stand: '789', text: 'Suche'}]},
 ];
 let anfragen = [];
-const kontext = vm.createContext({document, window: {}, console,
+const kontext = vm.createContext({document, window: fenster, console,
+  Date: class extends Date { static now() { return jetzt; } },
+  setTimeout(fn, ms) { zeitgeber.push({fn, ms}); return zeitgeber.length; },
+  markdown: (text) => text,
   fetch: async (pfad) => {
     anfragen.push(pfad);
-    if (pfad === '/api/prompts') return {ok: true, json: async () => ({eintraege, fehler: []})};
+    if (pfad === '/api/prompts') return {ok: true, json: async () => JSON.parse(JSON.stringify({eintraege, fehler: [], warteschlange: schlange}))};
     if (pfad.startsWith('/api/prompt?id=')) return {ok: true,
-      json: async () => eintraege.find((e) => e.id === decodeURIComponent(pfad.split('=')[1]))};
+      json: async () => JSON.parse(JSON.stringify(eintraege.find((e) => e.id === decodeURIComponent(pfad.split('=')[1]))))};
     throw Error('Unerwartete Anfrage: ' + pfad);
   }, aktualisieren() {}, fehlerMelden(t) { throw Error(t); },
 });
 const app = fs.readFileSync('werkstatt/web/app.js', 'utf8');
 vm.runInContext(app.split('let STAND =')[0], kontext);
 vm.runInContext(app.slice(app.indexOf('function knopf('), app.indexOf('const auftrag =')), kontext);
+vm.runInContext(app.slice(app.indexOf('const ZUSTAND ='), app.indexOf('function schrittListe(')), kontext);
 vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
 function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k === 'object' ? elemente(k, tag) : [])]
   .filter((k) => k.tag === tag); }
@@ -330,6 +544,69 @@ function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k ===
   assert.equal(elemente(ids.get('#p-inhalt'), 'details').length, 1);
   assert.equal(ids.get('#p-rueck').textContent, '');
   assert.equal(anfragen.length, 2);
+  // Gleiche JSON-Daten erhalten die tatsächlichen Knoten und offene Kästen.
+  const box = ids.get('#p-inhalt'), liste = ids.get('#p-liste');
+  let vorher = [...box.children], listenknoten = [...liste.children];
+  elemente(box, 'details')[0].open = true;
+  await vm.runInContext('pLaden();', kontext);
+  await vm.runInContext('pLaden();', kontext);
+  assert(box.children.every((k, i) => k === vorher[i]));
+  assert(liste.children.every((k, i) => k === listenknoten[i]));
+  assert(elemente(box, 'details')[0].open);
+  // Auch Antworten bleiben offen; beim echten Neuzeichnen werden sie anhand der Datei zugeordnet.
+  eintraege[0].tests = [{datei: 'Beleg.md', fassung: 'Fassung 1', auswerter: 'Fake', zustand: 'laeuft',
+    urteil: 'gut', notiz: '', kopf_stand: 'stand'}];
+  eintraege[0].warteschlange = [{id: 'lauf', prompt: {eintrag: 'Hühnerfarm', fassung: 'Fassung 1', beleg: 'Beleg'},
+    auswerter: {name: 'Fake'}, zustand: 'laeuft', meldung: '', sekunden: 1}];
+  await vm.runInContext('pLaden()', kontext);
+  let antwort = elemente(box, 'details').find((k) => k['data-p-ansicht'] === '["Beleg.md","antwort"]');
+  antwort.open = true;
+  antwort.querySelector('.f-text').innerHTML = 'Vorhandene Antwort';
+  vorher = [...box.children];
+  await vm.runInContext('pLaden()', kontext);
+  assert(box.children.every((k, i) => k === vorher[i]));
+  assert(antwort.open);
+  eintraege[0].warteschlange[0].sekunden = 2;
+  await vm.runInContext('pLaden()', kontext);
+  assert(box.children.every((k, i) => k === vorher[i]), 'Nicht angezeigte Sekunden dürfen kein Neuzeichnen auslösen');
+  box.scrollTop = 123; box.scrollLeft = 12; liste.scrollTop = 234; fenster.scrollY = 456;
+  eintraege[0].tests[0].tokens = 42;
+  await vm.runInContext('pLaden()', kontext);
+  assert.notStrictEqual(box.children[0], vorher[0]);
+  antwort = elemente(box, 'details').find((k) => k['data-p-ansicht'] === '["Beleg.md","antwort"]');
+  assert(antwort.open); assert.equal(antwort.querySelector('.f-text').innerHTML, 'Vorhandene Antwort');
+  assert.equal(box.scrollTop, 123); assert.equal(box.scrollLeft, 12);
+  assert.equal(liste.scrollTop, 234); assert.equal(fenster.scrollY, 456);
+  // Nutzertexte in Beleg und Warteschlange stammen aus ZUSTAND.
+  for (const [roh, deutsch] of Object.entries({wartet: 'Wartet', laeuft: 'Läuft', fertig: 'Fertig',
+      fehler: 'Fehlgeschlagen', abgebrochen: 'Abgebrochen'})) {
+    eintraege[0].tests[0].zustand = roh;
+    eintraege[0].warteschlange[0].zustand = roh;
+    await vm.runInContext('pLaden()', kontext);
+    const texte = elemente(box, 'p').map((k) => k.textContent);
+    assert(texte.some((t) => t.includes(deutsch) && t.includes('Urteil: gut')));
+    if (roh !== 'fertig') assert(texte.some((t) => t.startsWith('Fassung 1 · Fake · ' + deutsch)));
+    assert(!texte.some((t) => t.split(' · ').includes(roh)));
+  }
+  // Im Leerlauf nur alle 30 s, mit aktiver Warteschlange oder aktivem Beleg alle 2,5 s.
+  vm.runInContext('window.promptsAktiv(true)', kontext);
+  await new Promise(setImmediate);
+  let anzahl = anfragen.length;
+  jetzt = 2500; await zeitgeber.shift().fn(); assert.equal(anfragen.length, anzahl);
+  jetzt = 30000; await zeitgeber.shift().fn(); assert.equal(anfragen.length, anzahl + 2);
+  schlange = [{zustand: 'wartet'}]; await vm.runInContext('pLaden()', kontext);
+  anzahl = anfragen.length; jetzt = 32500; await zeitgeber.shift().fn(); assert.equal(anfragen.length, anzahl + 2);
+  schlange = []; eintraege[0].tests[0].zustand = 'laeuft'; await vm.runInContext('pLaden()', kontext);
+  anzahl = anfragen.length; jetzt = 35000; await zeitgeber.shift().fn(); assert.equal(anfragen.length, anzahl + 2);
+  // Dialog und fokussiertes Textfeld schützen auch direkte Neuladeaufrufe.
+  vorher = [...box.children]; dialogOffen = true;
+  anzahl = anfragen.length; jetzt = 70000; await zeitgeber.shift().fn();
+  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
+  assert.equal(anfragen.length, anzahl); assert(box.children.every((k, i) => k === vorher[i]));
+  assert(antwort.open);
+  dialogOffen = false; document.activeElement = {matches() { return true; }};
+  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
+  assert.equal(anfragen.length, anzahl); assert(box.children.every((k, i) => k === vorher[i]));
 })().catch((e) => { console.error(e); process.exitCode = 1; });
 '''
         lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8',

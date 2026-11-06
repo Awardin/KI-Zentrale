@@ -359,6 +359,98 @@ class PromptRouten(unittest.TestCase):
         with open(pfad, encoding='utf-8') as f:
             self.assertEqual(json.load(f)['stand'], prompts.stand('Suchen'))
 
+    def test_testen_vorschau_beleg_urteil_gesendet_und_konflikte(self):
+        from werkstatt import auswertung
+        from werkstatt.tests.test_auswertung_prompts import Fake
+        cfg = {'watch': {'arbeitsordner': self.tmp.name}, 'promptsammlung': self.p.sammlung,
+               'prompts': self.p.cfg, 'auswerter_vorschlag': [
+                   {'id': 'p', 'anbieter': 'fake', 'modell': 'modell', 'name': 'Fake'}], 'cloud_parallel': 0}
+        au = auswertung.Auswertungen(cfg, os.path.join(self.tmp.name, 'daten'), lambda text: None)
+        au.anbieter['fake'] = Fake()
+        self.p = au.prompts
+        self.h.werkstatt.prompts = self.p
+        self.h.werkstatt.auswertung = au
+        e = self.p.neu('Test', '', '', 'Teste [A]')
+        daten = {'id': e['id'], 'fassungen': ['Fassung 1'], 'auswerter': ['p'],
+                 'eingaben': {'felder': {'A': {'art': 'text', 'wert': 'Text'}}}}
+        code, v = self.post(dict(daten, aktion='vorschau'))
+        self.assertEqual(code, 200)
+        self.assertEqual(self.post(dict(daten, aktion='testen', gesendet_stand={}))[0], 409)
+        staende = {f['name']: f['gesendet_stand'] for f in v['fassungen']}
+        code, antwort = self.post(dict(daten, aktion='testen', gesendet_stand=staende))
+        self.assertEqual((code, antwort['neu']), (200, 1))
+        self.assertEqual(len(self.get('/api/prompts')[1]['warteschlange']), 1)
+        a = au.liste[0]
+        datei = os.path.basename(a['datei'])
+        from urllib.parse import urlencode
+        url = '/api/prompt-datei?' + urlencode({'id': e['id'], 'was': 'beleg', 'datei': datei})
+        code, b = self.get(url)
+        self.assertEqual((code, b['fassung_text']), (200, 'Teste [A]'))
+        self.assertEqual(self.get(url.replace('was=beleg', 'was=gesendet'))[1]['text'], 'Teste Text')
+        urteil = {'aktion': 'urteil', 'id': e['id'], 'datei': datei,
+                  'kopf_stand': b['kopf_stand'], 'urteil': 'gut', 'notiz': 'Notiz'}
+        self.assertEqual(self.post(urteil)[0], 200)
+        self.assertEqual(self.post(urteil)[0], 409)
+        for name in ('..\\x.md', 'C:\\x.md', 'x.cmd', 'x.md:strom', '..', '../x.md'):
+            self.assertEqual(self.get('/api/prompt-datei?' + urlencode(
+                {'id': e['id'], 'was': 'gesendet', 'datei': name}))[0], 400)
+        au.aktion(a['id'], 'entfernen')
+        self.assertTrue(self.get('/api/prompts')[1]['eintraege'][0]['tests'][0]['verwaist'])
+        self.assertEqual(self.post({'aktion': 'wiederholen_beleg', 'id': e['id'], 'datei': datei})[0], 200)
+        self.assertEqual(self.post({'aktion': 'wiederholen_beleg', 'id': e['id'], 'datei': datei})[0], 409)
+        with patch('werkstatt.prompts.os.startfile') as starten:
+            self.assertEqual(self.p.oeffnen(e['id'], 'beleg', datei), {'ok': True})
+            starten.assert_called_once_with(a['datei'])
+
+    def test_neue_aktionen_ohne_herkunft_und_dateidialog(self):
+        for aktion in ('vorschau', 'testen', 'urteil', 'datei_lesen', 'datei_waehlen', 'wiederholen_beleg'):
+            del self.h.headers['X-Werkstatt']
+            self.assertEqual(self.post({'aktion': aktion})[0], 403)
+            self.h.headers['X-Werkstatt'] = '1'
+        datei = os.path.join(self.tmp.name, 'feld.txt')
+        with open(datei, 'w', encoding='utf-8') as f:
+            f.write('Feldinhalt')
+        self.assertEqual(self.post({'aktion': 'datei_lesen', 'pfad': datei})[1]['wert'], 'Feldinhalt')
+        with patch('werkstatt.quellen.textdatei_waehlen', return_value=[datei]):
+            self.assertEqual(self.post({'aktion': 'datei_waehlen'})[1]['wert'], 'Feldinhalt')
+        with patch('werkstatt.quellen.textdatei_waehlen', return_value=[]):
+            self.assertTrue(self.post({'aktion': 'datei_waehlen'})[1]['abgebrochen'])
+        with patch.object(self.p, 'transkripte', return_value=[{'titel': 'Film', 'sha': 'sha', 'zeichen': 10}]):
+            self.assertEqual(self.get('/api/transkripte?prompts=1')[1][0]['zeichen'], 10)
+        with patch.object(self.p, 'transkripte', side_effect=RuntimeError('MARKIERUNG')):
+            self.assertEqual(self.get('/api/transkripte?prompts=1')[0], 400)
+        self.h.werkstatt.log.assert_not_called()
+
+    def test_prompt_fassung_oeffnen_sicher_und_messungen_filter(self):
+        from werkstatt import server
+        w = server.Werkstatt.__new__(server.Werkstatt)
+        w.prompts = self.p
+        e = self.p.neu('Test', '', '', 'Text')
+        datei = os.path.join(self.p.ordner, e['id'], 'tests', 'Test.md')
+        os.makedirs(os.path.dirname(datei))
+        with open(datei, 'w', encoding='utf-8') as f:
+            f.write('Beleg')
+        a = {'id': 'p', 'art': 'prompt', 'prompt': {'eintrag': e['id'], 'beleg': 'Test'}, 'datei': 'C:\\x.cmd'}
+        w.auswertung = Mock(liste=[a])
+        w.auswertung._belegpfad.side_effect = lambda a: self.p.beleg_pfad(a['prompt']['eintrag'], a['prompt']['beleg'] + '.md')
+        with patch('werkstatt.prompts.os.startfile') as starten:
+            self.assertEqual(w.fassung_oeffnen('p', 'oeffnen')[0], 200)
+            starten.assert_called_once_with(datei)
+            starten.reset_mock()
+            self.assertEqual(w.fassung_oeffnen('p', 'ordner')[0], 200)
+            starten.assert_called_once_with(os.path.dirname(datei))
+        w._messungen = (1e20, {})
+        lokal = Mock()
+        lokal._eintraege.return_value = ({}, {})
+        lokal.katalog.return_value = []
+        w.auswertung.anbieter = {'lokal': lokal}
+        w.messlauf = Mock(laufend=None)
+        w.messlauf.liste.return_value = []
+        alt = {'id': 'z', 'zustand': 'fertig', 'dauer_s': 1, 'auswerter': {'name': 'Zusammenfassung'}}
+        a.update(zustand='fertig', dauer_s=1, auswerter={'name': 'Prompt'})
+        w.auswertung.liste.append(alt)
+        self.assertEqual(w.messungen()['zusammenfassung']['anzahl'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

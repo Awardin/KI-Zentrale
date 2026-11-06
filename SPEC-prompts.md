@@ -145,6 +145,8 @@ Der Index (alle `prompt.md`, Belegköpfe) wird je Anfrage aus den Dateien gelese
   symbolische Verknüpfungen auf, auch bei Teilpfaden), dann Vergleich ganzer Pfadteile; abgelehnt werden
   `\\?\`-, `\\.\`- und UNC-Pfade sowie alternative Datenströme (`:` außerhalb des Laufwerksbuchstabens). Gilt für
   Felddateien (`dateiwurzeln` + watch-Arbeitsordner), für jede Datei unter dem Prompts-Ordner und für die Sammlung.
+  Ergänzt nach dem Sicherheitspass zu Scheibe 2: Ordner aus `prompts.gesperrt` (Vorgabe `C:\Workstation\00_Secrets`)
+  und `.env`-Dateien lehnt `datei_lesen` ab, damit keine Zugangsdaten in einen Prompt und zu einem Cloud-Modell gelangen.
 - `oeffnen` nimmt **nie** einen Pfad vom Client oder aus einer Kopfzeile: `{id, was, datei}` mit `was` ∈
   {ordner, sammlung, beleg, schaerfen, html}; `datei` ist ein reiner Dateiname ohne Trennzeichen; der Server baut den
   Pfad aus dem Eintragsordner + `tests\` bzw. `schaerfen\` + Name, verlangt eine reguläre Datei mit Endung `.md`
@@ -583,7 +585,12 @@ Werkstatt-Abschnitt.
   Browser-Abnahme (a)–(e) auf Port 3896 aus dem Worktree, (f)–(k) über Unit-Tests; Sicherheitspass ohne Befund.
   Claude-Nachbesserung: Steuerzeichenverbot um NEL/LS/PS erweitert (`_STEUERZEICHEN`). Branch `bau/reiter-prompts`
   im Worktree `KI-Zentrale-bau-prompts`. Offen aus Scheibe 1: Vorgabename neuer Fassungen (Dialog verlangt einen Namen).
-- Scheibe 2 und 3: noch nicht begonnen.
+- **Scheibe 2 gebaut und abgenommen (06.11.2026)**: Codex Sol medium, 22 min, plus eine Fixrunde auf Sol high
+  (5 min, vier Punkte: Neuladen ohne Verlust offener Antworten, deutsche Zustandswörter, abgesicherter Fehlerzweig,
+  Belegordner öffnen); 365 Tests grün; Browser-Abnahme mit echtem Lauf (Codex Luna), (b), (d), (f)–(n) über
+  Unit-Tests mit zählenden Fake-Anbietern. Vorgemerkt außerhalb der Scheibe: `transkripte_auflisten` sieht nur die
+  oberste Ebene des watch-Ordners (Bereichsordner seit 25.10. fehlen, 4 von 289 Transkripten sichtbar).
+- Scheibe 3: noch nicht begonnen.
 
 ## Lehre aus diesem Lauf
 

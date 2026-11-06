@@ -13,7 +13,6 @@ import secrets
 import subprocess
 import threading
 import time
-import traceback
 import urllib.error
 import urllib.request
 
@@ -84,6 +83,9 @@ class Anbieter:
     def kontext(self, profil):
         m = next((m for m in self.katalog() if m['modell'] == profil['modell']), None)
         return (m or {}).get('kontext')
+
+    def kontext_geladen(self, profil):
+        return self.kontext(profil), 'Anbieter', profil['modell']
 
     def ausfuehren(self, profil, prompt, lauf):
         raise NotImplementedError
@@ -463,6 +465,24 @@ def _lokaler_text(text, abgeschnitten):
 class Lokal(Anbieter):
     schluessel, name, cloud = 'lokal', 'Lokal', None
 
+    def kontext_geladen(self, profil):
+        eintraege, ollama = self._eintraege()
+        e = eintraege.get(profil['modell'])
+        if not e:
+            raise RuntimeError('Dieses Modell steht nicht mehr in der Modellzentrale.')
+        if e['art'] in ('strata', 'polystrata'):
+            with _OHNE_PROXY.open(f"http://127.0.0.1:{e['port']}/health", timeout=3) as r:
+                h = json.load(r)
+            if not h.get('loaded') or not h.get('max_context') or h.get('model') not in self._kennungen(e):
+                raise RuntimeError('Das Modell ist nicht geladen. Bitte in der Modellzentrale laden.')
+            return int(h['max_context']), '/health', h['model']
+        if e['art'] == 'ollama':
+            kontext = self._ollama_kontexte(ollama).get(e['tag'])
+            if not kontext:
+                raise RuntimeError('Das Modell ist nicht geladen. Bitte in der Modellzentrale laden.')
+            return int(kontext), '/api/ps', e['tag']
+        return self.kontext(profil), 'Katalog der Zentrale', e.get('modell_id')
+
     def _eintraege(self):
         d = _json_datei(self.cfg['zentrale_config']) or {}
         return ({e['id']: e for e in d.get('eintraege', [])
@@ -701,7 +721,7 @@ class _Abbruch(Exception):
 
 FELDER = ('id', 'transkript', 'ordner', 'titel', 'auswerter', 'anweisung', 'frage', 'zustand', 'meldung', 'datei',
           'erstellt', 'begonnen', 'beendet', 'dauer_s', 'kosten_usd', 'tokens', 'cloud', 'modell_tatsaechlich',
-          'pruefung')
+          'pruefung', 'art', 'prompt', 'code')
 
 
 class Auswertungen:
@@ -722,8 +742,33 @@ class Auswertungen:
         d = _json_datei(self.datei) or {}
         self.liste = d.get('auswertungen', [])
         for a in self.liste:
+            a.setdefault('art', 'zusammenfassung')
             if a['zustand'] in ('laeuft', 'wartet'):
                 a.update(zustand='abgebrochen', meldung='Der Dienst wurde währenddessen beendet. Du kannst sie wiederholen.')
+        self.prompts = None
+        if cfg.get('prompts'):
+            from . import prompts
+            self.prompts = prompts.Index(cfg['prompts'], cfg['promptsammlung'])
+            self.prompts.verbinden(self)
+            bekannt = set()
+            for a in self.liste:
+                if a['art'] != 'prompt':
+                    continue
+                try:
+                    pfad = self._belegpfad(a)
+                    bekannt.add(os.path.normcase(pfad))
+                    prompts.beleg_lesen(pfad)
+                    self._belegzustand(a)
+                except Exception as ex:
+                    self._belegfehler(a, ex)
+            for e in self.prompts.alle()['eintraege']:
+                for b in e['tests']:
+                    try:
+                        pfad = self.prompts.beleg_pfad(e['id'], b['datei'])
+                        if os.path.normcase(pfad) not in bekannt and b.get('zustand') in ('wartet', 'laeuft'):
+                            prompts.beleg_zustand(pfad, 'abgebrochen', 'Einreihung unvollständig')
+                    except Exception:
+                        pass
         self.profile = (_json_datei(self.profil_datei) or {}).get('auswerter') or cfg['auswerter_vorschlag']
         self._speichern()
         self._wecker = threading.Event()
@@ -785,9 +830,10 @@ class Auswertungen:
         if not a or not a.get('datei'):
             return None
         try:
-            with open(a['datei'], encoding='utf-8') as f:
+            pfad = self._belegpfad(a) if a.get('art') == 'prompt' else a['datei']
+            with open(pfad, encoding='utf-8') as f:
                 return f.read()
-        except OSError:
+        except (OSError, ValueError):
             return None
 
     # ------------------------------------------------------------ Auswerter verwalten
@@ -854,7 +900,7 @@ class Auswertungen:
                                          .replace(',', '.'))
                         continue
                     self.liste.append({
-                        'id': secrets.token_hex(4), 'transkript': t['transkript'], 'ordner': t['ordner'],
+                        'id': secrets.token_hex(4), 'art': 'zusammenfassung', 'transkript': t['transkript'], 'ordner': t['ordner'],
                         'titel': t['titel'], 'quelle': t['quelle'], 'dauer': t['dauer'],
                         'auswerter': {k: p.get(k) for k in ('id', 'anbieter', 'modell', 'stufe', 'name')},
                         'anweisung': {'name': anw['name'], 'stand': anw['stand']},
@@ -864,6 +910,33 @@ class Auswertungen:
             self._speichern()
         self._wecker.set()
         return 200, {'neu': neu, 'abgelehnt': abgelehnt}
+
+    def einreihen(self, auftrag):
+        with self._lock:
+            self.liste.append(auftrag)
+            self._speichern()
+        self._wecker.set()
+
+    def _belegpfad(self, a):
+        from . import prompts
+        p = a['prompt']
+        # Sammlungskästen können ihre Nummer ändern. Der beim Einreihen serverseitig
+        # gebaute Dateipfad bleibt dann die stabile Verbindung zum Schattenordner.
+        datei = a.get('datei')
+        if (datei and os.path.basename(datei) == p['beleg'] + '.md'
+                and os.path.basename(os.path.dirname(datei)) == 'tests'
+                and prompts.pfad_erlaubt(datei, [self.prompts.ordner])):
+            return os.path.join(os.path.dirname(datei), p['beleg'] + '.md')
+        return self.prompts.beleg_pfad(p['eintrag'], p['beleg'] + '.md')
+
+    def _belegzustand(self, a, **kopf):
+        if a.get('art') == 'prompt':
+            from . import prompts
+            prompts.beleg_zustand(self._belegpfad(a), a['zustand'], a.get('meldung', ''), **kopf)
+
+    def _belegfehler(self, a, ex):
+        code = 'beleg_fehlt' if isinstance(ex, FileNotFoundError) else 'beleg_gesperrt'
+        a.update(zustand='fehler', code=code, meldung='Beleg fehlt' if code == 'beleg_fehlt' else str(ex))
 
     def aktion(self, aid, was):
         with self._lock:
@@ -876,11 +949,18 @@ class Auswertungen:
                 else:
                     self._abbruch.setdefault(aid, threading.Event()).set()
             elif was == 'wiederholen' and a['zustand'] in ('fehler', 'abgebrochen'):
-                a.update(zustand='wartet', meldung='', datei=None)
+                a.update(zustand='wartet', meldung='', code=None)
+                if a.get('art', 'zusammenfassung') == 'zusammenfassung':
+                    a['datei'] = None
             elif was == 'entfernen' and a['zustand'] not in ('laeuft',):
                 self.liste.remove(a)
             else:
                 return 409, {'fehler': 'Das geht in diesem Zustand nicht.'}
+            if was != 'entfernen':
+                try:
+                    self._belegzustand(a)
+                except Exception as ex:
+                    self._belegfehler(a, ex)
             self._speichern()
         self._wecker.set()
         return 200, {'ok': True}
@@ -900,6 +980,13 @@ class Auswertungen:
                 if a['zustand'] != 'wartet':
                     continue
                 a.update(zustand='laeuft', begonnen=time.time(), meldung='')
+                try:
+                    self._belegzustand(a)
+                except Exception as ex:
+                    self._belegfehler(a, ex)
+                    self._fehler_log(a, ex)
+                    self._speichern()
+                    continue
                 self._abbruch[a['id']] = threading.Event()
                 self._speichern()
                 return a
@@ -914,12 +1001,21 @@ class Auswertungen:
                 continue
             try:
                 self._ausfuehren(a)
-            except _Abbruch:
-                a.update(zustand='abgebrochen', meldung='Abgebrochen.')
             except Exception as ex:
-                a.update(zustand='fehler', meldung=str(ex)[:600])
-                self.log(f"Fassung {a['id']} ({a['auswerter']['anbieter']}) fehlgeschlagen: "
-                         + traceback.format_exc(limit=2).replace('\n', ' | ')[-300:])
+                try:
+                    self._fehlgeschlagen(a, ex)
+                except Exception as fehler:
+                    # Auch eine gescheiterte Fehlerbehandlung darf den Arbeiter nicht beenden.
+                    a.update(zustand='abgebrochen' if isinstance(ex, _Abbruch) else 'fehler',
+                             meldung=str(ex), code='anbieter')
+                    try:
+                        self._belegzustand(a)
+                    except Exception:
+                        pass
+                    try:
+                        self._fehler_log(a, fehler)
+                    except Exception:
+                        pass
             finally:
                 with self._lock:
                     a['beendet'] = time.time()
@@ -927,7 +1023,30 @@ class Auswertungen:
                     self._abbruch.pop(a['id'], None)
                     self._speichern()
 
+    def _fehler_log(self, a, ex):
+        p = a.get('auswerter', {})
+        self.log(f"Auftrag {a['id']} Anbieter {p.get('anbieter')} Modell {p.get('modell')} "
+                 f"Zeichen {a.get('zeichen', 0)} Fehlerklasse {type(ex).__name__} Code {a.get('code', 'anbieter')}")
+
+    def _fehlgeschlagen(self, a, ex):
+        code = getattr(ex, 'code', 'anbieter')
+        if code not in ('anbieter', 'transkript_geaendert', 'beleg_geaendert', 'kontext', 'skill_fehlt',
+                        'antwort_leer', 'beleg_fehlt', 'beleg_gesperrt'):
+            code = 'anbieter'
+        a.update(zustand='abgebrochen' if isinstance(ex, _Abbruch) else 'fehler',
+                 meldung='Abgebrochen.' if isinstance(ex, _Abbruch) else str(ex),
+                 code=code)
+        if a.get('art') == 'prompt' and isinstance(ex, (OSError, ValueError)):
+            self._belegfehler(a, ex)
+        try:
+            self._belegzustand(a)
+        except Exception as zugriff:
+            self._belegfehler(a, zugriff)
+        self._fehler_log(a, ex)
+
     def _ausfuehren(self, a):
+        if a.get('art') == 'prompt':
+            return self._prompt_ausfuehren(a)
         p = a['auswerter']
         anbieter = self.anbieter[p['anbieter']]
         ok, grund = anbieter.verfuegbar(p, frisch=True) if p['anbieter'] == 'lokal' else anbieter.verfuegbar(p)
@@ -949,6 +1068,7 @@ class Auswertungen:
                  'Zielumfang': anweisungen.zielumfang(wortbasis)}
         rahmen = (sammlung.get('rahmen') or {}).get('text', '')
         prompt = anweisungen.zusammenbauen(rahmen, anw['text'], werte, transkript)
+        a['zeichen'] = len(prompt)
         a['anweisung']['stand'] = anw['stand']
         a['meldung'] = 'Läuft …' if anbieter.cloud is None else f'Text liegt bei {anbieter.cloud} …'
         self.log(f"Fassung {a['id']}: {p['anbieter']} {p['modell']} beginnt ({len(prompt)} Zeichen)")
@@ -964,6 +1084,52 @@ class Auswertungen:
         a.update(zustand='fertig', meldung='', kosten_usd=ergebnis.get('kosten_usd'), tokens=ergebnis.get('tokens'),
                  modell_tatsaechlich=ergebnis.get('modell_tatsaechlich'))
         self.log(f"Fassung {a['id']}: fertig in {round(time.time() - a['begonnen'])} s")
+
+    def _prompt_ausfuehren(self, a):
+        from . import prompts
+        datei = self._belegpfad(a)
+        b = prompts.beleg_lesen(datei)
+        p = a['auswerter']
+        anbieter = self.anbieter[p['anbieter']]
+        ergebnis = {k: b.get(k) for k in ('tokens', 'kosten_usd', 'modell_tatsaechlich')}
+        antwort = b['antwort']
+        hinweis = b.get('hinweis', '')
+        kontext_kopf = {}
+        if not antwort.strip():
+            texte = self.prompts.transkripte_lesen(b['eingaben'])
+            text, gs = prompts.auftrag_bauen(b['fassung_text'], b['eingaben'], texte)
+            if gs != a['prompt']['gesendet_stand']:
+                raise prompts.PromptFehler('beleg_geaendert', 'Der Beleg wurde seit dem Einreihen geändert.')
+            a['zeichen'] = len(text)
+            ok, grund = anbieter.verfuegbar(p, frisch=True) if p['anbieter'] == 'lokal' else anbieter.verfuegbar(p)
+            if not ok:
+                raise prompts.PromptFehler('anbieter', grund)
+            try:
+                kontext, quelle, modell = anbieter.kontext_geladen(p)
+                prompts.kontext_pruefen(text, kontext)
+            except Exception as ex:
+                raise prompts.PromptFehler('kontext', str(ex)) from ex
+            kontext_kopf = {'kontext': kontext, 'kontext_quelle': quelle}
+            self._belegzustand(a, **kontext_kopf)
+            vorher = prompts.sha(prompts._lesen(datei))
+            ergebnis = anbieter.ausfuehren(p, text, _Lauf(a['id'], self.leer, self._abbruch[a['id']],
+                                                        lambda text: a.update(meldung=text)))
+            antwort = ergebnis.get('text') or ''
+            if not antwort.strip():
+                raise prompts.PromptFehler('antwort_leer', 'Das Modell hat keinen Text geliefert.')
+            if prompts.sha(prompts._lesen(datei)) != vorher:
+                hinweis = 'Beleg während des Laufs von Hand geändert'
+            if not ergebnis.get('modell_tatsaechlich'):
+                ergebnis['modell_tatsaechlich'] = modell
+            prompts.antwort_schreiben(datei, antwort)
+        html = prompts.html_schreiben(datei, antwort)
+        dauer = b.get('dauer_s') or round(time.time() - a['begonnen'])
+        kopf = {k: ergebnis[k] for k in ('tokens', 'kosten_usd') if ergebnis.get(k) is not None}
+        if ergebnis.get('modell_tatsaechlich') and ergebnis['modell_tatsaechlich'] != p['modell']:
+            kopf['modell_tatsaechlich'] = ergebnis['modell_tatsaechlich']
+        prompts.beleg_zustand(datei, 'fertig', dauer_s=dauer, html=html, hinweis=hinweis, **kopf, **kontext_kopf)
+        a.update(zustand='fertig', meldung='', datei=datei, **ergebnis)
+        a.pop('text', None)
 
     def _ablegen(self, a, text, ergebnis, dauer):
         ziel = os.path.join(a['ordner'], 'zusammenfassungen')

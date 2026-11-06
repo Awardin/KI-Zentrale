@@ -212,9 +212,30 @@ Belege und spätere Vorschläge zu Sammlungskästen liegen in `_Sammlung` mit `e
 Bei unklarer Zuordnung zeigt die Liste die möglichen Kästen mit „Diesem Kasten zuordnen“.
 Der Sammlungstext wird dabei nicht verändert.
 
-Dies ist Scheibe 1 (Ablage und Suche). Felder wie `[Transkript]` bleiben wörtlich im Prompt.
-Testdialog, Belege schreiben, Laufzustände und Schärfen folgen in Scheibe 2 und 3.
-Für spätere Codex-Tests gilt: Sandbox nur lesend, mit lesenden Werkzeugen und globaler `AGENTS.md`.
+**Testen …** öffnet die Fassungs- und Auswerterauswahl. Felder wie `[Transkript]` lassen sich mit
+Text, „Aus Datei …“, einem Dateipfad oder „Aus Transkript …“ füllen (nur unter den `dateiwurzeln`;
+`00_Secrets` und `.env`-Dateien sind gesperrt, Zugangsdaten gehen nie in einen Prompt). Gezogene Dateien werden als
+Text mit Dateiname übernommen. „wörtlich lassen“ erhält die Klammer; leere Felder bleiben ebenfalls
+stehen. Der Rahmen der Zusammenfassung kommt nur über das entsprechende Häkchen dazu.
+
+Die einklappbare **Vorschau** zeigt den Auftrag, leere Felder, Modell, Verarbeitung lokal/Cloud und
+Tokenschätzung mit Kontextreserve. Bei Strata/PolyStrata zählt der tatsächlich geladene Kontext laut
+`/health`. Zu lange Aufträge werden vor dem Einreihen und vor dem Senden abgelehnt.
+Codex: Sandbox nur lesend, kann Dateien lesen und Befehle ausführen, liest seine globale `AGENTS.md` mit.
+Claude bleibt ohne Werkzeuge mit seinem festen Systemprompt.
+
+Je Fassung × Auswerter entsteht beim Einreihen ein **Beleg** unter `tests\`: Kopf, ursprüngliche Fassung,
+Eingaben und später die Antwort. Enthaltenes HTML wird zusätzlich daneben gespeichert und lässt sich
+über „Im Browser öffnen“ ansehen. „Gesendet anzeigen“ baut den Auftrag aus dem Beleg neu auf.
+Transkripte bleiben Verweise mit Prüfsumme; geänderte oder fehlende Transkripte verhindern das Senden.
+
+Beleg und gemeinsame Warteschlange zeigen **wartet**, **laeuft**, **fertig**, **fehler** oder **abgebrochen**.
+Nach einem Dienstneustart lassen sich unterbrochene und unvollständig eingereihte Belege wiederholen.
+Ist die Antwort schon gespeichert, erledigt „Wiederholen“ nur die fehlende Nacharbeit ohne erneuten
+Modellaufruf. „Entfernen“ nimmt nur den Warteschlangeneintrag heraus; die Datei bleibt erhalten.
+Urteil **offen/gut/schwach** und Notiz (beim Verlassen des Felds) ändern nur den Belegkopf.
+**Nochmal …** füllt einen neuen Testdialog aus dem Beleg und meldet geänderte oder fehlende Quelldateien
+je Feld. Schärfen folgt in Scheibe 3. Prompt-Tests zählen nicht in den Zusammenfassungs-Messungen.
 
 ### Bild & Video
 
