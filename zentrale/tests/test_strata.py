@@ -309,7 +309,10 @@ class Strata(unittest.TestCase):
         # Mit Modellname nennt die Anzeige die laufende Fassung (Variante) statt nur den Kontext.
         roh['dienste']['strata'].update(modell='qwen3.8-flash-next-unsloth-ud-iq4_xs')
         self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'],
-                         'Q4 · genauer, etwas langsamer · 128K · mit Bildern · Port 8095')
+                         'Q4 alt · 128K · mit Bildern · Port 8095')
+        roh['dienste']['strata'].update(modell='qwen3.8-flash-next-unsloth-ud-iq4_xs-v31-q8engram')
+        self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'],
+                         'Q4 v3.1 + Engram Q8 · genauer, etwas langsamer · 128K · mit Bildern · Port 8095')
         roh['dienste']['strata'].update(modell='qwen3.8-flash-next-iq3_xxs', kontext=262144)
         self.assertEqual(z._zustaende(roh)[self.e['id']]['detail'], 'IQ3_XXS · 256K · ohne Bilder · Port 8095')
         roh['dienste']['strata'].update(modell='anderes-modell', kontext=131072)

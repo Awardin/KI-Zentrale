@@ -17,8 +17,9 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
 (`C:\Workstation\Skills\aktiv\atelier`); nie direkt an die Ports.
 
 - **Modellzentrale** (`zentrale\`, Port 3894): fertig und abgenommen am 23.09.2026. Seit 05.10.2026 mit Eintrag
-  „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, beide Karten; seit 01.11.2026 Standard Q4 128K mit Bildern,
-  RAM-Prüfung 40 GiB, dazu Q4 256K mit Bildern und IQ3_XXS 128K/256K, RAM-Prüfung je 42 GiB;
+  „Qwen3.8 Flash-Next · Strata“ (Art `strata`, Port 8095, beide Karten; seit 07.11.2026 Standard Q4 v3.1 (Unsloth Dynamic v3.1)
+  mit Engram Q8 128K mit Bildern, RAM-Prüfung 40 GiB, dazu v3.1 + Q8 256K, Q4 alt 128K/256K und IQ3_XXS 128K/256K,
+  RAM-Prüfung je 42 GiB bei 256K;
   [SPEC-strata.md](SPEC-strata.md), Abnahme in PLAN.md). Seit 18.10.2026 startet Strata mit `--fit-max-tokens`
   (`fit_max_tokens` im Eintrag): zu große `max_tokens` werden auf den Restplatz gekürzt statt mit 400 abgelehnt (DSH).
 - **Werkstatt** (`werkstatt\`, Port 3895): fertig und abgenommen am 23.09.2026 – Transkription,

@@ -3604,6 +3604,69 @@ das ist ok.“ Spec [SPEC-video-hochrechnen.md](SPEC-video-hochrechnen.md), drei
   als Test A (andere Nummer): Wie stark das Gesicht jünger wird, schwankt mit der Variationsnummer.
 - **Offen:** längere Clips (10 s) erst nach Messung; Variation bei schwankendem Gesicht nutzen.
 
+## Flash-Next Q4 v3.1 (Unsloth Dynamic v3.1) als Testvariante (06.11.2026)
+
+Anlass: Unsloth hat am 04.11.2026 die Quants neu gebaut („Dynamic v3.1“) und das Engram (n-gram-Tabelle, 51B) als eigene
+Dateien zum Mischen veröffentlicht. Auftrag Sascha: „starte mal den download“, dann „ok dann q8“, „ja bauen“, „Jetzt testen“.
+- **Dateien:** UD-IQ4_XS v3.1 (4 Teile, 93,7 GB, SHA-256 aller Teile geprüft) in
+  `C:\LLM\models\Qwen3.8-Flash-Next\UD-IQ4_XS-v3.1\UD-IQ4_XS`; das alte UD-IQ4_XS (3 Teile) bleibt unverändert. Engram Q8_0
+  (54,4 GB) lädt nach `…\Qwen3.8-Flash-Next\engram` (curl, nacheinander; Prüfung offen). Strata liest die Tabelle per
+  Direct IO von der SSD (kein RAM, kein Grafikspeicher); Q8_0 kann Strata seit 0.1.38 selbst (`--ple-gguf`).
+- **Pack** `Strata-data\packs\unsloth-ud-iq4_xs-v31` (`tools/iq_pack.py --compat-bf16`, 30 s): 1079 Tensoren, 303 nativ,
+  460 umgerechnet (max. Fehler 0,029), 195 BF16-Tensoren (1,20 GiB). Experten jetzt gemischt: gate/up IQ3_XXS (28 Schichten),
+  IQ4_XS (17), IQ2_S (3), down IQ4_NL bzw. Q5_0 (alt: gate/up fast überall IQ3_S, down IQ4_NL); Experten 60,4 statt 59,5 GB.
+- **Einstellungen** `strata-unsloth-ud-iq4_xs-v31-2gpu-128k.json` (mitgeliefertes IQ4_NL-Engram) und
+  `…-v31-q8engram-2gpu-128k.json` (`--ple-gguf` aufs Q8_0-Engram), sonst wie Q4 128K. Eigener Modellname
+  `…-iq4_xs-v31` (die Anzeige erkennt die Variante an Modell + Kontext), alter Name als Alias – DSH/Hermes unverändert.
+  Zentrale: Variante `q4-v31` „Q4 v3.1 (neu, im Test) · 128K · mit Bildern“ (Test `test_varianten` ergänzt); Q4 bleibt
+  Standard. Die Q8-Variante kommt erst nach geprüftem Engram dazu.
+- **Gemessen** (`tools/strata_bench.py --long`, je 3 Läufe, Median, direkt nacheinander, Monitor an der Suprim; Ergebnisse
+  `C:\LLM\runtimes\Strata\bench\eigene\v31` und `…\alt`): beide bereit nach ~50 s.
+
+  | | Q4 alt | Q4 v3.1 |
+  |---|---|---|
+  | Schreiben Chat (Token/s) | 83,4 | 85,6 |
+  | Einlesen 4K / 16K / 32K (Token/s) | 1.098 / 1.939 / 2.272 | 875 / 1.708 / 2.066 |
+  | Agent: erstes Token je Runde / Schreiben | 3,3 s / 83,8 | 4,3 s / 72,8 |
+  | Bild (1.006 Token, Beschreibung richtig) | 4,4 s | 4,9 s |
+
+  Schreiben gleich schnell, Einlesen 9–20 % langsamer (andere Expertenformate), Agentenrunden ~1 s später dran.
+- **DSH verdichtet bei Strata nicht (06.11.2026, Bagger-Auftrag mit v3.1 128K):** Anfragen wuchsen in einem Durchgang
+  (34 Schritte) von 117K auf 131.168 Token, dann 400 „request exceeds the context window“ – auch nach „weiter“ (131.174).
+  Gerettet durch Umschalten auf Q4 · 256K; dort kürzte DSH (rechnet mit 128K) jede Antwort auf 57–246 Token
+  („Output token limit reached“). Daher in DSH Desktop (`~\.dsh\profiles\desktop\cordis.patch.yml`, Anbieter
+  `strata-local`) zweiter Eintrag „Qwen3.8-Flash-Next · Strata 256K“ (contextWindow 262144, maxTokens 65536) – nur
+  mit einer 256K-Variante in der Zentrale wählen. Warum DSH nicht verdichtet, ist offen (PLAN 18.10.2026 ging von ~80 % aus).
+- **Engram Q8 nachgemessen (07.11.2026, Sascha: „Vergleichslauf von gestern Abend nachholen Q8“):** SHA-256 der
+  Q8_0-Tabelle stimmt (`e3d76a27…`). Strata lud sie erst nicht: als Teil 1 von 1 gestempelt („additional shard must match
+  … split metadata“), mit Unsloths `set_split.py … 4 4` gestempelt dann „duplicate split shard number“ – Strata liest die
+  übrigen Teile aus dem Ordner von Teil 1, das mitgelieferte IQ4_NL-Engram (Teil 4) kam doppelt. Lösung wie in Unsloths
+  README: Ordner `C:\LLM\models\Qwen3.8-Flash-Next\UD-IQ4_XS-v3.1-Q8engram` mit Hardlinks (Teile 1–3 von v3.1, Teil 4 =
+  Q8-Engram; kein Zusatzplatz, Originale unverändert, nur der Kopf der Engram-Datei auf 4/4 gestempelt, Rückweg
+  `set_split.py … 1 1`, vermerkt in `engram\download.log`). `strata-unsloth-ud-iq4_xs-v31-q8engram-2gpu-128k.json` zeigt
+  mit `--native` und `--ple-gguf` dorthin (Sicherung `….json.vor-hardlink.bak`). Bereit nach 42 s, Log „PLE on, table …
+  00004-of-00004“ aus dem neuen Ordner; Karten 23,4 / 23,4 GB, RAM frei 11,2 GiB.
+
+  | | Q4 v3.1 (06.11.) | Q4 v3.1 + Engram Q8 |
+  |---|---|---|
+  | Schreiben Chat (Token/s) | 85,6 | 88,7 |
+  | Einlesen 4K / 16K / 32K (Token/s) | 875 / 1.708 / 2.066 | 957 / 1.679 / 2.014 |
+  | Agent: erstes Token je Runde / Schreiben | 4,3 s / 72,8 | 4,2 s / 78,9 |
+
+  Tempo gleich (Abweichungen −3 bis +9 %, Messstreuung; Chat-Schreiben streut 75–111). Die Tabelle liegt auf der SSD
+  (Direct IO), darum kostet Q8 weder RAM noch Grafikspeicher. Ergebnis `C:\LLM\runtimes\Strata\bench\eigene\v31-q8`.
+  Der Gewinn von Q8 wäre Genauigkeit (Fehler der Tabelle 0,0053 statt 0,0757 laut Unsloth) – nicht gemessen.
+- **Offen:** Genauigkeit nicht gemessen – Stratas Maß „gleiches Wort wie Q8_0“ braucht eine Q8_0-Referenz, die wir nicht
+  haben; möglich wäre die Perplexität auf Stratas Textsatz (`tools/quant_quality.py`), alt / v3.1 / v3.1 + Q8.
+- **Standard v3.1 + Engram Q8 (07.11.2026, Sascha: „generell die Q8-Engram nutzen“, kostet nichts):** Variante
+  `q4-v31-q8` ist Standard („Q4 v3.1 + Engram Q8 · genauer, etwas langsamer · 128K · mit Bildern“), die alte heißt
+  „Q4 alt · 128K“ und bleibt als Rückweg, ebenso `q4-v31` („Engram alt“) und das alte Q4 256K. Neu `q4-v31-q8-256k`
+  (`strata-unsloth-ud-iq4_xs-v31-q8engram-2gpu-256k.json`, Kopie der 128K-Datei mit `--max-context 262144` und eigenem
+  Log; RAM-Prüfung 42 GiB) – über die Zentrale gestartet: bereit, `/health` 262.144 Kontext mit Bildern, Anzeige
+  „Q4 v3.1 + Engram Q8 · 256K · mit Bildern“, Karten 23,4 / 23,8 GB, RAM frei 8,4 GiB. Für DSH dazu den Eintrag
+  „Qwen3.8-Flash-Next · Strata 256K“ wählen. Tests `test_varianten`, `test_strata` angepasst, 194 OK. Genauigkeit
+  weiter ungemessen (s. o.).
+
 ## Qwen3.5-4B-GLB-3D-Coder: geladen, getestet, Zentrale-Eintrag (07.11.2026)
 
 Anlass: YouTube `kMtNagTG0do` (Shaown Ships AI, 07.11.2026). Auftrag Sascha: „Ja laden und testen, nimm die Suprim zum
@@ -3633,7 +3696,7 @@ Testen“, danach „Es lohnt auf jeden Fall ein Eintrag … Den kannst Du schon
   | Goblin-Lager (Prompt aus dem Video) | 150 s / 18.490 | läuft; Hütte auf Pfählen, zwei Goblins, Eiszapfen, Eisscholle; die zwei Dachhälften klaffen auseinander. GLB 2.0, 431 KB, 189 Meshes |
   | Praxisliege (eigener Prompt) | 191 s / 23.239 | läuft; gepolsterte Platte, Handrolle, Bedienteil, Fußpedal; Platte steht auf nur einer Säule, Gestell nicht verbunden, Gesichtsloch nur als Rahmen. GLB 2,1 MB mit Animation „ElectricHeightAdjust“ |
   | Hantelbank (eigener Prompt) | 145 s / 17.837 | läuft, aber eine Parkbank mit Lehne; Langhantel als Messingteil auf der Sitzfläche, Kurzhanteln am Boden. GLB 400 KB, 127 Meshes |
-  | Hühnerfarm (eigener Szenen-Prompt: Stall, Gehege, Scheune, Trog, 8 Hühner + Hahn, Animation) | 338 s / 35.681 | hängt im Ladebildschirm. Korrektur 1 (242 s) bringt einen Syntaxfehler, Korrektur 2 mit Zeile und Wortlaut (183 s) lässt ihn stehen; von Hand behoben (`_fix-claude.html`) folgt der nächste Fehler (`random` nicht definiert). Abgebrochen |
+  | Hühnerfarm (eigener Szenen-Prompt: Stall, Gehege, Scheune, Trog, 8 Hühner + Hahn, Animation) | 338 s / 35.681 | hängt im Ladebildschirm. Korrektur 1 (242 s) bringt einen Syntaxfehler, Korrektur 2 mit Zeile und Wortlaut (183 s) lässt ihn stehen; von Hand behoben (`_fix-claude.html`) folgt der nächste Fehler (`random` nicht definiert). Abgebrochen. **Code-Durchsicht:** Das Original hatte im Szenenteil nur zwei falsche Zeilen; die Korrekturen machten es schlimmer (Hilfsfunktion `random` gestrichen, Fassung 2 rund 500 Zeilen kürzer, `group` undefiniert). Der Animationsteil (~440 Zeilen) ist durchweg falsch: Variable `index` fehlt, Hühner mit vier Beinen, Keyframe-Werte verschachtelt statt flach, nur ein Huhn bewegt. Ohne Animation (`5-huehnerfarm_ohne-animation.html`) läuft die Szene: Stall, rote Scheune, Zaun, Heuballen, Gemüse; Hühner nur eiförmige Klumpen, alles gedrängt |
 
   Schreiben 106–123 Token/s, keine Denkschleife in 8 Läufen (Denkzeilen fast alle verschieden).
 - **Befund:** Einzelne Assets klappen in 2,5–3 min mit gültiger GLB (3 von 4 auf Anhieb, der vierte nach einer
@@ -3641,7 +3704,52 @@ Testen“, danach „Es lohnt auf jeden Fall ein Eintrag … Den kannst Du schon
   schweben oder sind falsch verbunden, Gegenstände werden umgedeutet (Hantelbank → Parkbank). Szenen mit vielen Teilen und
   Animation schafft es nicht verlässlich; dafür eher Flash-Next (beide 3090) oder Pixal3D im Studio (Bild → GLB mit
   Texturen). Brauchbar für schnelle Requisiten-Entwürfe, die in Blender nachgearbeitet werden.
-- **Offen:** GLB in Blender/Godot importieren (nur im Browser geprüft); Vergleich mit Flash-Next bei einem Asset.
+- **Aufgeteilt statt als Ganzes (07.11.2026, Sascha: „ja“, dann „nimm beide karten“):** zweite Instanz
+  `qwen35-glb-coder-2` fest auf der FE (Port 8109), Huhn, Hahn und Hof einzeln, parallel auf beiden Karten. Danach auf
+  Saschas „Wieder entfernen“ gestoppt und aus `config.json` gestrichen.
+  - Huhn (256 s / 30.766 Token): Flügel nie abgelegt (`wing.left` undefiniert) – eine Zeile von Hand ergänzt; dann rundes
+    Low-Poly-Huhn mit Kamm, Schnabel, Federn, GLB 89 KB mit „Walk“ (12 Spuren) und „Peck“ (8).
+  - Hahn: 1. Lauf Denkschleife (90.000 Token, 34 verschiedene Zeilen, kein HTML); 2. Lauf (230 s) mit falschen
+    Klassennamen (`THREE.QuaternionTrack`), von Hand behoben: grüner Klumpen mit Kamm, NaN-Teile, Export blockiert die Seite.
+  - Hof: 1. Lauf in die 90.000-Grenze, 2. Lauf (217 s) läuft: Stall auf Stelzen, Zaun, offenes Tor, Trog, Futtersack,
+    Gemüsebeet; zwei NaN-Teile. GLB 448 KB.
+  - Zusammengesetzt in `9-huehnerhof-zusammengesetzt.html` (GLTFLoader, SkeletonUtils, je Huhn eigener Mixer, NaN-Teile
+    entfernt): Hof + 8 Hühner, ohne Hahn. GLB-Ablage über einen kleinen Testdienst (127.0.0.1:8766, Scratchpad).
+  - Lehre: Denkschleifen kommen bei längeren Aufträgen wieder (2 von 5); Grenze 50.000 Token statt 90.000 spart Zeit.
+    Fast jedes Asset braucht eine kleine Korrektur – für Bastler brauchbar, nicht als fertige Pipeline.
+- **Vergleich mit Flash-Next: Raumschiff Enterprise (07.11.2026, Sascha: „Lass uns mal Raumschiff Enterprise bauen“):**
+  gleicher Prompt (`prompts\10-enterprise.txt`, Teile und Proportionen genannt, statisch) und Systemprompt, Grenze 60.000.
+  - GLB-Coder (Suprim): 213 s, 25.537 Token, 120 Token/s, läuft, Export-Knopf. Alle Teile da (Untertasse, Gondeln mit
+    roten Kappen, Deflektor, Sterne), aber falsch angeordnet: Rumpf steht senkrecht unter der Untertasse, Gondeln liegen
+    auf ihr, Deflektor als Halbkuppel in der Untertasse; ein Teil NaN. Nicht als Enterprise erkennbar.
+  - Flash-Next v3.1 + Engram Q8 (256K): 601 s, alle 60.000 Token im Denken (104 Token/s), kein HTML. Das Denken rechnet
+    die Geometrie sorgfältig nach (Pylon erreicht Gondel, Gondel ≈ Untertassendurchmesser, Untertasse am breitesten) und
+    endet mit „time to give my answer“ – zu knappe Grenze, keine Schleife (770 von 876 Zeilen verschieden). Die Grenze
+    60.000 war vom GLB-Coder übernommen; für Flash-Next offen lassen (Strata kürzt auf den Restplatz).
+  - Flash-Next fortgesetzt (Sascha: „Plan weiterführen“): neue Anfrage mit Auftrag + rohem Denkteil als eigene vorige
+    Antwort, Denken aus (`chat_template_kwargs.enable_thinking: false`), Grenze 120.000: 141 s (23 s Einlesen von
+    45.407 Token, 14.916 Token Code, 126 Token/s), `stop`. **Läuft ohne einen Konsolenfehler und ist als Enterprise
+    erkennbar:** Untertasse vorn mit Brückenkuppel, waagerechter Rumpf darunter, Deflektor vorn am Rumpf, Gondeln oben
+    auf Pylonen, rote Kappen, Hangar hinten; Rumpf eher zu dick, Pylonen flache Platten. Dazu Bedienfeld (Ansichten,
+    Drahtgitter, Detailstufe, Maße). GLB 508 KB, glTF 2.0, 63 Meshes, 80 benannte Knoten, 7 Materialien, nur das Schiff
+    (keine Sterne/Lichter). Datei `10-enterprise-flashnext-weiter.html`.
+  - Lehre: Für Szenen und Formen mit vielen Teilen plant Flash-Next richtig, der GLB-Coder nicht. Gesamt Flash-Next
+    ~12,5 min (10 min Planen + 2,3 min Bauen) gegen 3,5 min. Idee Sascha: zwei Schritte – Planen mit eigenem Fenster,
+    Ausführen in neuer Unterhaltung nur mit verdichtetem Plan; auch „Flash-Next plant, GLB-Coder baut“ (offen).
+  - **Zwei Schritte: Flash-Next plant, GLB-Coder baut (07.11.2026, Sascha: „Ja, testen“)**, Skript
+    `zwei_schritte.py planen|bauen` (Scratchpad). (1) Flash-Next v3.1 + Q8 (256K) mit eigenem Planer-Systemprompt
+    („keinen Code, jedes Teil mit Three.js-Form, Maßen, Position, Drehung samt Begründung, Material; Berührungen
+    prüfen“): 530 s, 50.523 Token (fast alles Denken), `stop`, Plan 1.957 Wörter ohne Code (`11-enterprise-plan.plan.md`).
+    (2) Umschalten über die Zentrale (Strata aus, GLB-Coder an: Sekunden), neue Unterhaltung mit Auftrag + Plan
+    (5.691 Token Eingabe), normales Denken: 136 s, 15.712 Token, 116 Token/s, `stop`. **Kein Konsolenfehler, als
+    Enterprise erkennbar:** Untertasse mit Brücke, waagerechter Rumpf mit Deflektor vorn und Hangar hinten, schräge
+    Pylonen, Gondeln oben mit roten Kappen. GLB 160 KB, glTF 2.0, 33 Meshes, 39 benannte Knoten, die 5 Materialien
+    aus dem Plan, nur das Schiff. Lila Stich nur durch farbige Bühnenlichter (nicht im GLB). Gesamt ~11 min.
+  - Arena-Vergleich von Sascha (gleiches Motiv): Gemini 4 Argon high am feinsten (aber Hals als Plattentreppe, Export
+    OBJ), Claude Haiku 5.5 max mit falsch sitzenden Gondeln. Flash-Next liegt dazwischen.
+  - Lehre: Der kleine Coder kann bauen, wenn jemand anderes die Raumaufteilung vorgibt – Planen ist der teure Teil
+    (9 von 11 min). Bild als Vorlage für den Planer (Strata kann Bilder) wäre der nächste Versuch.
+- **Offen:** GLB in Blender/Godot importieren (nur im Browser geprüft); Bild als Vorlage beim Planen.
 
 ## Offen
 

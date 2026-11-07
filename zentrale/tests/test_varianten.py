@@ -39,7 +39,7 @@ class Auswahl(unittest.TestCase):
         s = {v['id']: v for v in E['flash-next-strata']['varianten']}
         self.assertTrue(s['128k']['konfig'].endswith('strata-iq3_xxs-2gpu-128k.json'))
         # Seit 01.11.2026 ist Q4 Standard (weniger Arbeitsspeicher als IQ3_XXS, Wunsch Sascha).
-        self.assertEqual([v['id'] for v in E['flash-next-strata']['varianten'] if v.get('standard')], ['q4'])
+        self.assertEqual([v['id'] for v in E['flash-next-strata']['varianten'] if v.get('standard')], ['q4-v31-q8'])
         self.assertTrue(s['256k']['konfig'].endswith('strata-iq3_xxs-2gpu-256k.json'))
         # Q4 (16.10.2026): eigene Strata-Einstellung, weniger RAM-Bedarf als IQ3_XXS (Rahmen 32 GiB statt alle Experten).
         q4 = planung.variante(E['flash-next-strata'], 'q4')
@@ -101,7 +101,9 @@ class Server(unittest.TestCase):
                          [('256k', 262144, 26500), ('32k', 32768, 23000)])
         s = next(x for x in self.z.konfig()['eintraege'] if x['id'] == 'flash-next-strata')
         self.assertEqual([(v['id'], v['kontext']) for v in s['varianten']],
-                         [('128k', 131072), ('256k', 262144), ('q4', 131072), ('q4-256k', 262144)])
+                         [('128k', 131072), ('256k', 262144), ('q4', 131072), ('q4-256k', 262144),
+                          ('q4-v31', 131072), ('q4-v31-q8', 131072),
+                          ('q4-v31-q8-256k', 262144)])
         self.assertNotIn('konfig', s['varianten'][0])  # Pfade bleiben im Dienst
 
 
