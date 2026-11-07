@@ -12,6 +12,80 @@ from unittest.mock import patch
 from werkstatt import auswertung, prompts
 
 
+class ClaudeAblage(unittest.TestCase):
+    """Nur temporäre Verzeichnisse durchsuchen; Claude wird nie ausgeführt."""
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.local = Path(tmp.name) / 'Local'
+        self.roaming = Path(tmp.name) / 'Roaming'
+        for name, pfad in [('LOCALAPPDATA', self.local), ('APPDATA', self.roaming)]:
+            self.enterContext(patch.object(auswertung, name, str(pfad)))
+        self.claude = auswertung.Claude({})
+
+    def pfad(self, art, version, kennung='a33aa5518497'):
+        if art == 'neu':
+            return self.local / 'Claude-Data' / 'claude_test' / 'claude-code' / version / kennung / 'claude.exe'
+        if art == 'paket':
+            return (self.local / 'Packages' / 'Claude_test' / 'LocalCache' / 'Roaming' / 'Claude'
+                    / 'claude-code' / version / 'claude.exe')
+        return self.roaming / 'Claude' / 'claude-code' / version / 'claude.exe'
+
+    def datei(self, art, version, kennung='a33aa5518497', zeit=100):
+        pfad = self.pfad(art, version, kennung)
+        pfad.parent.mkdir(parents=True, exist_ok=True)
+        pfad.touch()
+        os.utime(pfad, (zeit, zeit))
+        return str(pfad)
+
+    def test_neues_layout_hoechste_version_statt_kennung_oder_zeit(self):
+        self.datei('neu', '2.1.309', '999999999999', zeit=300)
+        erwartet = self.datei('neu', '2.1.317', zeit=100)
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_neues_layout_version_numerisch(self):
+        self.datei('neu', '2.1.99')
+        erwartet = self.datei('neu', '2.1.317')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_gleiche_version_neueste_datei_in_beliebigem_app_ordner(self):
+        self.datei('neu', '2.1.317', '999999999999', zeit=100)
+        erwartet = self.datei('neu', '2.1.317', '000000000001', zeit=200)
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_altes_paketlayout_hoechste_version(self):
+        self.datei('paket', '2.1.99')
+        erwartet = self.datei('paket', '2.1.317')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_nur_appdata_layout(self):
+        erwartet = self.datei('roaming', '2.1.317')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_neues_layout_hat_vorrang_vor_beiden_alten(self):
+        erwartet = self.datei('neu', '2.1.99')
+        self.datei('paket', '9.0.0')
+        self.datei('roaming', '10.0.0')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_paket_vor_appdata(self):
+        erwartet = self.datei('paket', '2.1.99')
+        self.datei('roaming', '10.0.0')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_nur_dateien_zaehlen_auch_beim_rueckfall(self):
+        for art in ['neu', 'paket', 'roaming']:
+            with self.subTest(art=art):
+                self.pfad(art, '99.0.0').parent.mkdir(parents=True)
+                self.pfad(art, '98.0.0').mkdir(parents=True)
+        self.assertIsNone(self.claude.exe())
+        erwartet = self.datei('roaming', '2.1.317')
+        self.assertEqual(self.claude.exe(), erwartet)
+
+    def test_nichts_vorhanden(self):
+        self.assertIsNone(self.claude.exe())
+
+
 class Fake(auswertung.Anbieter):
     schluessel, name, cloud = 'fake', 'Fake', None
 

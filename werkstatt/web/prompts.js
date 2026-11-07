@@ -17,25 +17,51 @@ function pLaeuft() {
 }
 
 function pLadenFaellig() {
-  return P.letztesLaden == null || pLaeuft() || Date.now() - P.letztesLaden >= 30000;
+  // Takt und Reiterwechsel stellen keinen zweiten Abruf hinter einen laufenden; das tun nur Knopf und Aktionen.
+  if (P.ladenLaeuft) return false;
+  return P.ladenNoetig || P.letztesLaden == null || pLaeuft() || Date.now() - P.letztesLaden >= 30000;
 }
 
 async function pLaden() {
+  if (P.ladenLaeuft) { P.ladenNachholen = true; return; }
   if (pGeschuetzt()) return;
-  P.letztesLaden = Date.now();
+  P.ladenLaeuft = true;
+  P.ladenNoetig = true;
+  pListe();
   try {
     const d = await api('/api/prompts');
     if (pGeschuetzt()) return;
     P.eintraege = d.eintraege;
     P.warteschlange = d.warteschlange || [];
     $('#p-rueck').textContent = d.fehler.join(' · ');
+    P.ladenFehler = false;
+    P.letztesLaden = Date.now();
     pListe();
+    P.ladenNoetig = false;
     if (P.gewaehlt) await pWaehlen(P.gewaehlt);
-  } catch (err) { pFehler(err); }
+  } catch (err) {
+    P.ladenFehler = true;
+    P.ladenNoetig = true;
+    pFehler(err);
+    pListe();
+  } finally {
+    P.ladenLaeuft = false;
+    if (P.ladenNachholen) {
+      P.ladenNachholen = false;
+      P.ladenNoetig = true;
+      await pLaden();
+    }
+  }
 }
 
 function pListe() {
   if (pGeschuetzt()) return;
+  if (P.letztesLaden == null || (P.ladenFehler && !P.eintraegeGezeigt)) {
+    $('#p-liste').replaceChildren(h('li', { class: 'leise', text: P.ladenFehler
+      ? 'Liste nicht geladen – neuer Versuch läuft.' : 'Prompts werden geladen …' }));
+    P.listeStand = null;
+    return;
+  }
   const suche = $('#p-suche').value.toLocaleLowerCase('de');
   const herkunft = $('#p-herkunft').value;
   const status = $('#p-status').value;
@@ -55,6 +81,7 @@ function pListe() {
   }, h('strong', { text: e.titel }), h('span', { class: 'leise',
     text: [e.herkunft === 'sammlung' ? 'Sammlung' : 'Ordner', e.getestet ? 'getestet' : 'ungetestet', e.fehler].filter(Boolean).join(' · ') })))));
   if (!liste.length) $('#p-liste').append(h('li', { class: 'leise', text: 'Keine passenden Prompts.' }));
+  if (liste.length) P.eintraegeGezeigt = true;
   box.scrollTop = oben;
   box.scrollLeft = links;
   P.listeStand = stand;
@@ -226,7 +253,7 @@ function pDialog(e, aktion, f = null) {
     feld('titel', 'Titel', e?.titel);
     feld('quelle', 'Quelle', e?.quelle);
     feld('schlagworte', 'Schlagworte', e?.schlagworte);
-  } else if (aktion === 'fassung_neu') feld('name', 'Name der neuen Fassung', '');
+  } else if (aktion === 'fassung_neu') feld('name', 'Name der neuen Fassung', e.fassung_vorschlag);
   if (aktion !== 'kopf') feld('text', aktion === 'neu' ? 'Fassung 1' : 'Fassung', f?.text, true);
   const fehler = h('p', { class: 'warnung' });
   inhalt.push(fehler);
@@ -246,6 +273,7 @@ function pDialog(e, aktion, f = null) {
     }),
   ], true);
   Object.values(felder)[0].focus();
+  if (aktion === 'fassung_neu') felder.name.select();
 }
 
 function pBeleg(e, t, was = 'beleg') {

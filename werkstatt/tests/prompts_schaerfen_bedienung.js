@@ -2,17 +2,18 @@
 
 // Echtes Oberflächenskript, kleines DOM und Fake-HTTP; keine Dienste oder Modelle.
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const { kinder, keinFremdText } = require('./dom_nachbau');
 class Element {
   constructor(tag) {
     this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.events = {};
   }
-  append(...k) { this.children.push(...k); }
-  replaceChildren(...k) { this.children = k; }
+  append(...k) { this.children.push(...kinder(...k)); }
+  replaceChildren(...k) { this.children = kinder(...k); }
   setAttribute(k, v) { this[k] = v; }
   getAttribute(k) { return this[k] ?? null; }
   addEventListener(k, f) { this.events[k] = f; }
   focus() {}
-  nachkommen() { return this.children.filter((k) => k && typeof k === 'object').flatMap((k) => [k, ...k.nachkommen()]); }
+  nachkommen() { return this.children.flatMap((k) => [k, ...(k.nachkommen?.() || [])]); }
   querySelectorAll(s) { return this.nachkommen().filter((k) => s !== 'details[data-p-ansicht]'
     || (k.tag === 'details' && k['data-p-ansicht'] != null)); }
   querySelector(s) { return this.nachkommen().find((k) => s === '.f-text' && k.className === 'f-text') || null; }
@@ -44,6 +45,7 @@ const kontext = vm.createContext({document, window: fenster, console,
   aktualisieren() {}, fehlerMelden(t) { throw Error(t); }, markdown: (t) => 'Markdown: ' + t,
   dialogOeffnen(titel, inhalt, knoepfe) {
     dialog = new Element('dialog'); dialog.append(...inhalt, ...knoepfe); dialog.offen = true;
+    keinFremdText(dialog);
     dialog.close = () => { dialog.offen = false; }; return dialog;
   },
   fetch: async (pfad, opt) => {
@@ -73,7 +75,8 @@ vm.runInContext(app.slice(app.indexOf('const ZUSTAND ='), app.indexOf('function 
 vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
 kontext.e = e; kontext.ergebnis = ergebnis;
 const alle = (box) => [box, ...box.nachkommen()];
-const knopf = (box, text) => alle(box).find((k) => k.tag === 'button' && k.children.includes(text));
+const knopf = (box, text) => alle(box).find((k) => k.tag === 'button'
+  && k.children.some((kind) => kind.tag === '#text' && kind.textContent === text));
 const feld = (text) => alle(dialog).find((k) => k['aria-label'] === text);
 const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b}); };
 (async () => {
@@ -104,7 +107,9 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
     e.herkunft = herkunft; e.bearbeitbar = herkunft === 'ordner';
     await vm.runInContext('pWaehlen(e.id)', kontext);
     const box = ids.get('#p-inhalt');
-    assert.equal(alle(box).filter((k) => k.tag === 'button' && k.children.includes('Schärfen ▾')).length, 3);
+    keinFremdText(box);
+    assert.equal(alle(box).filter((k) => k.tag === 'button'
+      && k.children.some((kind) => kind.textContent === 'Schärfen ▾')).length, 3);
     await klicken(knopf(box, 'Schärfen ▾'));
     await klicken(knopf(box, 'Erst klären'));
     assert.equal(feld('Aktion').value, 'Erst klären');
@@ -118,6 +123,15 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
   assert(alle(details).some((k) => k.className === 'p-vergleich'));
   assert(alle(details).some((k) => k.textContent.includes('Neue Platzhalter: [Projektkontext]')));
   assert(alle(details).some((k) => k.innerHTML === 'Markdown: - Klarer.'));
+  keinFremdText(details);
+  // Regression: Ohne neue Platzhalter darf replaceChildren keinen null-Text anhängen.
+  ergebnis.neue_platzhalter = [];
+  await details.events.toggle();
+  keinFremdText(details);
+  assert(!alle(details).some((k) => k.textContent.includes('Neue Platzhalter:')));
+  delete ergebnis.neue_platzhalter;
+  await details.events.toggle();
+  keinFremdText(details);
   await klicken(knopf(box, 'Wiederholen'));
   assert(anfragen.some(([pfad, d]) => pfad === '/api/fassung' && d.aktion === 'wiederholen'));
   ergebnis.aktion = 'Erst klären'; ergebnis.fragen = '1. Welches Ziel?';
@@ -137,4 +151,5 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
   await klicken(knopf(dialog, 'Vorschau berechnen')); await klicken(knopf(dialog, 'Start'));
   assert(alle(dialog).some((k) => k.textContent.includes('auth login')));
   assert.equal(anfragen.filter(([, d]) => d?.aktion === 'schaerfen').length, vorher);
+  for (const wurzel of [...ids.values(), dialog]) keinFremdText(wurzel);
 })().catch((err) => { console.error(err); process.exitCode = 1; });

@@ -139,6 +139,47 @@ class Basis(unittest.TestCase):
             return f.read()
 
 class Ablage(Basis):
+    def test_fassung_vorschlag_beispiele(self):
+        for namen, erwartet in [(['Fassung 1'], 'Fassung 2'),
+                (['Fassung 1', 'Schärfen 06.11. Codex · GPT-6-Luna · niedrig'], 'Fassung 3'),
+                (['Fassung 1', 'Fassung 7'], 'Fassung 8'), (['A', 'B'], 'Fassung 3')]:
+            with self.subTest(namen=namen):
+                roh = '# Titel\n\n' + ''.join(f'#### {n}\n~~~text\nText\n~~~\n' for n in namen)
+                self.schreiben(roh)
+                self.assertEqual(self.e.lesen()['fassung_vorschlag'], erwartet)
+
+    def test_fassung_vorschlag_nur_genaue_namen(self):
+        fassungen = [{'name': n} for n in ['Fassung 1', 'Fassung 50 extra', 'Fassung  60', 'fassung 70']]
+        self.assertEqual(prompts.fassung_vorschlag(fassungen), 'Fassung 5')
+
+    def test_fassung_leerer_name_nimmt_frischen_vorschlag(self):
+        self.assertEqual(self.d['fassung_vorschlag'], 'Fassung 2')
+        self.e.fassung_neu('Fassung 7', 'Extern ergänzt')
+        for name, erwartet in [('', 'Fassung 8'), (' \t\n ', 'Fassung 9')]:
+            d = self.e.fassung_neu(name, 'Neu')
+            self.assertEqual(d['fassungen'][-1]['name'], erwartet)
+        d = self.e.fassung_neu('Eigene Fassung', 'Ausdrücklich benannt')
+        self.assertEqual(d['fassungen'][-1]['name'], 'Eigene Fassung')
+        with self.assertRaisesRegex(ValueError, 'gibt es schon'):
+            self.e.fassung_neu('Eigene Fassung', 'Doppelt')
+
+    def test_fassung_leerer_name_parallel_bleibt_eindeutig(self):
+        import threading
+        fehler = []
+        def neu():
+            try:
+                prompts.Eintrag(self.pfad).fassung_neu('', 'Neue Fassung')
+            except Exception as ex:
+                fehler.append(ex)
+        faeden = [threading.Thread(target=neu) for _ in range(8)]
+        for f in faeden:
+            f.start()
+        for f in faeden:
+            f.join()
+        self.assertEqual(fehler, [])
+        self.assertEqual([f['name'] for f in self.e.lesen()['fassungen']],
+                         [f'Fassung {n}' for n in range(1, 10)])
+
     def test_anlegen_index_sammlung_suchfelder(self):
         self.index.neu('Videoanalyse', '', 'Video', '[Transkript]\n[Projektkontext]')
         alle = self.index.alle()['eintraege']
@@ -392,6 +433,55 @@ class Schaerfen(unittest.TestCase):
 
 
 class Oberflaeche(unittest.TestCase):
+    def test_dom_nachbau_textknoten_und_fremdtext(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
+        skript = r'''
+const assert = require('assert');
+const { kinder, keinFremdText } = require('./werkstatt/tests/dom_nachbau');
+class Element {
+  constructor() { this.tag = 'div'; this.children = []; this.textContent = ''; }
+  append(...k) { this.children.push(...kinder(...k)); }
+  replaceChildren(...k) { this.children = kinder(...k); }
+}
+const box = new Element(), element = new Element();
+box.append(null);
+assert.deepStrictEqual(box.children, [{tag: '#text', textContent: 'null'}]);
+assert.throws(() => keinFremdText(box), /Sichtbarer Fremdtext: null/);
+for (const wert of [undefined, {}]) {
+  box.replaceChildren(wert);
+  assert.equal(box.children[0].tag, '#text');
+  assert.equal(box.children[0].textContent, String(wert));
+  assert.throws(() => keinFremdText(box), /Sichtbarer Fremdtext/);
+}
+for (const text of ['null', 'undefined', '[object Object]']) {
+  element.textContent = text;
+  box.replaceChildren(new Element()); box.children[0].append(element);
+  assert.throws(() => keinFremdText(box), /Sichtbarer Fremdtext/);
+}
+element.textContent = 'Unverändert';
+box.replaceChildren(element, 42, 'Text', false);
+assert.strictEqual(box.children[0], element);
+assert.deepStrictEqual(box.children.slice(1).map((k) => k.textContent), ['42', 'Text', 'false']);
+keinFremdText(box);
+'''
+        lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8', capture_output=True,
+                              cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+    def test_laden_wiederholen_serialisieren_und_fassungsvorschlag(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        if not node:
+            self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_laden_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_schaerfen_dialog_und_nebeneinander(self):
         import shutil
         import subprocess
@@ -410,10 +500,11 @@ class Oberflaeche(unittest.TestCase):
             self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
         skript = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const { kinder, keinFremdText } = require('./werkstatt/tests/dom_nachbau');
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.events = {}; this.dataset = {}; this.classList = {add() {}, remove() {}}; }
-  append(...k) { this.children.push(...k); }
-  replaceChildren(...k) { this.children = k; }
+  append(...k) { this.children.push(...kinder(...k)); }
+  replaceChildren(...k) { this.children = kinder(...k); }
   setAttribute(k, v) { this[k] = v; }
   addEventListener(k, f) { this.events[k] = f; }
   focus() {}
@@ -432,7 +523,7 @@ const e = {id: 'Test', titel: 'Test', herkunft: 'ordner', tests: [], fassungen: 
 const beleg = {fassung: 'Eins', auswerter: 'Fake', rahmen: 'ja', hinweise: {B: 'Datei seit dem Test geändert.'},
   eingaben: {felder: {A: {art: 'text', wert: 'Alt'}, B: {art: 'datei', pfad: 'C:/feld.txt', wert: 'Datei alt'},
     'red, blue': {art: 'woertlich'}}}};
-const kontext = vm.createContext({document, window: {}, console,
+const kontext = vm.createContext({document, window: {}, console, kinder, keinFremdText,
   localStorage: {getItem() { return '["p"]'; }, setItem() {}}, aktualisieren() {},
   fehlerMelden(t) { throw Error(t); },
   fetch: async (pfad, opt) => {
@@ -457,12 +548,14 @@ vm.runInContext(app.slice(app.indexOf('function knopf('), app.indexOf('const auf
 const zf = fs.readFileSync('werkstatt/web/zusammenfassung.js', 'utf8');
 vm.runInContext(zf.slice(zf.indexOf('function markdown('), zf.indexOf('// ------------------------------------------------------------------ Transkripte')), kontext);
 vm.runInContext(`function dialogOeffnen(titel, inhalt, knoepfe) {
-  const d = {titel, children: [...inhalt, ...knoepfe], close() { this.geschlossen = true; }};
+  const d = {titel, children: kinder(...inhalt, ...knoepfe), close() { this.geschlossen = true; }};
+  keinFremdText(d);
   window.dialog = d; return d;
 }`, kontext);
 vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
-function alle(e) { return [e, ...e.children.flatMap((k) => k && typeof k === 'object' ? alle(k) : [])]; }
-function knopf(text, wurzel = kontext.window.dialog) { return alle(wurzel).find((k) => k.children?.includes(text)); }
+function alle(e) { return [e, ...(e.children || []).flatMap(alle)]; }
+function hatText(e, text) { return e.children?.some((k) => k.tag === '#text' && k.textContent === text); }
+function knopf(text, wurzel = kontext.window.dialog) { return alle(wurzel).find((k) => hatText(k, text)); }
 async function klicken(b) { assert(b); await b.events.click({currentTarget: b}); }
 kontext.e = e; kontext.beleg = beleg;
 (async () => {
@@ -472,9 +565,9 @@ kontext.e = e; kontext.beleg = beleg;
   assert(vm.runInContext('markdown("~~~\\n  offen  ")', kontext).includes('  offen  </code>'));
   await vm.runInContext('pTestdialog(e, null)', kontext);
   let d = kontext.window.dialog;
-  assert(alle(d).some((k) => k.children?.includes('Zwei') && k.children[0].checked));
+  assert(alle(d).some((k) => hatText(k, 'Zwei') && k.children[0].checked));
   assert(alle(d).some((k) => k.disabled && k.type === 'checkbox'));
-  assert(alle(d).find((k) => k.children?.includes('Rahmen der Zusammenfassung voranstellen')).children[0].checked === false);
+  assert(alle(d).find((k) => hatText(k, 'Rahmen der Zusammenfassung voranstellen')).children[0].checked === false);
   await vm.runInContext('pTestdialog(e, "Eins", beleg)', kontext);
   d = kontext.window.dialog;
   let a = alle(d).find((k) => k['data-prompt-feld'] === 'A');
@@ -484,6 +577,7 @@ kontext.e = e; kontext.beleg = beleg;
   assert(alle(d).find((k) => k['data-prompt-feld'] === 'red, blue').promptEingabe.woertlich.checked);
   await klicken(knopf('Vorschau berechnen'));
   const pre = alle(d).find((k) => k.tag === 'pre'); assert.equal(pre.textContent, '<html>nur Text</html>');
+  keinFremdText(d);
   a.value = 'Geändert'; a.events.input();
   await klicken(knopf('Start'));
   assert(!anfragen.some(([, d]) => d?.aktion === 'testen'));
@@ -524,6 +618,7 @@ kontext.e = e; kontext.beleg = beleg;
   vm.runInContext('fassungenZeichnen()', kontext);
   assert.equal(kontext.window.gezeigt.length, 8);
   assert(!kontext.window.gezeigt.includes('prompt'));
+  for (const wurzel of [...ids.values(), kontext.window.dialog]) keinFremdText(wurzel);
 })().catch((e) => { console.error(e); process.exitCode = 1; });
 '''
         lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8', capture_output=True,
@@ -539,17 +634,18 @@ kontext.e = e; kontext.beleg = beleg;
             self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
         skript = r'''
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
+const { kinder, keinFremdText } = require('./werkstatt/tests/dom_nachbau');
 class Element {
   constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.scrollTop = 0; this.scrollLeft = 0; }
-  append(...k) { this.children.push(...k); }
+  append(...k) { this.children.push(...kinder(...k)); }
   replaceChildren(...k) {
-    this.children = k; this.scrollTop = 0; this.scrollLeft = 0;
+    this.children = kinder(...k); this.scrollTop = 0; this.scrollLeft = 0;
     if (this === ids.get('#p-inhalt')) fenster.scrollY = 0;
   }
   setAttribute(k, v) { this[k] = v; }
   getAttribute(k) { return this[k] ?? null; }
   addEventListener(k, f) { (this.events ||= {})[k] = f; }
-  nachkommen() { return this.children.filter((k) => k && typeof k === 'object').flatMap((k) => [k, ...k.nachkommen()]); }
+  nachkommen() { return this.children.flatMap((k) => [k, ...(k.nachkommen?.() || [])]); }
   querySelectorAll(s) { return this.nachkommen().filter((k) => s !== 'details[data-p-ansicht]'
     || (k.tag === 'details' && k['data-p-ansicht'] != null)); }
   querySelector(s) { return this.nachkommen().find((k) => s === '.f-text' && k.className === 'f-text') || null; }
@@ -592,7 +688,7 @@ vm.runInContext(app.split('let STAND =')[0], kontext);
 vm.runInContext(app.slice(app.indexOf('function knopf('), app.indexOf('const auftrag =')), kontext);
 vm.runInContext(app.slice(app.indexOf('const ZUSTAND ='), app.indexOf('function schrittListe(')), kontext);
 vm.runInContext(fs.readFileSync('werkstatt/web/prompts.js', 'utf8'), kontext);
-function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k === 'object' ? elemente(k, tag) : [])]
+function elemente(e, tag) { return [e, ...(e.children || []).flatMap((k) => elemente(k, tag))]
   .filter((k) => k.tag === tag); }
 (async () => {
   await vm.runInContext('pLaden()', kontext);
@@ -616,6 +712,7 @@ function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k ===
   assert.equal(elemente(ids.get('#p-inhalt'), 'details').length, 1);
   assert.equal(ids.get('#p-rueck').textContent, '');
   assert.equal(anfragen.length, 2);
+  for (const wurzel of ids.values()) keinFremdText(wurzel);
   // Gleiche JSON-Daten erhalten die tatsächlichen Knoten und offene Kästen.
   const box = ids.get('#p-inhalt'), liste = ids.get('#p-liste');
   let vorher = [...box.children], listenknoten = [...liste.children];
@@ -675,6 +772,7 @@ function elemente(e, tag) { return [e, ...e.children.flatMap((k) => typeof k ===
   anzahl = anfragen.length; jetzt = 70000; await zeitgeber.shift().fn();
   await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
   assert.equal(anfragen.length, anzahl); assert(box.children.every((k, i) => k === vorher[i]));
+  for (const wurzel of ids.values()) keinFremdText(wurzel);
   assert(antwort.open);
   dialogOffen = false; document.activeElement = {matches() { return true; }};
   await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
