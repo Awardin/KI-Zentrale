@@ -293,6 +293,20 @@ class LlamaCpp(unittest.TestCase):
         for flag, wert in (('--mmproj', q['mmproj']), ('--alias', 'qwen3.5-4b-3d-coder-q8'), ('--port', '8107')):
             self.assertEqual(argv[argv.index(flag) + 1], wert)
 
+    def test_glb_coder_suprim_und_vorgaben(self):
+        """GLB-3D-Coder (07.11.2026): RTX 3080 vor RTX 3090, Sampling der Modellkarte, Bildteil vom 3D-Coder."""
+        q = self.erf.llamacpp['qwen35-glb-coder']
+        self.assertEqual((q['art'], q['port'], q['karten']), ('llamacpp', 8108, ['RTX 3080', 'RTX 3090']))
+        self.assertNotIn('feste_karte', q)
+        self.assertEqual(q['modelldatei'],
+                         r'C:\LLM\models\Qwen3.5-4B-GLB-3D-Coder\Qwen3.5-4B-GLB-3D-Coder-Q8_0.gguf')
+        self.assertEqual(q['mmproj'], self.erf.llamacpp['qwen35-3d-coder']['mmproj'])
+        argumente = q['argumente']
+        for flag, wert in (('-c', '131072'), ('--temp', '0.8'), ('--top-p', '0.95'), ('--top-k', '40'),
+                           ('--min-p', '0.0'), ('--repeat-penalty', '1.0')):
+            self.assertEqual(argumente[argumente.index(flag) + 1], wert)
+        self.assertNotIn('--spec-type', argumente)
+
     def test_ports_der_eintraege_sind_eindeutig(self):
         ports = [e['port'] for e in self.cfg['eintraege'] if 'port' in e]
         self.assertEqual(len(ports), len(set(ports)))

@@ -3604,6 +3604,45 @@ das ist ok.“ Spec [SPEC-video-hochrechnen.md](SPEC-video-hochrechnen.md), drei
   als Test A (andere Nummer): Wie stark das Gesicht jünger wird, schwankt mit der Variationsnummer.
 - **Offen:** längere Clips (10 s) erst nach Messung; Variation bei schwankendem Gesicht nutzen.
 
+## Qwen3.5-4B-GLB-3D-Coder: geladen, getestet, Zentrale-Eintrag (07.11.2026)
+
+Anlass: YouTube `kMtNagTG0do` (Shaown Ships AI, 07.11.2026). Auftrag Sascha: „Ja laden und testen, nimm die Suprim zum
+Testen“, danach „Es lohnt auf jeden Fall ein Eintrag … Den kannst Du schonmal bauen“.
+
+- **Was es ist:** eigenes CCORE-Repo `ccore/Qwen3.5-4B-GLB-3D-Coder` (Commit `8f32a19`, 06.11.2026, Apache 2.0, Basis
+  Qwen3.5-4B), nicht die neue Fassung des 3D-Coders vom 01.11. (dessen Q8_0 `c30b0262…` ist bei Hugging Face unverändert).
+  Auf Low-Poly-Spiel-Assets trainiert (`ccore/ThreeJS-3D-GLB-Assets`, 3.918 Beispiele, 40 Bereiche): schreibt eine
+  Three.js-Seite mit Knopf „Export GLB“, Animation nur auf Wunsch. Ein größeres Modell dieser Art gibt es nicht; der
+  Autor plant weitere kleine Modelle mit Werkzeugen und Selbsttest.
+- **Dateien** in `C:\LLM\models\Qwen3.5-4B-GLB-3D-Coder\`: `Qwen3.5-4B-GLB-3D-Coder-Q8_0.gguf` 4.482.402.848 Byte,
+  SHA-256 `68a66e25…2a20` gegen Hugging Face geprüft (als `.part` geladen, dann umbenannt), dazu README, LICENSE,
+  `chat_template.jinja`, `generation_config.json`. Bildteil nicht neu geladen: identisch mit dem des 3D-Coders
+  (`ae08d9d7…`), der Eintrag nutzt die Datei dort mit.
+- **Zentrale-Eintrag** `qwen35-glb-coder` (Art `llamacpp`, llama.cpp b11838, Port 8108, 128K, q8-Cache, Bildteil, kein
+  MTP, Sampling der Modellkarte 0,8 / 0,95 / 40 / Min-P 0 / 1,0). Zum Test fest auf der Suprim, danach freie Kartenwahl
+  wie beim 3D-Coder (RTX 3080 vor RTX 3090). Gemessen auf der Suprim: bereit in wenigen Sekunden, 1.213 → 9.483 MiB,
+  Spitze 9.548 MiB bei 36K Token Antwort (also ~8.340 MiB), Bedarf bleibt 9.000. Test in `zentrale\tests\test_llamacpp.py`;
+  194 Tests grün. Zentrale neu gestartet, Karte erscheint und erkennt das laufende Modell.
+- **Testläufe** (Systemprompt der Modellkarte, englische Prompts, Antwortgrenze 90.000; Ablage
+  `C:\Workstation\Arbeitsmaterial\3D-Coder-Test\glb-coder\` mit `.html`, `.json`, `.antwort.md`, Prompts in `prompts\`;
+  Prüfung im Browser, GLB über den abgefangenen Download gelesen):
+
+  | Lauf | Zeit / Token | Ergebnis |
+  |---|---|---|
+  | Leuchtturmwärter (Prompt aus dem Video) | 178 s / 21.535 | startet nicht: `leftArm.pivot` gibt es nicht, `appendChild` (DOM) statt `add`. **Selbstkorrektur mit nur der Fehlermeldung:** 168 s, läuft ohne Fehler, Figur mit Laterne und Stand-Animation; Rüstung wirr zusammengesetzt |
+  | Goblin-Lager (Prompt aus dem Video) | 150 s / 18.490 | läuft; Hütte auf Pfählen, zwei Goblins, Eiszapfen, Eisscholle; die zwei Dachhälften klaffen auseinander. GLB 2.0, 431 KB, 189 Meshes |
+  | Praxisliege (eigener Prompt) | 191 s / 23.239 | läuft; gepolsterte Platte, Handrolle, Bedienteil, Fußpedal; Platte steht auf nur einer Säule, Gestell nicht verbunden, Gesichtsloch nur als Rahmen. GLB 2,1 MB mit Animation „ElectricHeightAdjust“ |
+  | Hantelbank (eigener Prompt) | 145 s / 17.837 | läuft, aber eine Parkbank mit Lehne; Langhantel als Messingteil auf der Sitzfläche, Kurzhanteln am Boden. GLB 400 KB, 127 Meshes |
+  | Hühnerfarm (eigener Szenen-Prompt: Stall, Gehege, Scheune, Trog, 8 Hühner + Hahn, Animation) | 338 s / 35.681 | hängt im Ladebildschirm. Korrektur 1 (242 s) bringt einen Syntaxfehler, Korrektur 2 mit Zeile und Wortlaut (183 s) lässt ihn stehen; von Hand behoben (`_fix-claude.html`) folgt der nächste Fehler (`random` nicht definiert). Abgebrochen |
+
+  Schreiben 106–123 Token/s, keine Denkschleife in 8 Läufen (Denkzeilen fast alle verschieden).
+- **Befund:** Einzelne Assets klappen in 2,5–3 min mit gültiger GLB (3 von 4 auf Anhieb, der vierte nach einer
+  Korrektur) – deutlich verlässlicher als der 3D-Coder vom 01.11. (3 von 6, Denkschleifen). Schwach ist die Logik: Teile
+  schweben oder sind falsch verbunden, Gegenstände werden umgedeutet (Hantelbank → Parkbank). Szenen mit vielen Teilen und
+  Animation schafft es nicht verlässlich; dafür eher Flash-Next (beide 3090) oder Pixal3D im Studio (Bild → GLB mit
+  Texturen). Brauchbar für schnelle Requisiten-Entwürfe, die in Blender nachgearbeitet werden.
+- **Offen:** GLB in Blender/Godot importieren (nur im Browser geprüft); Vergleich mit Flash-Next bei einem Asset.
+
 ## Offen
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update

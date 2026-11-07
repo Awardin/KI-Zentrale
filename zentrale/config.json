@@ -378,6 +378,26 @@
       "startzeit_max_s": 120
     },
     {
+      "id": "qwen35-glb-coder",
+      "art": "llamacpp",
+      "gruppe": "Sprachmodelle",
+      "name": "Qwen3.5 4B · GLB-3D-Coder",
+      "untertitel": "Q8_0 · 128K · mit Bildern · RTX 3080, sonst eine RTX 3090",
+      "wofuer": "Kleines Finetune (CCORE, 05.11.2026) für Low-Poly-Spiel-Assets – Figuren, Gegenstände, kleine Szenen: schreibt eine Three.js-Seite mit Knopf „Export GLB“ (für Godot, Blender, Unity), auch mit Animation. Mit dem Systemprompt der Modellkarte und englischen Prompts nutzen; einzelne Assets in 2,5–3 min. OpenAI-API auf Port 8108.",
+      "farbe": "#7A9E2E",
+      "programm": "C:\\LLM\\runtimes\\llama-b11838-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\Qwen3.5-4B-GLB-3D-Coder\\Qwen3.5-4B-GLB-3D-Coder-Q8_0.gguf",
+      "mmproj": "C:\\LLM\\models\\Qwen3.5-4B-3D-Coder\\mmproj-Qwen3.5-4B-BF16.gguf",
+      "modell_id": "qwen3.5-4b-glb-3d-coder-q8",
+      "port": 8108,
+      "karten": ["RTX 3080", "RTX 3090"],
+      "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--jinja", "--temp", "0.8", "--top-p", "0.95", "--top-k", "40", "--min-p", "0.0", "--repeat-penalty", "1.0", "--no-webui"],
+      "argumente_grund": "07.11.2026 (Sascha: „Ja laden und testen, nimm die Suprim zum Testen“): Sampling laut Modellkarte (0,8 / 0,95 / 40 / Min-P 0 / 1,0), Denken an, keine Antwortgrenze (Training bis 72K Token, im Schnitt ~20K); Kontext 128K und q8-Cache wie beim 3D-Coder. Bildteil ist dieselbe Datei wie beim 3D-Coder (SHA-256 ae08d9d7… laut Hugging Face gleich), darum mitbenutzt. Kein MTP.",
+      "bedarf_je_karte_mib": 9000,
+      "bedarf_hinweis": "Gemessen 07.11.2026 auf der Suprim (mit Monitor), Bildteil auf der Karte, q8-Cache, 128K: 1.213 MiB vorher, 9.483 nach dem Start, Spitze 9.548 MiB bei 36K Token Antwort – also bis ~8.340 MiB; 9.000 mit Reserve für längere Antworten. Fest auf der Suprim nur im Test (Sascha); danach freie Kartenwahl wie beim 3D-Coder.",
+      "startzeit_max_s": 120
+    },
+    {
       "id": "lightonocr",
       "art": "llamacpp",
       "gruppe": "Texterkennung",

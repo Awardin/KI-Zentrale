@@ -143,6 +143,10 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
 - **Qwen3.5 4B 3D-Coder** (01.11.2026, Auftrag Sascha): Eintrag `qwen35-3d-coder` (Art `llamacpp`, Port 8107, CCORE-Finetune
   Q8_0 + Bildteil, 128K, Sampling der Modellkarte, kein MTP, RTX 3080 vor RTX 3090, Bedarf 9.000 MiB). Schreibt
   Three.js-Szenen als eine HTML-Datei; neigt zu Denkschleifen. Test und Vergleich mit dem 27B: PLAN.md, 01.11.2026.
+- **Qwen3.5 4B GLB-3D-Coder** (07.11.2026, Auftrag Sascha): Eintrag `qwen35-glb-coder` (Art `llamacpp`, Port 8108, eigenes
+  CCORE-Finetune vom 05.11. für Low-Poly-Spiel-Assets, Q8_0 + Bildteil des 3D-Coders, 128K, Sampling 0,8/0,95/40/Min-P 0,
+  RTX 3080 vor RTX 3090, Bedarf 9.000 MiB, gemessen ~8.340). Three.js-Seite mit „Export GLB“: Einzel-Assets in 2,5–3 min
+  meist lauffähig, Szenen mit vielen Teilen nicht. Systemprompt der Modellkarte, englische Prompts. PLAN.md, 07.11.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
