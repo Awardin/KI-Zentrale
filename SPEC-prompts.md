@@ -568,7 +568,7 @@ fortführen“) erst nach Saschas Freigabe, weil die Datei außerhalb dieses Rep
 - Abbrechen lokaler Läufe beendet das Rechnen nicht (vorbestehend).
 - Handänderung am Beleg während eines Laufs: Antwort wird trotzdem gespeichert, `hinweis` gesetzt; keine
   Wiederherstellung des alten Belegtexts.
-- Offen: Vorgabename neuer Fassungen („Fassung n“ gegen Datum), ob Sammlungseinträge mit Pflichtfeldern wie `[Frage]`
+- Vorgabename neuer Fassungen: am 07.11.2026 „Fassung n“ (SPEC-prompts-restpunkte.md, Teil C). Offen: ob Sammlungseinträge mit Pflichtfeldern wie `[Frage]`
   eine Warnung brauchen (Vorschlag: nein, Vorschau zeigt leere Felder).
 
 ## Nicht in Version 1
@@ -594,6 +594,9 @@ Werkstatt-Abschnitt.
   ein `null`-Kind in der Ergebnisanzeige); 382 Tests grün; Browser-Abnahme mit echtem Schärfen-Lauf (Codex Luna als
   Schreibmodell, Hinweise eingearbeitet, neue Fassung in `prompt.md`, Original und neu nebeneinander); (b)–(i) über
   Unit-Tests mit zählenden Fake-Schreibmodellen. Ergebnisvermerk bei „Erst klären“: „Fragen, nicht übernommen“.
+- **Restpunkte gebaut und abgenommen (07.11.2026)**, Codex Sol xhigh: Claude-Anbieter findet Claude Code am neuen Ort
+  der App, Liste lädt sicher (Ladehinweis, neuer Versuch beim nächsten Takt), Vorgabename „Fassung n“,
+  DOM-Nachbau der JS-Tests wie im Browser. Details in [SPEC-prompts-restpunkte.md](SPEC-prompts-restpunkte.md).
 
 ## Lehre aus diesem Lauf
 

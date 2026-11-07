@@ -507,3 +507,25 @@ Vorgelegt 06.11.2026 abends: Commit auf `bau/reiter-prompts` (ohne Push) offen, 
 Das Review-Log bleibt im Hauptordner und geht erst beim Zusammenführen nach main mit.
 Sascha 06.11. 20:52: „Erst anschauen“ – Scheibe 3 bleibt uncommitted im Worktree, Abnahme-Werkstatt auf 3897 läuft weiter. Transkript-Session: Commit 6a680fa auf main im Hauptordner (ohne Push); Werkstatt 3895 zeigt die neue Transkriptliste erst nach Neustart.
 Commit Scheibe 3 (Sascha: „mitten und dann erstmal Pause“, 20:57): 170a827 auf bau/reiter-prompts im Worktree, ohne Push; Worktree sauber. Abnahme-Werkstatt auf 3897 gestoppt. Pause bis morgen (07.11.2026). Offen: Zusammenführen nach main (Saschas Entscheidung; dort liegt 6a680fa der Transkript-Session), Review-Log beim Zusammenführen mit ins Repo, Werkstatt 3895 danach neu starten.
+
+## Restpunkte (07.11.2026) — Build
+
+Auftrag Sascha „Restpunkte Prompts“, Builder Codex Sol xhigh („Nutze SOL auf Xhigh zum bauen falls möglich“).
+Spec `SPEC-prompts-restpunkte.md` (Teile A–D, Befunde vorher am echten System geprüft), Worktree
+`KI-Zentrale-bau-restpunkte`, Branch `bau/prompts-restpunkte` ab main 44ef9e4. Thread 01a1b66b-fb2a-7ea3-8546-cb399769e12d.
+
+### Round 1 — Codex build
+8,5 min, keine Fixrunde, 1,27 Mio. Eingabe-Token (1,18 Mio. aus dem Cache), 20.806 Ausgabe-Token. Laut Bericht A–D
+umgesetzt, keine Abweichungen, 403 Tests grün.
+
+### Claude's verdict
+Diff gelesen: spec-treu, nichts außerhalb von `werkstatt/` und der Spec. Ein Befund, von Claude selbst behoben: Während
+eines laufenden Abrufs galt der Takt als fällig (`ladenNoetig`) und stellte einen zweiten Abruf dahinter, bei mehr als
+2,5 s Antwortzeit pausenlos. `pLadenFaellig()` gibt deshalb während eines laufenden Abrufs `false` zurück; neuer
+Bedientest, ohne die Zeile rot (geprüft). Eigener Testlauf: 403 OK, 1 übersprungen. Browser-Abnahme A–D bestanden
+(Details im Baustand der Spec). Sicherheit: keine neue Route, kein neuer Weg nach außen; kein Befund. Beobachtet, nicht
+geändert: englische Meldung „Failed to fetch“ aus dem gemeinsamen `api()`.
+
+### Lehre aus diesem Lauf
+Für mehrere frische Starts ein Neustart-Skript, das nur den Abnahme-Dienst über seine Kommandozeile beendet und neu
+startet (Hintergrundaufgaben dafür zu umständlich); in `codex-build` ergänzt. AGENTS.md: nichts.

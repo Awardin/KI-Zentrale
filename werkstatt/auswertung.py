@@ -45,8 +45,14 @@ def _neueste(muster, schluessel=os.path.getmtime):
 
 
 def _versionsschluessel(pfad):
-    teile = re.findall(r'\d+', os.path.basename(os.path.dirname(pfad)))
-    return [int(t) for t in teile]
+    ordner = os.path.dirname(pfad)
+    while os.path.basename(os.path.dirname(ordner)) != 'claude-code':
+        eltern = os.path.dirname(ordner)
+        if eltern == ordner:
+            return (), os.path.getmtime(pfad)
+        ordner = eltern
+    teile = re.findall(r'\d+', os.path.basename(ordner))
+    return tuple(int(t) for t in teile), os.path.getmtime(pfad)
 
 
 def dateiname(text, grenze=70):
@@ -142,12 +148,16 @@ class Claude(Anbieter):
     schluessel, name, cloud = 'claude', 'Claude', 'Anthropic'
 
     def exe(self):
-        # Die Claude-App ist ein Store-Paket: Ihr %APPDATA%\Claude liegt in Wirklichkeit im Paketordner und
-        # erscheint unter %APPDATA% nur für Programme aus der App. Der echte Pfad geht auch in normaler PowerShell.
-        paket = glob.glob(os.path.join(LOCALAPPDATA, 'Packages', 'Claude_*', 'LocalCache', 'Roaming', 'Claude',
-                                       'claude-code', '*', 'claude.exe'))
-        treffer = paket or glob.glob(os.path.join(APPDATA, 'Claude', 'claude-code', '*', 'claude.exe'))
-        return max(treffer, key=_versionsschluessel) if treffer else None
+        # Neue App-Ablage zuerst, danach die bisherigen Store- und Roaming-Ablagen.
+        muster = [os.path.join(LOCALAPPDATA, 'Claude-Data', 'claude_*', 'claude-code', '*', '*', 'claude.exe'),
+                  os.path.join(LOCALAPPDATA, 'Packages', 'Claude_*', 'LocalCache', 'Roaming', 'Claude',
+                               'claude-code', '*', 'claude.exe'),
+                  os.path.join(APPDATA, 'Claude', 'claude-code', '*', 'claude.exe')]
+        for pfad in muster:
+            treffer = _neueste(pfad, _versionsschluessel)
+            if treffer:
+                return treffer
+        return None
 
     def katalog(self):
         return [dict(m, stufen=['low', 'medium', 'high', 'xhigh', 'max'], stufe_standard=None)

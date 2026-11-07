@@ -363,6 +363,15 @@ class PromptRouten(unittest.TestCase):
         self.assertEqual(self.post({'aktion': 'kopf', 'id': e['id'], 'titel': 'Neu',
                                     'kopf_stand': e['kopf_stand']})[0], 409)
 
+    def test_fassung_neu_leerer_name_und_vorschlag_in_schnittstelle(self):
+        e = self.p.neu('Test', '', '', 'Original')
+        self.assertEqual(self.get('/api/prompt?id=' + e['id'])[1]['fassung_vorschlag'], 'Fassung 2')
+        code, neu = self.post({'aktion': 'fassung_neu', 'id': e['id'], 'name': '', 'text': 'Neue Fassung'})
+        self.assertEqual(code, 200)
+        self.assertEqual(neu['fassungen'][-1]['name'], 'Fassung 2')
+        self.assertEqual(neu['fassung_vorschlag'], 'Fassung 3')
+        self.assertEqual(self.get('/api/prompt?id=' + e['id'])[1]['fassungen'][-1]['name'], 'Fassung 2')
+
     def test_oeffnen_unzulaessig_startet_nichts(self):
         e = self.p.neu('Test', '', '', 'Text')
         with patch('werkstatt.prompts.os.startfile') as starten:

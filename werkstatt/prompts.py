@@ -413,6 +413,12 @@ def _name(name):
     return name_pruefen(name)
 
 
+def fassung_vorschlag(fassungen):
+    nummern = [int(m.group(1)) for f in fassungen
+               if (m := re.fullmatch(r'Fassung ([0-9]+)', f['name']))]
+    return f'Fassung {max([len(fassungen), *nummern]) + 1}'
+
+
 def _zeilenkopf(text):
     zeilen = text.splitlines(keepends=True)
     kaesten = bloecke(text)
@@ -473,6 +479,7 @@ class Eintrag:
         return {'titel': zeilen[anfang][2:].strip(), 'quelle': kopf.get('Quelle', ''),
                 'schlagworte': kopf.get('Schlagworte', ''), 'bevorzugt': bevorzugt,
                 'aktualisiert': kopf.get('Aktualisiert', ''), 'kopf_stand': ks, 'fassungen': fassungen,
+                'fassung_vorschlag': fassung_vorschlag(fassungen),
                 'fehler': 'nicht eindeutig lesbar' if mehrdeutig else '', 'bearbeitbar': not mehrdeutig}
 
     def _frisch(self):
@@ -532,9 +539,10 @@ class Eintrag:
             return self._schreiben(''.join(zeilen))
 
     def fassung_neu(self, name, text):
-        name, text = _name(name), text_pruefen(text)
+        text = text_pruefen(text)
         with _SPERRE:
             roh, d = self._frisch()
+            name = d['fassung_vorschlag'] if isinstance(name, str) and not name.strip() else _name(name)
             if any(f['name'] == name for f in d['fassungen']):
                 raise ValueError('Diesen Fassungsnamen gibt es schon.')
             nl = '\r\n' if '\r\n' in roh else '\n'
@@ -1143,7 +1151,7 @@ class Index:
         elif aktion == 'fassung_speichern':
             e.fassung_speichern(daten.get('name'), daten.get('text', ''), daten.get('stand'))
         elif aktion == 'fassung_neu':
-            e.fassung_neu(daten.get('name'), daten.get('text', ''))
+            e.fassung_neu(daten.get('name', ''), daten.get('text', ''))
         elif aktion == 'bevorzugt':
             e.bevorzugt(daten.get('name'), daten.get('kopf_stand'))
         else:
