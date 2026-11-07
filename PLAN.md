@@ -4,6 +4,44 @@ Stand 24.09.2026. Diese Datei ersetzt als aktive Fassung die Codex-Übergabe
 `Projekte\Lokale-Wissensextraktion\auswertungen\2026-09-22-modellzentrale-bauuebergabe.md`
 (deren Umfang, Sicherheitsregeln und Abnahmekriterien wurden übernommen).
 
+## Reiter Prompts – Scheibe 3 (06.11.2026, gebaut, technische Abnahme)
+
+Aufbauend auf Scheibe 2 (`4bc8bf46`): „Schärfen“, „Erst klären“ und „Kürzen“ mit Schreib- und Zielmodell,
+aktueller Vorschau und gemeinsamer Warteschlange (`art: schaerfen`). Skill und gekürztes Material werden beim
+Einreihen eingefroren; die Schärfen-Datei entsteht vor dem Warteschlangeneintrag. Antwortprüfung erhält alle
+vorhandenen Platzhalter. Ordnereinträge bekommen eine neue Fassung, Sammlungseinträge ausschließlich einen
+Vorschlag. Wiederholen nach einem Absturz zwischen Anhängen und Ergebnisvermerk sendet nicht erneut und
+erkennt die vorhandene Fassung am Stand. Original und neue Fassung stehen nebeneinander mit Stichpunkten;
+Rückfragen bleiben ohne Übernahme. Schärfen-Läufe haben keine Urteile.
+
+Technische Prüfung: 382 Werkstatt-Tests grün (1 übersprungen), darunter zählende Fake-Schreibmodelle,
+Absturz-Injektion, unveränderte Sammlung, gespeichertes Material trotz geänderter/gelöschter Quelle,
+HTTP-Handler ohne Dienst und JavaScript-Bedientest mit DOM/Fake-HTTP. Keine Dienste oder echten Modellaufrufe;
+keine Änderungen an echten Arbeitsdaten, Skill oder BETRIEB.md. Live-Abnahme durch Claude am 06.11.2026 abends
+aus dem Worktree (Port 3897): Schärfen-Lauf „Hühnerfarm“ mit Codex Luna als Schreibmodell und lokalem Ornith als
+Zielmodell (7 s), Hinweise eingearbeitet, neue Fassung in `prompt.md`, Ergebnis mit Original und neuer Fassung
+nebeneinander; Nachbesserung Claude: `null`-Kind in der Ergebnisanzeige gefiltert.
+Die eingefrorene Spec-Datei bleibt unverändert.
+
+## Reiter Prompts – Scheibe 2 (06.11.2026, gebaut, technische Abnahme)
+
+Aufbauend auf Scheibe 1 (`12b1109`): Prompt-Tests mit Feldern, Dateiinhalten und Transkriptverweisen,
+Vorschau und SHA-Prüfung, Beleganlage vor dem Einreihen und gemeinsamer Warteschlange (`art: prompt`).
+Antwort vor HTML/Kopf gespeichert; Wiederholen erledigt vorhandene Antworten ohne zweiten Modellaufruf.
+Zustände werden im Beleg gespiegelt, unterbrochene und verwaiste Belege beim Start wiederhergestellt.
+Geladener Kontext wird vor Vorschau und Senden geprüft; Fehlerlogs enthalten ausschließlich Metadaten,
+Fehlerklasse und festen Code. Urteil/Notiz, Nochmal, Gesendet und Dateiabgabe im vorhandenen Reiter ergänzt.
+
+Prüfung ausschließlich mit temporären Dateien, Fake-Anbietern und JavaScript-Bedientests (DOM/Fake-HTTP),
+einschließlich exklusiv unter Windows gesperrtem Beleg, fortlaufendem Arbeitsfaden und Absturz nach Antwort.
+Keine Dienste gestartet oder neu gestartet, keine echten Modellaufrufe, keine echten Arbeitsdaten verändert.
+Live-Abnahme durch Claude am 06.11.2026 abends aus dem Worktree (Port 3897, eigener Promptordner, echte Sammlung
+nur gelesen): Lauf „Hühnerfarm“ mit Codex Luna (12 s, Beleg mit Antwort, Luna stellte die vom Prompt verlangte
+Rückfrage), Urteil und Notiz, „Gesendet anzeigen“, „Nochmal“, Transkriptwahl und Dateifeld in der Vorschau,
+Zusammenfassung und Messungen unverändert. Fixrunde (Sol high): Neuladen nur bei aktiven Läufen und ohne Verlust
+offener Antworten, deutsche Zustandswörter, abgesicherter Fehlerzweig der Warteschlange, Belegordner öffnen.
+Damals blieb Scheibe 3 offen; ihr Baustand steht oben. Die eingefrorene Spec-Datei bleibt unverändert.
+
 ## Entscheidungen (Sascha, 23.09.2026)
 
 1. **Zwei getrennte Apps statt einer großen:**

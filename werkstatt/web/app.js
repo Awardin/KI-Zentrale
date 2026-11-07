@@ -93,7 +93,7 @@ function fehlerMelden(text) {
   $(ziel).replaceChildren(h('ul', {}, h('li', { text })));
 }
 
-const REITER = ['transkription', 'zusammenfassung', 'bildvideo', 'texterkennung', 'messungen'];
+const REITER = ['transkription', 'zusammenfassung', 'prompts', 'bildvideo', 'texterkennung', 'messungen'];
 
 // ------------------------------------------------------------------ Reiter
 
@@ -106,6 +106,7 @@ function reiterZeigen(name) {
   for (const r of REITER) $(`#reiter-${r}`).hidden = r !== name;
   if (location.hash !== `#${name}`) history.replaceState(null, '', `#${name}`);
   window.zusammenfassungAktiv?.(name === 'zusammenfassung');
+  window.promptsAktiv?.(name === 'prompts');
   window.bildvideoAktiv?.(name === 'bildvideo');
   window.messungenAktiv?.(name === 'messungen');
   window.texterkennungAktiv?.(name === 'texterkennung');
@@ -183,6 +184,11 @@ function einrichtenAblegen() {
     tiefe = 0;
     ueberall.hidden = true;
     ablage.classList.remove('ueber');
+    const promptFeld = e.target.closest?.('[data-prompt-feld]');
+    if (!$('#reiter-prompts').hidden && promptFeld) {
+      window.promptsAblegen?.(e, promptFeld);
+      return;
+    }
     const zurTexterkennung = texterkennung();
     if (!zurTexterkennung && $('#reiter-transkription').hidden) reiterZeigen('transkription');
     const eintraege = [];

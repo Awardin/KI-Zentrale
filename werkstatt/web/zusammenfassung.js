@@ -30,6 +30,19 @@ const ZF_ZUSTAND = { wartet: 'Wartet', laeuft: 'Läuft', fertig: 'Fertig', fehle
 // ------------------------------------------------------------------ Markdown (einfach und sicher)
 
 function markdown(text) {
+  // Zaunblöcke vor der Inline-Formatierung abtrennen, einschließlich offener Antworten.
+  const zeilen = text.split('\n');
+  const auf = zeilen.findIndex((z) => /^ {0,3}(~{3,}|`{3,})([^`]*?)\s*$/.test(z));
+  if (auf >= 0) {
+    const m = zeilen[auf].match(/^ {0,3}(~{3,}|`{3,})/);
+    const zuMuster = new RegExp('^ {0,3}' + m[1][0] + '{' + m[1].length + ',}\\s*$');
+    let zu = auf + 1;
+    while (zu < zeilen.length && !zuMuster.test(zeilen[zu])) zu += 1;
+    const escCode = (s) => s.replace(/[&<>\"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const code = zeilen.slice(auf + 1, zu).join('\n') + (zu > auf + 1 && zu < zeilen.length ? '\n' : '');
+    return markdown(zeilen.slice(0, auf).join('\n')) + `<pre><code>${escCode(code)}</code></pre>`
+      + markdown(zeilen.slice(zu + 1).join('\n'));
+  }
   const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const inline = (s) => esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -241,7 +254,8 @@ async function fassungText(f, r) {
 function fassungenZeichnen() {
   const box = $('#zf-fassungen');
   if (!ZF.gewaehlt) return;
-  const liste = ZF.stand.auswertungen.filter((f) => f.ordner === ZF.gewaehlt.ordner).reverse();
+  const liste = ZF.stand.auswertungen.filter((f) => (f.art || 'zusammenfassung') === 'zusammenfassung'
+    && f.ordner === ZF.gewaehlt.ordner).reverse();
   const ids = new Set(liste.map((f) => f.id));
   for (const [id, r] of ZF.zeilen) if (!ids.has(id)) { r.el.remove(); ZF.zeilen.delete(id); }
   if (!liste.length) {

@@ -14,7 +14,7 @@ BASIS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASIS)
 
 from gemeinsam import dienst, winapi  # noqa: E402
-from werkstatt import anweisungen, messungen, platz, quellen, studio, texterkennung  # noqa: E402
+from werkstatt import anweisungen, messungen, platz, prompts, quellen, studio, texterkennung  # noqa: E402
 from werkstatt.auftraege import Warteschlange  # noqa: E402
 from werkstatt.auswertung import Auswertungen  # noqa: E402
 
@@ -35,6 +35,7 @@ class Werkstatt:
         # Whisper und ein lokales Sprachmodell rechnen nie gleichzeitig (Regel aus watch).
         self.schlange = Warteschlange(cfg, DATEN_ORDNER, self.log, self.zentrale)
         self.auswertung = Auswertungen(cfg, DATEN_ORDNER, self.log)
+        self.prompts = self.auswertung.prompts
         with open(cfg['zentrale_config'], encoding='utf-8') as f:
             zc = json.load(f)
         self.messlauf = messungen.Messlauf(os.path.join(DATEN_ORDNER, 'messlaeufe.json'),
@@ -147,6 +148,17 @@ class Werkstatt:
         return quellen.liegt_in(pfad, self.w['arbeitsordner'])
 
     def fassung_oeffnen(self, aid, was):
+        a = next((a for a in self.auswertung.liste if a['id'] == aid), None)
+        if a and a.get('art') in ('prompt', 'schaerfen'):
+            try:
+                datei = self.auswertung._belegpfad(a)
+                ziel = os.path.dirname(datei) if was == 'ordner' else datei
+                if not (os.path.isdir(ziel) if was == 'ordner' else os.path.isfile(ziel)):
+                    raise ValueError('Beleg fehlt.')
+                os.startfile(ziel)
+                return 200, {'ok': True}
+            except Exception as ex:
+                return 400, {'fehler': str(ex)}
         datei = self.auswertung.datei(aid)
         ziel = os.path.dirname(datei) if datei and was == 'ordner' else datei
         if not ziel or not self._im_arbeitsordner(ziel) or not os.path.exists(ziel):
@@ -241,7 +253,8 @@ class Werkstatt:
                 continue
             ok, grund = lokal.verfuegbar({'modell': m['modell']})
             modelle.append({'id': m['modell'], 'name': m['name'], 'geladen': ok, 'grund': grund})
-        return dict(self._messungen[1], zusammenfassung=messungen.zusammenfassung(self.auswertung.liste),
+        return dict(self._messungen[1], zusammenfassung=messungen.zusammenfassung([
+                    a for a in self.auswertung.liste if a.get('art', 'zusammenfassung') == 'zusammenfassung']),
                     messlaeufe=list(reversed(self.messlauf.liste()))[:50], messlauf_laeuft=self.messlauf.laufend,
                     lokale_modelle=modelle)
 
@@ -308,7 +321,7 @@ class Anfrage(dienst.Anfrage):
     statisch = dict(dienst.STATISCH_STANDARD,
                     **{f'/{n}': (n, 'text/javascript; charset=utf-8')
                        for n in ('zusammenfassung.js', 'bildvideo.js', 'maske.js', 'studio.js', 'messungen.js',
-                                 'texterkennung.js')})
+                                 'texterkennung.js', 'prompts.js')})
 
     def _datei_senden(self, pfad):
         """Mediendatei der Bibliothek, mit Teilbereichen (Range) für Videos; die Adresse enthält die Änderungszeit."""
@@ -361,10 +374,51 @@ class Anfrage(dienst.Anfrage):
             return self._senden(200, KENNUNG)
         if pfad == '/api/stand':
             return self._senden(200, self.werkstatt.stand())
+        if pfad in ('/api/prompts', '/api/prompt', '/api/prompt-datei'):
+            from urllib.parse import parse_qs, urlparse
+            try:
+                p = self.werkstatt.prompts
+                q = parse_qs(urlparse(self.path).query)
+                wert = lambda k: (q.get(k) or [''])[0]
+                if pfad == '/api/prompt-datei':
+                    daten = p.datei_inhalt(wert('id'), wert('was'), wert('datei'))
+                else:
+                    daten = p.alle() if pfad == '/api/prompts' else p.lesen(wert('id'))
+                    if p.auswertung:
+                        schlange = [a for a in p.auswertung.stand()['auswertungen']
+                                    if a.get('art') in ('prompt', 'schaerfen')]
+                        daten['warteschlange'] = schlange
+                        eintraege = daten['eintraege'] if pfad == '/api/prompts' else [daten]
+                        for e in eintraege:
+                            zugeordnet = []
+                            dateien = ([('tests', b) for b in e['tests']]
+                                       + [('schaerfen', b) for b in e['schaerfen']])
+                            belegpfade = {os.path.normcase(p.beleg_pfad(e['id'], b['datei'], art_ordner))
+                                          for art_ordner, b in dateien}
+                            for a in schlange:
+                                if os.path.normcase(a.get('datei') or '') in belegpfade:
+                                    zugeordnet.append(dict(a, prompt=dict(a['prompt'], eintrag=e['id'])))
+                                elif a.get('prompt', {}).get('eintrag') == e['id']:
+                                    zugeordnet.append(a)
+                            for art_ordner, b in dateien:
+                                b['verwaist'] = not any((a.get('prompt', {}).get('beleg') or '') + '.md'
+                                                       == b['datei'] and a.get('prompt', {}).get('art_ordner', 'tests')
+                                                       == art_ordner for a in zugeordnet)
+                            e['warteschlange'] = zugeordnet
+                return self._senden(200, daten)
+            except anweisungen.Konflikt as ex:
+                return self._senden(409, {'fehler': str(ex)})
+            except Exception as ex:
+                return self._senden(400, {'fehler': str(ex)})
         a = self.werkstatt.auswertung
         if pfad == '/api/zusammenfassung':
             return self._senden(200, a.stand())
         if pfad == '/api/transkripte':
+            if 'prompts=1' in self.path:
+                try:
+                    return self._senden(200, self.werkstatt.prompts.transkripte())
+                except Exception as ex:
+                    return self._senden(400, {'fehler': str(ex)})
             return self._senden(200, a.transkripte(neu='neu=1' in self.path))
         if pfad == '/api/katalog':
             return self._senden(200, a.katalog())
@@ -405,6 +459,13 @@ class Anfrage(dienst.Anfrage):
             return self._senden(400, {'fehler': 'Ungültige Anfrage.'})
         w = self.werkstatt
         pfad = self.path
+        if pfad == '/api/prompt':
+            try:
+                return self._senden(200, w.prompts.aktion(daten))
+            except anweisungen.Konflikt as ex:
+                return self._senden(409, {'fehler': str(ex)})
+            except Exception as ex:
+                return self._senden(400, {'fehler': str(ex)})
         try:
             if pfad == '/api/hinzufuegen':
                 return self._senden(*w.hinzufuegen(daten))
@@ -423,10 +484,13 @@ class Anfrage(dienst.Anfrage):
             if pfad == '/api/auswerten':
                 return self._senden(*w.auswertung.anlegen(daten))
             if pfad == '/api/fassung':
-                was = str(daten.get('aktion'))
-                if was in ('oeffnen', 'ordner'):
-                    return self._senden(*w.fassung_oeffnen(str(daten.get('id')), was))
-                return self._senden(*w.auswertung.aktion(str(daten.get('id')), was))
+                try:
+                    was = str(daten.get('aktion'))
+                    if was in ('oeffnen', 'ordner'):
+                        return self._senden(*w.fassung_oeffnen(str(daten.get('id')), was))
+                    return self._senden(*w.auswertung.aktion(str(daten.get('id')), was))
+                except Exception as ex:
+                    return self._senden(400, {'fehler': str(ex)})
             if pfad == '/api/transkript-oeffnen':
                 return self._senden(*w.transkript_oeffnen(str(daten.get('ordner'))))
             if pfad == '/api/anweisung':

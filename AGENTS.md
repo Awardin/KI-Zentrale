@@ -190,7 +190,9 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Nicht umbauen, nicht wieder starten oder einbetten, keine Dateien darin anlegen.
 - Logs ohne Prompts, Transkriptinhalte, API-Schlüssel oder persönliche Daten.
 - Anweisungen für Zusammenfassungen leben nur in der Promptsammlung (Abschnitt „Werkstatt: …“).
-  Die Werkstatt ändert ausschließlich diesen Abschnitt; keine zweite Promptablage anlegen.
+  Die Werkstatt ändert ausschließlich diesen Abschnitt; keine zweite Promptablage für Wissensprompts anlegen.
+  Coding-/Kreativprompts und alle Testbelege liegen unter `Arbeitsmaterial\Prompts` (Reiter Prompts);
+  Wissensprompts bleiben in der Sammlung, die Werkstatt schreibt dort weiterhin nur im Werkstatt-Abschnitt.
 - Lokale Sprachmodelle nur nutzen, wenn die Zentrale sie geladen hat; nie selbst laden oder entladen,
   Ollama-Anfragen mit `keep_alive: -1` und den `ollama_optionen` des Eintrags (Ornith: `num_batch 256`,
   sonst lädt Ollama neu und der bekannte CUDA-Absturz kommt zurück), dazu `num_ctx` = Kontext, mit dem das Modell

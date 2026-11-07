@@ -197,6 +197,60 @@ Reiter **Zusammenfassung** (oder „Zusammenfassen“ an einem fertigen Auftrag)
   GPU-Sperre mehr); das Modell ist schon geladen und braucht keinen neuen Platz.
   Cloud-Fassungen laufen zu zweit parallel.
 
+### Prompts
+
+Der Reiter **Prompts** sammelt Coding- und Kreativprompts unter
+`C:\Workstation\Arbeitsmaterial\Prompts\<Kennung>\prompt.md`. „Neu“ legt Titel, Quelle,
+Schlagworte und „Fassung 1“ an. Links lassen sich Titel, Quelle, Schlagworte und Fassungen
+durchsuchen sowie Herkunft und getestet/ungetestet filtern. Rechts stehen Kopf und Fassungen
+als unveränderter Text. „Bearbeiten“, „Neue Fassung“ und „Als bevorzugt“ speichern in der
+Datei; Handänderungen bleiben erhalten. Bei einem veralteten Stand bitte neu einlesen.
+Mehrdeutige oder unlesbare Dateien bleiben sichtbar und lassen sich über „Im Ordner öffnen“ prüfen.
+
+Wissensprompts bleiben ausschließlich in `C:\Users\sasch\Desktop\Meine-Wissens-Prompts.md`.
+Der Reiter liest ihre Kästen außerhalb des Werkstatt-Abschnitts und öffnet die Sammlung zur
+Handbearbeitung. Vorhandene Belegköpfe unter `tests\` bestimmen den Teststatus und die Testliste;
+Belege und spätere Vorschläge zu Sammlungskästen liegen in `_Sammlung` mit `eintrag.json`.
+Bei unklarer Zuordnung zeigt die Liste die möglichen Kästen mit „Diesem Kasten zuordnen“.
+Der Sammlungstext wird dabei nicht verändert.
+
+**Testen …** öffnet die Fassungs- und Auswerterauswahl. Felder wie `[Transkript]` lassen sich mit
+Text, „Aus Datei …“, einem Dateipfad oder „Aus Transkript …“ füllen (nur unter den `dateiwurzeln`;
+`00_Secrets` und `.env`-Dateien sind gesperrt, Zugangsdaten gehen nie in einen Prompt). Gezogene Dateien werden als
+Text mit Dateiname übernommen. „wörtlich lassen“ erhält die Klammer; leere Felder bleiben ebenfalls
+stehen. Der Rahmen der Zusammenfassung kommt nur über das entsprechende Häkchen dazu.
+
+Die einklappbare **Vorschau** zeigt den Auftrag, leere Felder, Modell, Verarbeitung lokal/Cloud und
+Tokenschätzung mit Kontextreserve. Bei Strata/PolyStrata zählt der tatsächlich geladene Kontext laut
+`/health`. Zu lange Aufträge werden vor dem Einreihen und vor dem Senden abgelehnt.
+Codex: Sandbox nur lesend, kann Dateien lesen und Befehle ausführen, liest seine globale `AGENTS.md` mit.
+Claude bleibt ohne Werkzeuge mit seinem festen Systemprompt.
+
+Je Fassung × Auswerter entsteht beim Einreihen ein **Beleg** unter `tests\`: Kopf, ursprüngliche Fassung,
+Eingaben und später die Antwort. Enthaltenes HTML wird zusätzlich daneben gespeichert und lässt sich
+über „Im Browser öffnen“ ansehen. „Gesendet anzeigen“ baut den Auftrag aus dem Beleg neu auf.
+Transkripte bleiben Verweise mit Prüfsumme; geänderte oder fehlende Transkripte verhindern das Senden.
+
+Beleg und gemeinsame Warteschlange zeigen **wartet**, **laeuft**, **fertig**, **fehler** oder **abgebrochen**.
+Nach einem Dienstneustart lassen sich unterbrochene und unvollständig eingereihte Belege wiederholen.
+Ist die Antwort schon gespeichert, erledigt „Wiederholen“ nur die fehlende Nacharbeit ohne erneuten
+Modellaufruf. „Entfernen“ nimmt nur den Warteschlangeneintrag heraus; die Datei bleibt erhalten.
+Urteil **offen/gut/schwach** und Notiz (beim Verlassen des Felds) ändern nur den Belegkopf.
+**Nochmal …** füllt einen neuen Testdialog aus dem Beleg und meldet geänderte oder fehlende Quelldateien
+je Feld. Prompt-Tests zählen nicht in den Zusammenfassungs-Messungen.
+
+**Schärfen ▾** bietet „Schärfen“, „Erst klären“ und „Kürzen“ am Eintrag und an jeder Fassung.
+Im Dialog werden Schreibmodell, Zielmodell, Hinweise und optional eine Testantwort als Material gewählt.
+Das Schreibmodell führt die Überarbeitung aus; das Zielmodell beschreibt den späteren Einsatz im frischen Chat.
+Vor dem Start ist eine aktuelle Vorschau nötig. Der Skill wird zur Laufzeit gelesen und zusammen mit dem
+Material als Momentaufnahme unter `schaerfen\` gespeichert; Änderungen der Quellen berühren den Lauf danach nicht.
+Gültige Antworten werden bei Ordnereinträgen als neue Fassung in `prompt.md` übernommen, ohne die ursprüngliche
+Fassung zu ersetzen. Bei Sammlungseinträgen entsteht ausschließlich ein **Vorschlag, nicht übernommen** im
+Schattenordner. „Erst klären“ liefert Fragen und legt keine neue Fassung an.
+Der Abschnitt „Schärfen“ zeigt Original und neue Fassung nebeneinander, darunter die Stichpunkte und neue Platzhalter.
+Wiederholen erledigt bei vorhandener Antwort die Übernahme ohne weiteren Modellaufruf oder doppelte Fassung.
+Schärfen-Läufe haben kein Urteil; die neue Fassung wird über Tests beurteilt.
+
 ### Bild & Video
 
 ComfyUI starten und beenden geschieht in der Modellzentrale, die vorher den Platz prüft; ist es aus,
