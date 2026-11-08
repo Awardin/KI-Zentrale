@@ -374,10 +374,14 @@ class Anfrage(dienst.Anfrage):
             return self._senden(200, KENNUNG)
         if pfad == '/api/stand':
             return self._senden(200, self.werkstatt.stand())
-        if pfad in ('/api/prompts', '/api/prompt', '/api/prompt-datei'):
+        if pfad in ('/api/prompts', '/api/prompt', '/api/prompt-datei', '/api/prompt-optionen', '/api/prompt-kontexte'):
             from urllib.parse import parse_qs, urlparse
             try:
                 p = self.werkstatt.prompts
+                if pfad == '/api/prompt-optionen':
+                    return self._senden(200, p.optionen())
+                if pfad == '/api/prompt-kontexte':
+                    return self._senden(200, p.kontexte())
                 q = parse_qs(urlparse(self.path).query)
                 wert = lambda k: (q.get(k) or [''])[0]
                 if pfad == '/api/prompt-datei':

@@ -34,7 +34,13 @@ async function api(pfad, daten) {
     headers: { 'Content-Type': 'application/json', 'X-Werkstatt': '1' },
     body: JSON.stringify(daten),
   };
-  const r = await fetch(pfad, opt);
+  let r;
+  try { r = await fetch(pfad, opt); }
+  catch {
+    const fehler = new Error('Die Werkstatt antwortet gerade nicht. Bitte kurz warten und erneut versuchen.');
+    fehler.netzfehler = true;
+    throw fehler;
+  }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.fehler || `Der Dienst antwortete mit Fehler ${r.status}.`);
   return j;
@@ -159,6 +165,8 @@ async function ablegen(eintraege) {
 function einrichtenAblegen() {
   const ueberall = $('#ueberall');
   const texterkennung = () => !$('#reiter-texterkennung').hidden;
+  const prompts = () => !$('#reiter-prompts').hidden;
+  const ablagetext = ueberall.textContent;
   let ablage = $('#ablage');
   let tiefe = 0;
   const hatDateien = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
@@ -166,7 +174,8 @@ function einrichtenAblegen() {
     if (!hatDateien(e)) return;
     tiefe += 1;
     ueberall.hidden = false;
-    ablage = texterkennung() ? $('#te-ablage') : $('#ablage');
+    ablage = prompts() ? $('#p-composer') : texterkennung() ? $('#te-ablage') : $('#ablage');
+    ueberall.textContent = prompts() ? 'Textdateien als Material anhängen' : ablagetext;
     ablage.classList.add('ueber');
   });
   document.addEventListener('dragleave', () => {
@@ -187,6 +196,10 @@ function einrichtenAblegen() {
     const promptFeld = e.target.closest?.('[data-prompt-feld]');
     if (!$('#reiter-prompts').hidden && promptFeld) {
       window.promptsAblegen?.(e, promptFeld);
+      return;
+    }
+    if (prompts()) {
+      window.promptsMaterialAblegen?.(e);
       return;
     }
     const zurTexterkennung = texterkennung();

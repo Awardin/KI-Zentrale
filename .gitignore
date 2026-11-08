@@ -14,3 +14,6 @@ __pycache__/
 
 # Zwischendateien
 *.tmp
+
+# Übergabe- und Abnahmedateien der Builder (Vorschläge, Bildschirmfotos, Harness-Daten) – bleiben lokal
+_uebergabe/

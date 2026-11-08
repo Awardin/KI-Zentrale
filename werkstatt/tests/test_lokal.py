@@ -221,6 +221,53 @@ class ModellWelt:
         raise AssertionError(ziel)
 
 
+class Qwen27(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.zc = os.path.join(tmp.name, 'zentrale.json')
+        self.eintraege = [dict(id=eid, art='llamacpp', name=eid, port=port, modell_id=modell,
+                               untertitel='128K Kontext') for eid, port, modell in (
+            ('qwen27-unsloth', 8106, 'qwen3.8-27b-unsloth-q4kxl'),
+            ('qwen27-iq3s', 8103, 'qwen3.8-27b-gsq-iq3s'),
+            ('lightonocr', 8096, 'ocr'), ('anderes-llama', 8107, 'anderes'))]
+        with open(self.zc, 'w', encoding='utf-8') as f:
+            json.dump({'eintraege': self.eintraege}, f)
+        self.lokal = auswertung.Lokal({'zentrale_config': self.zc})
+        self.welt = ModellWelt()
+        self.welt.ports = [('127.0.0.1', e['port'], 1) for e in self.eintraege]
+        self.welt.modelle.update({e['port']: [e['modell_id']] for e in self.eintraege})
+        self.enterContext(mock.patch.object(auswertung._OHNE_PROXY, 'open', side_effect=self.welt.oeffnen))
+        self.enterContext(mock.patch.object(auswertung.winapi, 'lauschende_ports', side_effect=lambda: self.welt.ports))
+
+    def test_nur_beide_bestaetigten_eintraege_im_katalog(self):
+        kat = self.lokal.katalog()
+        self.assertEqual({p['modell'] for p in kat}, {'qwen27-unsloth', 'qwen27-iq3s'})
+        self.assertTrue(all(p['kontext'] == 131072 and p['stufen'] == [] for p in kat))
+
+    def test_falsche_kennung_und_geschlossener_port(self):
+        for e in self.eintraege[:2]:
+            self.welt.modelle[e['port']] = ['falsche-kennung']
+            self.assertFalse(self.lokal.verfuegbar({'modell': e['id']}, frisch=True)[0])
+        self.welt.ports = []
+        self.welt.anfragen.clear()
+        self.assertFalse(self.lokal.verfuegbar({'modell': 'qwen27-unsloth'}, frisch=True)[0])
+        self.assertEqual(self.welt.anfragen, [])
+
+    def test_ausfuehren_nutzt_bestaetigte_kennung_und_kontext(self):
+        for e in self.eintraege[:2]:
+            p = {'modell': e['id']}
+            self.assertTrue(self.lokal.verfuegbar(p, frisch=True)[0])
+            self.assertEqual(self.lokal.kontext_geladen(p), (131072, 'Katalog der Zentrale', e['modell_id']))
+            self.welt.antworten[e['port']] = {'choices': [{'message': {'content': e['id']}, 'finish_reason': 'stop'}]}
+            self.assertEqual(self.lokal.ausfuehren(p, 'Test', Lauf())['text'], e['id'])
+            anfrage = self.welt.anfragen[-1][1]
+            self.assertEqual(json.loads(anfrage.data)['model'], e['modell_id'])
+            self.welt.modelle[e['port']] = ['anderes']
+            with self.assertRaises(RuntimeError):
+                self.lokal.ausfuehren(p, 'Test', Lauf())
+
+
 class StrataUndPolyStrata(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -240,6 +287,17 @@ class StrataUndPolyStrata(unittest.TestCase):
 
     def anfrage(self):
         return json.loads([a for ziel, a in self.welt.anfragen if ziel.endswith('/v1/chat/completions')][-1].data)
+
+    def test_gleiche_flash_kennung_unterschiedlicher_geladener_kontext(self):
+        for kontext in (131072, 262144):
+            with mock.patch.object(auswertung._OHNE_PROXY, 'open', return_value=Antwort(
+                    {'loaded': True, 'model': Q4, 'max_context': kontext})):
+                self.assertEqual(self.lokal.kontext_geladen({'modell': 'flash-next-strata'}),
+                                 (kontext, '/health', Q4))
+        with mock.patch.object(auswertung._OHNE_PROXY, 'open', return_value=Antwort(
+                {'loaded': True, 'model': 'fremd', 'max_context': 262144})):
+            with self.assertRaises(RuntimeError):
+                self.lokal.kontext_geladen({'modell': 'flash-next-strata'})
 
     def test_strata_mit_geladener_q4_fassung(self):
         self.welt.modelle[8095] = [Q4]

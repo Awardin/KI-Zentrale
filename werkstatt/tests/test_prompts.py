@@ -138,6 +138,188 @@ class Basis(unittest.TestCase):
         with self.pfad.open(encoding='utf-8', newline='') as f:
             return f.read()
 
+class KatalogUndRegeln(Basis):
+    def regeln(self):
+        datei = self.basis / 'profile.json'
+        datei.write_bytes((Path(__file__).parent / 'werkstatt-profile.json').read_bytes())
+        self.cfg['profile'] = str(datei)
+        return datei
+
+    def test_abschnitte_dynamisch_nur_ausserhalb_von_zaeunen(self):
+        text = ''.join(f'## {n}. Bereich\n### Prompt {n}\n~~~text\nText {n}\n~~~\n' for n in range(1, 8))
+        text += ('## Ohne Kasten\n```text\n## Kein Abschnitt\n```\n' + prompts.ABSCHNITT
+                 + '\n#### Rahmen\n~~~text\nWerkstatt\n~~~\n')
+        self.sammlung.write_text(text, encoding='utf-8')
+        k = prompts.sammlung_kaesten(self.sammlung)
+        self.assertEqual(len(k), 7)
+        self.assertEqual([e['abschnitt'] for e in k], [f'{n}. Bereich' for n in range(1, 8)])
+        self.assertEqual([e['abschnitt_reihenfolge'] for e in k], list(range(1, 8)))
+        self.assertEqual([e['reihenfolge'] for e in k], list(range(7)))
+        self.assertEqual([e['id'] for e in k], [f'sammlung:Prompt {n}#1' for n in range(1, 8)])
+
+    def test_gruppenwechsel_erhaelt_id_stand_und_schatten(self):
+        self.sammlung.write_text('## Alt\n### Wissen\n~~~text\nSuche\n~~~\n', encoding='utf-8')
+        self.index._testordner('sammlung:Wissen#1')
+        vorher = self.index.lesen('sammlung:Wissen#1')
+        self.sammlung.write_text('## Neuer Abschnitt\n### Wissen\n~~~text\nSuche\n~~~\n', encoding='utf-8')
+        nachher = self.index.lesen('sammlung:Wissen#1')
+        for k in ('id', 'schatten', 'fassungen'):
+            self.assertEqual(vorher[k], nachher[k])
+        self.assertEqual(nachher['abschnitt'], 'Neuer Abschnitt')
+
+    def test_metadaten_optional_crlf_und_unbekannte_zeilen_bleiben(self):
+        self.assertEqual((self.d['prompt_typ'], self.d['modus']), ('standard', 'prompt'))
+        roh = self.roh().replace('Quelle:', 'Fremdes Feld: bleibt\nPrompt-Typ: code\nModus: vorlage\nQuelle:')
+        self.schreiben(roh.replace('\n', '\r\n'))
+        d = self.e.lesen()
+        self.assertEqual((d['prompt_typ'], d['modus']), ('code', 'vorlage'))
+        self.e.kopf('Neu', '', '', d['kopf_stand'])
+        self.assertIn('Fremdes Feld: bleibt\r\nPrompt-Typ: code\r\nModus: vorlage\r\n', self.roh())
+        self.assertNotIn('\n', self.roh().replace('\r\n', ''))
+
+    def test_neue_metadaten_und_kurztext(self):
+        import uuid
+        datei = self.basis / 'neu.md'
+        aid = str(uuid.uuid4())
+        d = prompts.Eintrag(datei).anlegen('Test', '', '', 'Text', prompt_typ='code', modus='vorlage', composer_auftrag=aid)
+        self.assertEqual((d['prompt_typ'], d['modus'], d['composer_auftrag']), ('code', 'vorlage', aid))
+        self.e.fassung_speichern('Fassung 1', '\n  Erste   Zeile ' + 'x'*200 + '\nZweite', self.d['fassungen'][0]['stand'])
+        kurz = self.index.lesen(self.d['id'])['kurztext']
+        self.assertEqual(kurz, ('Erste Zeile ' + 'x'*200)[:180])
+
+    def test_regeln_frisch_und_vollstaendig(self):
+        datei = self.regeln()
+        d = self.index.optionen()
+        self.assertEqual([t['id'] for t in d['typen']], list(prompts.TYPEN))
+        self.assertEqual(d['typen'][0]['name'], 'Auto')
+        self.assertEqual(d['typen'][0]['untertitel'], 'Passenden Typ aus der Aufgabe bestimmen')
+        self.assertNotIn('?', datei.read_text(encoding='utf-8'))
+        roh = json.loads(datei.read_text(encoding='utf-8'))
+        roh['typen'][0]['regeln'] = 'Neue Regel'
+        datei.write_text(json.dumps(roh), encoding='utf-8')
+        neu = self.index.optionen()
+        self.assertNotEqual(neu['regeln_stand'], d['regeln_stand'])
+        self.assertEqual(neu['typen'][0]['regeln'], 'Neue Regel')
+
+    def test_zielzuordnung_ohne_laufzeit_und_ohne_automatische_profile(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        self.regeln()
+        lokal = Mock()
+        lokal._eintraege.return_value = ({k: {'id': k} for k in
+            ('qwen27-unsloth', 'qwen27-iq3s', 'flash-next-strata')}, {})
+        profile = [{'id': 'claude', 'anbieter': 'claude', 'modell': 'sonnet', 'name': 'Claude · Sonnet'},
+                   {'id': 'falsch', 'anbieter': 'lokal', 'modell': 'anderes', 'name': 'Falsch'}]
+        self.index.auswertung = SimpleNamespace(profile=profile, anbieter={'lokal': lokal}, profil_info=lambda p: p)
+        regeln = prompts.profile_lesen(self.cfg)
+        ziel = {'zielprofil': 'qwen27', 'eintrag': 'qwen27-unsloth', 'testprofil': None}
+        z = self.index.ziel_aufloesen(ziel, regeln)
+        self.assertEqual(z['zielmodell']['kontext'], 131072)
+        self.assertEqual(z['zielmodell']['name'], 'Qwen 27B Q4')
+        optionen = self.index.optionen()
+        self.assertEqual(optionen['zielprofile'][0]['varianten'][0]['testprofile'], [])
+        self.assertEqual(len(profile), 2)
+        for falsch in (dict(ziel, testprofil='falsch'), dict(ziel, eintrag='lightonocr'),
+                       dict(ziel, variante='erfunden'), dict(ziel, port=8106)):
+            with self.assertRaises(ValueError):
+                self.index.ziel_aufloesen(falsch, regeln)
+        lokal.verfuegbar.assert_not_called()
+
+    def test_fehlende_und_beschaedigte_regeln_bibliothek_bleibt_lesbar(self):
+        datei = self.regeln()
+        gueltig = json.loads(datei.read_text(encoding='utf-8'))
+        for wert in ('{kaputt', 'null', '[]', json.dumps(dict(gueltig, schema=2)),
+                     json.dumps(dict(gueltig, typen=[])), json.dumps(dict(gueltig, modi={})),
+                     json.dumps(dict(gueltig, zielprofile=[{'id': []}]))):
+            datei.write_text(wert, encoding='utf-8')
+            with self.assertRaisesRegex(prompts.PromptFehler, 'Prompt-Regeln'):
+                self.index.optionen()
+            self.assertEqual(self.index.lesen(self.d['id'])['titel'], self.d['titel'])
+        datei.unlink()
+        with self.assertRaises(prompts.PromptFehler):
+            self.index.optionen()
+
+
+class MaterialUndKontexte(Basis):
+    def test_browserdateien_hash_gesamtgrenze_und_keine_erfundenen_pfade(self):
+        self.cfg['feld_max_zeichen'] = 10
+        d = self.index.material_pruefen({'materialien': [{'art': 'text', 'name': 'Notiz.md', 'wert': 'abc'}]})
+        self.assertEqual(d['materialien'][0]['sha'], prompts.sha('abc'))
+        self.assertEqual(d['zeichen'], 3)
+        self.assertNotIn('pfad', d['materialien'][0])
+        with self.assertRaisesRegex(ValueError, 'keinen Dateipfad'):
+            self.index.material_pruefen({'materialien': [{'art': 'text', 'name': 'x.txt', 'wert': '', 'pfad': 'erfunden'}]})
+        for materialien in ([{'art': 'text', 'name': 'x.txt', 'wert': 'x'*11}],
+                            [{'art': 'text', 'name': 'x.txt', 'wert': 'x'*6}]*2,
+                            [{'art': 'text', 'name': 'x.txt', 'wert': 'x'}]*6):
+            with self.assertRaises(ValueError):
+                self.index.material_pruefen({'materialien': materialien})
+        self.assertEqual(self.index.material_pruefen({'materialien': [{'art': 'text', 'name': 'x.txt', 'wert': 'x'*10}]})['zeichen'], 10)
+
+    def test_formate_und_gesperrte_pfade(self):
+        for name in ('bild.png', 'video.mp4', 'ton.mp3', 'bericht.pdf', 'Office.docx', '../fremd.txt', 'C:\\fakepath\\x.txt'):
+            with self.assertRaises(ValueError):
+                self.index.material_pruefen({'materialien': [{'art': 'text', 'name': name, 'wert': 'Text'}]})
+        datei = self.basis / 'Text.txt'
+        datei.write_text('Vollständig', encoding='utf-8')
+        d = self.index.material_datei_lesen({'pfad': str(datei)})
+        self.assertEqual(d['wert'], 'Vollständig')
+        self.cfg['gesperrt'] = [str(self.basis)]
+        with self.assertRaises(ValueError):
+            self.index.material_datei_lesen({'pfad': str(datei)})
+        self.cfg['gesperrt'] = []
+        self.cfg['dateiwurzeln'] = [str(self.basis / 'Anderer-Ordner')]
+        with self.assertRaises(ValueError):
+            self.index.material_datei_lesen({'pfad': str(datei)})
+
+    def test_dateimaterial_wird_frisch_und_vollstaendig_geprueft(self):
+        datei = self.basis / 'x.txt'
+        datei.write_text('Alt', encoding='utf-8')
+        m = self.index.material_datei_lesen({'pfad': str(datei)})
+        datei.write_text('Neuer Text', encoding='utf-8')
+        self.assertEqual(self.index.material_pruefen({'materialien': [m]})['materialien'][0]['wert'], 'Neuer Text')
+        self.cfg['feld_max_zeichen'] = 3
+        with self.assertRaises(ValueError):
+            self.index.material_datei_lesen({'pfad': str(datei)})
+
+    def test_antwortmaterial_kuerzung_ist_gekennzeichnet(self):
+        datei = prompts.beleg_anlegen(str(self.pfad.parent / 'tests'), {'fassung': 'Fassung 1', 'auswerter': 'Test'}, 'Text', {'felder': {}})
+        prompts.antwort_schreiben(datei, 'a'*30001)
+        m = self.index.material_pruefen({'materialien': [{'art': 'antwort', 'eintrag': self.d['id'], 'beleg': Path(datei).name}]})['materialien'][0]
+        self.assertEqual(len(m['wert']), 30000)
+        self.assertTrue(m['gekuerzt'])
+
+    def test_kontext_anlegen_lesen_bearbeiten_standkonflikt(self):
+        k = self.index.kontext_neu({'titel': 'Sachkontext', 'wert': 'Kontext\n~~~\nmit Kasten'})
+        self.assertTrue((Path(self.cfg['ordner']) / '_Kontext' / (k['id'] + '.md')).exists())
+        liste = self.index.kontexte()['kontexte']
+        self.assertEqual(len(liste), 1)
+        self.assertNotIn('wert', liste[0])
+        neu = self.index.kontext_speichern(dict(k, titel='Neuer Titel', wert='Neuer Text'))
+        self.assertEqual(neu['id'], k['id'])
+        self.assertNotEqual(neu['stand'], k['stand'])
+        with self.assertRaises(prompts.Konflikt):
+            self.index.kontext_speichern(dict(k, titel='Veraltet', wert='Änderung'))
+        self.assertEqual(self.index.kontext_lesen(k)['wert'], 'Neuer Text')
+
+    def test_kontext_grenzen_format_kennungen_und_auswahl(self):
+        a = self.index.kontext_neu({'titel': 'A', 'wert': 'Ausgewählt'})
+        b = self.index.kontext_neu({'titel': 'B', 'wert': 'Nicht ausgewählt'})
+        auswahl = self.index.kontexte_aufloesen([{'id': a['id'], 'stand': a['stand']}])
+        self.assertEqual([k['wert'] for k in auswahl], ['Ausgewählt'])
+        for kid in ('../A', 'CON', '', 'A:B', '_Kontext'):
+            with self.assertRaises(ValueError):
+                self.index.kontext_lesen({'id': kid})
+        for wert in ('', 'x'*20001):
+            with self.assertRaises(ValueError):
+                self.index.kontext_neu({'titel': 'Ungültig', 'wert': wert})
+        with self.assertRaises(prompts.Konflikt):
+            self.index.kontexte_aufloesen([{'id': a['id'], 'stand': 'veraltet'}])
+        pfad = self.index._kontext_pfad(b['id'])
+        Path(pfad).write_text('# B\n~~~text\nText\n~~~\nZusatz außerhalb', encoding='utf-8')
+        self.assertTrue(next(k for k in self.index.kontexte()['kontexte'] if k['id'] == b['id'])['fehler'])
+
+
 class Ablage(Basis):
     def test_fassung_vorschlag_beispiele(self):
         for namen, erwartet in [(['Fassung 1'], 'Fassung 2'),
@@ -371,6 +553,22 @@ class Sammlung(Basis):
 
 
 class Schaerfen(unittest.TestCase):
+    def test_bauversion_eins_feste_hashes_aus_dem_unveraenderten_auftragsbau(self):
+        e = {'skill': {'wert': 'Skilltext'}, 'aktion': 'Schärfen', 'hinweise': 'Hinweis',
+             'material': {'wert': 'Antwort\n~~~\nEnde', 'erstellt': '2026-11-08'},
+             'zielmodell': {'name': 'Ziel', 'anbieter': 'lokal', 'verarbeitung': 'lokal', 'kontext': 131072}}
+        # Gegen HEAD vor diesem Bau ermittelt, nicht aus dem geänderten Builder abgeleitet.
+        for anbieter, erwartet in [('lokal', '0d24e7000d49246b7bd22f599f7e4975984c173bfa2c260ddcba97b608dde042'),
+                ('claude', '27b12174375672942f759c88b30c216be4d880bca5f8db952c5f2c7a3aa63063'),
+                ('codex', 'e9dd42c8d23b51bf3a1854b4fe5c2e188635e2d2e2782aae35470ef96bab772f')]:
+            e['zielmodell']['anbieter'] = anbieter
+            text, gs = prompts.schaerfen_bauen({'name': 'Eins', 'text': 'Original [A]'}, e)
+            self.assertEqual(gs, erwartet)
+            self.assertEqual(prompts.sha(text), erwartet)
+        e['aktion'] = 'Erst klären'
+        self.assertEqual(prompts.schaerfen_bauen({'name': 'Eins', 'text': 'Original [A]'}, e)[1],
+                         'a32c0c9f3f8830fb26ec63eda7f3f0cd10413805357fcaccfbe794a33af480cd')
+
     def test_skill_mit_ohne_frontmatter_und_fehlend_leer(self):
         with tempfile.TemporaryDirectory() as tmp:
             datei = Path(tmp) / 'SKILL.md'
@@ -490,6 +688,42 @@ keinFremdText(box);
             self.skipTest('Node für den JavaScript-Bedientest nicht vorhanden.')
         lauf = subprocess.run([node, 'werkstatt/tests/prompts_schaerfen_bedienung.js'], text=True,
                               encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+    def test_profilverwaltung_ohne_zusammenfassungsstand(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/profilverwaltung_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+    def test_composer_katalog_tastatur_und_entwurfsschutz(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_composer_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+    def test_fixrunde_eins_bedienung(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_fixrunde1_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+    def test_fuenf_frischstarts_wiederkehr_und_langsamer_index(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_regression_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
 
     def test_testdialog_nochmal_vorschau_start_ablegen_und_markdown(self):
@@ -782,6 +1016,17 @@ function elemente(e, tag) { return [e, ...(e.children || []).flatMap((k) => elem
         lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8',
                               capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+
+class EchteRegeldatei(unittest.TestCase):
+    """Die in config.json eingetragene Regeldatei (Skill prompt-schaerfen) ist gültig, sofern sie hier liegt."""
+
+    def test_konfigurierte_regeldatei_ist_gueltig(self):
+        cfg = json.loads((Path(__file__).parents[1] / 'config.json').read_text(encoding='utf-8'))['prompts']
+        if not Path(cfg['profile']).is_file():
+            self.skipTest('Regeldatei des Skills liegt auf diesem Rechner nicht vor.')
+        d = prompts.profile_lesen(cfg)
+        self.assertEqual(len(d['typen']), len(prompts.TYPEN))
 
 
 if __name__ == '__main__':

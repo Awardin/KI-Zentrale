@@ -371,15 +371,20 @@ function anweisungDialog(a, rahmen = false) {
 
 // ------------------------------------------------------------------ Dialog: Auswerter
 
-async function auswerterDialog() {
+async function auswerterDialog(stand = ZF.stand, geaendert = async () => { await zfAktualisieren(); return ZF.stand; }) {
+  let aktuell = stand || await api('/api/zusammenfassung');
+  const aktualisieren = async () => {
+    const neu = await geaendert();
+    aktuell = neu || await api('/api/zusammenfassung');
+  };
   if (!ZF.katalog) ZF.katalog = await api('/api/katalog');
   const kat = ZF.katalog;
   const liste = h('ul', { class: 'profil-liste' });
-  const zeichneListe = () => liste.replaceChildren(...ZF.stand.auswerter.map((p) => h('li', {},
+  const zeichneListe = () => liste.replaceChildren(...aktuell.auswerter.map((p) => h('li', {},
     h('span', { text: p.name }),
     h('button', {
       class: 'knopf knopf-klein', type: 'button',
-      onclick: async () => { await api('/api/auswerter', { aktion: 'loeschen', id: p.id }); ZF.auswerterWahl.delete(p.id); await zfAktualisieren(); zeichneListe(); },
+      onclick: async () => { await api('/api/auswerter', { aktion: 'loeschen', id: p.id }); ZF.auswerterWahl.delete(p.id); await aktualisieren(); zeichneListe(); },
     }, 'Entfernen'))));
   zeichneListe();
   const anbieter = h('select', {}, ...kat.anbieter.map((a) => h('option', { value: a.anbieter, text: a.cloud ? `${a.name} (Cloud)` : `${a.name} (auf diesem Rechner)` })));
@@ -416,7 +421,7 @@ async function auswerterDialog() {
           try {
             fehler.textContent = '';
             await api('/api/auswerter', { aktion: 'neu', anbieter: anbieter.value, modell: modell.value, stufe: stufe.value || null });
-            await zfAktualisieren(); zeichneListe();
+            await aktualisieren(); zeichneListe();
           } catch (err) { fehler.textContent = err.message; }
         },
       }, 'Hinzufügen')),

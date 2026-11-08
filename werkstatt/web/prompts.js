@@ -7,7 +7,7 @@ function pFehler(err) { $('#p-rueck').textContent = err.message; }
 
 function pGeschuetzt() {
   return !!document.querySelector('dialog[open]')
-    || !!document.activeElement?.matches('#p-inhalt textarea, #p-inhalt input');
+    || !!document.activeElement?.matches('#p-inhalt textarea, #p-inhalt input, #p-composer textarea, #p-composer input, #p-composer select, #p-kontexte textarea, #p-kontexte input');
 }
 
 function pLaeuft() {
@@ -38,12 +38,14 @@ async function pLaden() {
     P.letztesLaden = Date.now();
     pListe();
     P.ladenNoetig = false;
-    if (P.gewaehlt) await pWaehlen(P.gewaehlt);
+    if (P.ui) { pEntdeckenZeichnen(); pZuletztZeichnen(); }
+    if (P.gewaehlt) await pWaehlen(P.gewaehlt, false);
   } catch (err) {
     P.ladenFehler = true;
     P.ladenNoetig = true;
     pFehler(err);
     pListe();
+    if (P.ui) pEntdeckenZeichnen();
   } finally {
     P.ladenLaeuft = false;
     if (P.ladenNachholen) {
@@ -95,6 +97,10 @@ function pKnopf(text, aktion) {
   return b;
 }
 
+function pBeschriftung(...teile) {
+  return [...new Set(teile.filter(Boolean).flatMap((t) => t.split(' · ').map((s) => s.trim())).filter(Boolean))].join(' · ');
+}
+
 async function pAktion(daten) {
   const d = await api('/api/prompt', daten);
   if (d.id) P.gewaehlt = d.id;
@@ -105,13 +111,17 @@ function pOeffnen(e, was, datei = '') {
   return api('/api/prompt', { aktion: 'oeffnen', id: e.id, was, datei });
 }
 
-async function pWaehlen(id) {
+async function pWaehlen(id, bewusst = true) {
   if (pGeschuetzt()) return;
   const anfrage = ++P.anfrage;
   try {
     const e = await api(`/api/prompt?id=${encodeURIComponent(id)}`);
     if (anfrage !== P.anfrage || pGeschuetzt()) return;
     P.gewaehlt = id;
+    if (bewusst && P.ui) {
+      P.zuletzt = [id, ...P.zuletzt.filter((x) => x !== id)].slice(0, 6);
+      pAuswahlMerken(); pZuletztZeichnen(); pAnsichtZeigen('bibliothek');
+    }
     pListe();
     const { warteschlange, ...eintrag } = e;
     const stand = JSON.stringify({ eintrag, warteschlange: (warteschlange || [])
@@ -122,14 +132,19 @@ async function pWaehlen(id) {
     const box = $('#p-inhalt');
     const gleicherEintrag = P.inhaltId === id;
     const offen = new Map(gleicherEintrag ? [...box.querySelectorAll('details[data-p-ansicht]')]
-      .filter((d) => d.open).map((d) => [d.getAttribute('data-p-ansicht'), d.querySelector('.f-text')?.innerHTML || '']) : []);
+      .filter((d) => d.open).map((d) => [d.getAttribute('data-p-ansicht'), d.querySelector('.f-text')]) : []);
     const position = { oben: box.scrollTop, links: box.scrollLeft, x: window.scrollX, y: window.scrollY };
     const knoepfe = [pKnopf(e.herkunft === 'ordner' || id.startsWith('schatten:')
       ? 'Im Ordner öffnen' : 'In der Sammlung öffnen', () => pOeffnen(e,
       e.herkunft === 'ordner' || id.startsWith('schatten:') ? 'ordner' : 'sammlung'))];
     if (e.bearbeitbar) knoepfe.push(pKnopf('Kopfzeilen bearbeiten …', () => pDialog(e, 'kopf')),
       pKnopf('Neue Fassung …', () => pDialog(e, 'fassung_neu')));
-    if (!e.fehler && e.fassungen.length) knoepfe.push(pKnopf('Testen …', () => pTestdialog(e)), pSchaerfenMenue(e));
+    const generator = ['bild', 'video'].includes(e.prompt_typ);
+    if (!e.fehler && e.fassungen.length) {
+      if (!generator) knoepfe.push(pKnopf('Testen …', () => pTestdialog(e)));
+      knoepfe.push(pSchaerfenMenue(e), pKnopf('Im Composer schärfen', () => pComposerBasis(e)));
+      if (generator) knoepfe.push(h('span', { class: 'leise', text: 'Im Reiter Bild & Video verwenden.' }));
+    }
     const quelle = /^https?:\/\//i.test(e.quelle || '')
       ? h('a', { href: e.quelle, target: '_blank', rel: 'noopener', text: e.quelle })
       : h('span', { text: e.quelle || '' });
@@ -141,6 +156,10 @@ async function pWaehlen(id) {
       inhalt.push(pKnopf(`Diesem Kasten zuordnen: ${P.eintraege.find((s) => s.id === ziel)?.titel || ziel}`,
         () => pAktion({ aktion: 'zuordnen', id, ziel })));
     }
+    const gruppe = (e.auftragsgruppen || []).find((g) => g.id === P.letzteGruppe) || (e.auftragsgruppen || []).at(-1);
+    const gruppenBox = h('section', { class: 'p-ergebnisgruppe' });
+    if (gruppe) inhalt.push(gruppenBox);
+    inhalt.push(h('h3', { class: 'abschnitt', text: 'Fassungen' }));
     for (const f of e.fassungen) {
       const pre = h('pre', { class: 'p-text', text: f.text });
       const karte = h('article', { class: 'p-fassung' }, h('h3', { text: f.name }),
@@ -152,7 +171,10 @@ async function pWaehlen(id) {
       if (e.bearbeitbar) karte.append(h('div', { class: 'p-knoepfe' },
         pKnopf('Bearbeiten …', () => pDialog(e, 'fassung_speichern', f)),
         pKnopf('Als bevorzugt', () => pAktion({ aktion: 'bevorzugt', id, name: f.name, kopf_stand: e.kopf_stand }))));
-      if (!e.fehler) karte.append(pKnopf('Testen …', () => pTestdialog(e, f.name)), pSchaerfenMenue(e, f.name));
+      if (!e.fehler) {
+        if (!generator) karte.append(pKnopf('Testen …', () => pTestdialog(e, f.name)));
+        karte.append(pSchaerfenMenue(e, f.name));
+      }
       inhalt.push(karte);
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Tests' }));
@@ -181,13 +203,12 @@ async function pWaehlen(id) {
       karte.append(h('div', { class: 'p-knoepfe' }, ...['offen', 'gut', 'schwach'].map((u) =>
         pKnopf(u, () => speichern(u)))), notiz);
       notiz.addEventListener('blur', () => speichern(t.urteil || 'offen').catch(pFehler));
-      const antwort = h('div', { class: 'f-text' });
+      const antwort = offen.get(JSON.stringify([t.datei, 'antwort'])) || h('div', { class: 'f-text' });
       const ansicht = JSON.stringify([t.datei, 'antwort']);
-      if (offen.has(ansicht)) antwort.innerHTML = offen.get(ansicht);
       const details = h('details', { 'data-p-ansicht': ansicht }, h('summary', { text: 'Antwort anzeigen' }), antwort);
       details.addEventListener('toggle', async () => {
         if (details.open) {
-          try { antwort.innerHTML = markdown((await pBeleg(e, t)).antwort || 'Noch keine Antwort.'); }
+          try { pTextDarstellen(antwort, (await pBeleg(e, t)).antwort || 'Noch keine Antwort.'); }
           catch (err) { antwort.textContent = err.message; }
         }
       });
@@ -198,13 +219,12 @@ async function pWaehlen(id) {
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Schärfen' }));
     for (const t of e.schaerfen || []) {
-      const antwort = h('div', { class: 'f-text' });
+      const antwort = offen.get(JSON.stringify([t.datei, 'schaerfen'])) || h('div', { class: 'f-text' });
       const ansicht = JSON.stringify([t.datei, 'schaerfen']);
-      if (offen.has(ansicht)) antwort.innerHTML = offen.get(ansicht);
       const details = h('details', { 'data-p-ansicht': ansicht }, h('summary', { text: 'Ergebnis anzeigen' }), antwort);
       details.addEventListener('toggle', async () => {
         if (details.open) {
-          try { pSchaerfenErgebnis(antwort, await pBeleg(e, t, 'schaerfen')); }
+          try { pSchaerfenErgebnis(antwort, await pBeleg(e, t, 'schaerfen'), e, t); }
           catch (err) { antwort.textContent = err.message; }
         }
       });
@@ -214,6 +234,7 @@ async function pWaehlen(id) {
       !t.fehler && t.verwaist && ['abgebrochen', 'fehler'].includes(t.zustand) ? pKnopf('Wiederholen', () =>
         pAktion({ aktion: 'wiederholen_beleg', id: e.id, datei: t.datei, art_ordner: 'schaerfen' })) : null));
     }
+    inhalt.push(h('h3', { class: 'abschnitt', text: 'Warteschlange' }));
     for (const a of (e.warteschlange || []).filter((a) => a.prompt?.eintrag === e.id
       && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))) {
       const aktion = (was) => async () => { await api('/api/fassung', { id: a.id, aktion: was }); await pLaden(); };
@@ -236,6 +257,7 @@ async function pWaehlen(id) {
     }
     P.inhaltStand = stand;
     P.inhaltId = id;
+    if (gruppe) await pGruppeZeichnen(gruppenBox, e, gruppe);
   } catch (err) { if (anfrage === P.anfrage) pFehler(err); }
 }
 
@@ -294,17 +316,39 @@ function pSchaerfenMenue(e, name) {
   return h('span', {}, b, menue);
 }
 
-function pSchaerfenErgebnis(box, b) {
+function pTextDarstellen(box, text) {
+  box.replaceChildren(h('div', { class: 'p-text', text }));
+}
+
+function pSchaerfenErgebnis(box, b, e = null, beleg = null) {
   if (b.aktion === 'Erst klären') {
-    const fragen = h('div'); fragen.innerHTML = markdown(b.fragen || 'Noch keine Antwort.');
-    box.replaceChildren(fragen); return;
+    pTextDarstellen(box, b.fragen || 'Noch keine Antwort.');
+    if (e && beleg && !['wartet', 'laeuft'].includes(beleg.zustand)) box.append(pKnopf('Nochmal …', () => pComposerNochmal(e, b)));
+    return;
   }
-  const stichpunkte = h('div'); stichpunkte.innerHTML = markdown(b.stichpunkte || 'Noch keine Antwort.');
+  const stichpunkte = h('div', { class: 'p-text', text: b.stichpunkte || 'Noch keine Antwort.' });
   box.replaceChildren(h('div', { class: 'p-vergleich' },
     h('section', {}, h('h4', { text: 'Original' }), h('pre', { class: 'p-text', text: b.original })),
     h('section', {}, h('h4', { text: 'Neue Fassung' }), h('pre', { class: 'p-text', text: b.neue_fassung || 'Keine gültige neue Fassung.' }))),
   // replaceChildren würde ein null als Text „null“ anhängen, darum vorher herausfiltern.
   ...[stichpunkte, b.neue_platzhalter?.length ? h('p', { text: `Neue Platzhalter: ${b.neue_platzhalter.map((n) => `[${n}]`).join(', ')}` }) : null].filter(Boolean));
+  if (b.grund) box.append(h('p', { class: 'warnung', text: b.grund }), h('pre', { class: 'p-text', text: b.antwort }));
+  if (b.eingaben?.typ?.id === 'auto') box.append(h('p', { class: 'leise', text: 'Prompt-Typ: ' + b.typ_anzeige }));
+  const aktionen = h('div', { class: 'p-knoepfe' }, pKnopf('Original kopieren', () => navigator.clipboard.writeText(b.original)));
+  if (b.neue_fassung && !b.grund) aktionen.append(pKnopf('Neue Fassung kopieren', () => navigator.clipboard.writeText(b.neue_fassung)));
+  if (e && beleg) {
+    const generator = ['bild', 'video'].includes(b.zielprofil_id);
+    if (generator) box.append(h('p', { class: 'leise', text: 'Im Reiter Bild & Video verwenden.' }));
+    else if (b.neue_fassung && !b.grund) aktionen.append(pKnopf('Testen …', async () => {
+      if (e.herkunft === 'sammlung') await pTestdialog(e, null, null,
+        { schaerfen_beleg: beleg.datei, text: b.neue_fassung, testprofil: b.testprofil_id });
+      else await pTestdialog(await api(`/api/prompt?id=${encodeURIComponent(e.id)}`),
+        b.ergebnis_fassung || /^übernommen \((.*)\)$/.exec(b.ergebnis || '')?.[1], null,
+        { testprofil: b.testprofil_id });
+    }));
+    if (!['wartet', 'laeuft'].includes(beleg.zustand)) aktionen.append(pKnopf('Nochmal …', () => pComposerNochmal(e, b)));
+  }
+  box.append(aktionen);
 }
 
 async function pSchaerfendialog(e, name, aktion = 'Schärfen') {
@@ -317,18 +361,20 @@ async function pSchaerfendialog(e, name, aktion = 'Schärfen') {
   fassung.value = name || e.bevorzugt || e.fassungen[0].name;
   const art = auswahl('Aktion', ['Schärfen', 'Erst klären', 'Kürzen'].map((a) => h('option', { value: a, text: a })));
   art.value = aktion;
-  const profile = () => stand.auswerter.map((p) => h('option', { value: p.id,
-    text: `${p.name} · ${p.cloud ? `Cloud (${p.cloud})` : 'lokal'}${p.verfuegbar ? '' : ` · ${p.grund}`}` }));
-  const schreibmodell = auswahl('Schreibmodell', profile());
+  const erlaubt = (p) => p.prompts_verfuegbar ?? p.verfuegbar;
+  const profile = (schreiben = false) => stand.auswerter.map((p) => h('option', { value: p.id,
+    disabled: schreiben && !erlaubt(p),
+    text: pBeschriftung(p.name, p.zugang_text || (p.cloud ? `Cloud (${p.cloud})` : 'lokal'), erlaubt(p) ? '' : p.prompts_grund || p.grund) }));
+  const schreibmodell = auswahl('Schreibmodell', profile(true));
   const zielmodell = auswahl('Zielmodell', profile());
   let zuletzt = '', tests = [];
   try {
     zuletzt = localStorage.getItem('werkstatt.prompt-schreibmodell') || '';
     tests = JSON.parse(localStorage.getItem('werkstatt.prompt-auswerter') || '[]');
   } catch { /* Ohne Speicher die Vorgaben verwenden. */ }
-  schreibmodell.value = (stand.auswerter.find((p) => p.id === zuletzt && p.verfuegbar)
-    || stand.auswerter.find((p) => p.verfuegbar && ['claude', 'codex'].includes(p.anbieter))
-    || stand.auswerter.find((p) => p.verfuegbar) || stand.auswerter[0])?.id || '';
+  schreibmodell.value = (stand.auswerter.find((p) => p.id === zuletzt && erlaubt(p))
+    || stand.auswerter.find((p) => erlaubt(p) && ['claude', 'codex'].includes(p.anbieter))
+    || stand.auswerter.find(erlaubt))?.id || '';
   zielmodell.value = stand.auswerter.find((p) => tests.includes(p.id))?.id || stand.auswerter[0]?.id || '';
   const hinweise = h('textarea', { rows: '4', maxlength: '2000', 'aria-label': 'Hinweise' });
   const material = auswahl('Letzte Antwort als Material', [h('option', { value: '', text: 'Kein Material' }),
@@ -343,7 +389,8 @@ async function pSchaerfendialog(e, name, aktion = 'Schärfen') {
   const feld = (text, input) => h('label', { class: 'dialog-feld' }, text, input);
   const d = dialogOeffnen(`Schärfen: ${e.titel}`, [feld('Fassung', fassung), feld('Aktion', art),
     feld('Schreibmodell', schreibmodell), feld('Zielmodell', zielmodell), feld('Hinweise', hinweise),
-    feld('Letzte Antwort als Material', material), vorschau, rueck], [
+    feld('Letzte Antwort als Material', material),
+    pKnopf('Modelle verwalten …', () => pModelleVerwalten(stand)), vorschau, rueck], [
     pKnopf('Abbrechen', () => d.close()), pKnopf('Vorschau berechnen', async () => {
       try {
         const daten = eingabe();
@@ -367,11 +414,21 @@ async function pSchaerfendialog(e, name, aktion = 'Schärfen') {
   ], true);
 }
 
-async function pTestdialog(e, name, beleg = null) {
+async function pModelleVerwalten(stand = null) {
+  await auswerterDialog(stand || await api('/api/zusammenfassung'), async () => {
+    const neu = await api('/api/zusammenfassung');
+    if (P.ui) await pOptionenLaden(true);
+    await pLaden();
+    return neu;
+  });
+}
+
+async function pTestdialog(e, name, beleg = null, quelle = null) {
   const stand = await api('/api/zusammenfassung');
   const gewaehlt = new Set();
   try { JSON.parse(localStorage.getItem('werkstatt.prompt-auswerter') || '[]').forEach((id) => gewaehlt.add(id)); }
   catch { /* Ohne Speicher bleibt die Auswahl leer. */ }
+  if (quelle && 'testprofil' in quelle) { gewaehlt.clear(); if (quelle.testprofil) gewaehlt.add(quelle.testprofil); }
   if (beleg) {
     for (const p of stand.auswerter) if (p.name === beleg.auswerter) gewaehlt.add(p.id);
   }
@@ -395,22 +452,25 @@ async function pTestdialog(e, name, beleg = null) {
       d.close(); await pLaden();
     } catch (err) { rueck.textContent = err.message; }
   });
-  const namen = [...new Set(e.fassungen.flatMap((f) => [...f.text.matchAll(/\[([^\[\]\n]{1,60})\](?!\()/g)]
+  const testFassungen = quelle?.schaerfen_beleg ? [{ name: 'Sammlungsvorschlag', text: quelle.text }] : e.fassungen;
+  const namen = [...new Set(testFassungen.flatMap((f) => [...f.text.matchAll(/\[([^\[\]\n]{1,60})\](?!\()/g)]
     .map((m) => m[1]).filter((n) => !n.includes(':') && /\p{L}/u.test(n))).concat(Object.keys(beleg?.eingaben.felder || {})))];
   const feldBox = h('div');
   const auswahlBox = h('div', { class: 'p-test-auswahl' });
-  for (const f of e.fassungen) {
+  for (const f of testFassungen) {
     const cb = h('input', { type: 'checkbox' });
-    cb.checked = f.name === (name || e.bevorzugt || e.fassungen[0].name);
+    cb.checked = !!quelle?.schaerfen_beleg || f.name === (name || e.bevorzugt || e.fassungen[0].name);
+    cb.disabled = !!quelle?.schaerfen_beleg;
     fassungen.set(f.name, cb);
     auswahlBox.append(h('label', { class: 'wahl' }, cb, f.name));
   }
   for (const p of stand.auswerter) {
-    const cb = h('input', { type: 'checkbox', disabled: !p.verfuegbar });
-    cb.checked = p.verfuegbar && gewaehlt.has(p.id);
+    const erlaubt = p.prompts_verfuegbar ?? p.verfuegbar;
+    const cb = h('input', { type: 'checkbox', disabled: !erlaubt });
+    cb.checked = erlaubt && gewaehlt.has(p.id);
     auswerter.set(p.id, cb);
     auswahlBox.append(h('label', { class: 'wahl' }, cb,
-      `${p.name} · ${p.cloud ? `Cloud (${p.cloud})` : 'lokal'}${p.verfuegbar ? '' : ` · ${p.grund}`}`));
+      pBeschriftung(p.name, p.zugang_text || (p.cloud ? `Cloud (${p.cloud})` : 'lokal'), erlaubt ? '' : p.prompts_grund || p.grund)));
   }
   async function transkriptWahl(feld) {
     try {
@@ -455,11 +515,17 @@ async function pTestdialog(e, name, beleg = null) {
   }
   function eingabe() {
     return { id: e.id, fassungen: [...fassungen].filter(([, cb]) => cb.checked).map(([n]) => n),
+      ...(quelle?.schaerfen_beleg ? { schaerfen_beleg: quelle.schaerfen_beleg } : {}),
       auswerter: [...auswerter].filter(([, cb]) => cb.checked).map(([n]) => n), rahmen: rahmen.checked,
       eingaben: { felder: Object.fromEntries([...felder].map(([n, f]) => [n,
         f.woertlich.checked ? { art: 'woertlich' } : f.quelle || { art: 'text', wert: f.text.value }])) } };
   }
   const d = dialogOeffnen(`Testen: ${e.titel}`, [auswahlBox,
+    ...(quelle?.schaerfen_beleg ? [h('p', { class: 'leise', text: 'Sammlungsvorschlag · schreibgeschützte Testfassung' }),
+      h('pre', { class: 'p-text', text: quelle.text })] : []),
+    ...(quelle && !stand.auswerter.some((p) => p.id === quelle.testprofil && (p.prompts_verfuegbar ?? p.verfuegbar))
+      ? [h('p', { class: 'leise', text: 'Für dieses Ziel ist kein verfügbares Testprofil gewählt. Wähle einen Auswerter oder lege ein Testprofil an.' }),
+        pKnopf('Testprofil anlegen …', () => pModelleVerwalten())] : []),
     h('label', { class: 'wahl' }, rahmen, 'Rahmen der Zusammenfassung voranstellen'), feldBox,
     vorschau, rueck], [pKnopf('Abbrechen', () => d.close()), pKnopf('Vorschau berechnen', async () => {
     try {
@@ -490,13 +556,18 @@ $('#p-suche').addEventListener('input', pListe);
 $('#p-herkunft').addEventListener('change', pListe);
 $('#p-status').addEventListener('change', pListe);
 $('#p-neu').addEventListener('click', () => pDialog(null, 'neu'));
-$('#p-laden').addEventListener('click', pLaden);
+$('#p-laden').addEventListener('click', async () => { if (P.ui) await pOptionenLaden(true); await pLaden(); });
 window.promptsAktiv = (aktiv) => {
   P.aktiv = aktiv;
+  if (aktiv && document.getElementById?.('p-composer')) {
+    pComposerZeigen();
+    if (!P.optionen && !P.optionenLaeuft) pOptionenLaden();
+  }
   if (aktiv && pLadenFaellig()) pLaden();
   if (!P.timer && typeof setTimeout === 'function') {
     const weiter = () => {
       P.timer = setTimeout(async () => {
+        if (P.aktiv && P.ui && !P.optionen && !P.optionenLaeuft) await pOptionenLaden();
         if (P.aktiv && !pGeschuetzt() && pLadenFaellig()) await pLaden();
         weiter();
       }, 2500);
@@ -504,3 +575,597 @@ window.promptsAktiv = (aktiv) => {
     weiter();
   }
 };
+
+// Composer und Katalog haben eigene Wurzeln. Bibliotheksabrufe ersetzen diese Elemente nicht.
+function pAuswahlMerken() {
+  try {
+    localStorage.setItem('werkstatt.prompt-zuletzt', JSON.stringify(P.zuletzt));
+    localStorage.setItem('werkstatt.prompt-schreibmodell', P.entwurf.schreibmodell);
+    localStorage.setItem('werkstatt.prompt-auswahl', JSON.stringify({ prompt_typ: P.entwurf.prompt_typ,
+      modus: P.entwurf.modus, ziele: P.entwurf.ziele }));
+  } catch { /* Die Seite funktioniert auch ohne Browserablage. */ }
+}
+
+function pEntwurfNeu() {
+  return { text: '', titel: '', hinweise: '', ablage: 'ordner', basis: null,
+    prompt_typ: 'auto', modus: 'prompt', schreibmodell: '',
+    ziele: [{ zielprofil: 'qwen27', eintrag: 'qwen27-unsloth', testprofil: null }], materialien: [], kontexte: [] };
+}
+
+function pAnsichtZeigen(ansicht) {
+  if (!P.ui) return;
+  P.ansicht = ansicht;
+  $('#p-composer').hidden = ansicht !== 'neu';
+  $('#p-entdecken').hidden = !['neu', 'suche'].includes(ansicht);
+  $('#p-inhalt').hidden = ansicht !== 'bibliothek';
+  $('#p-bibliotheksliste').hidden = ansicht !== 'bibliothek';
+  $('#p-zuletzt').hidden = ansicht === 'bibliothek';
+  $('#p-kontexte').hidden = ansicht !== 'kontexte';
+  for (const b of $('#p-navigation').querySelectorAll('button')) b.setAttribute('aria-current', b.ansicht === ansicht ? 'page' : 'false');
+  if (ansicht === 'suche') $('#p-katalog-suche').focus();
+}
+
+function pFeld(name, text, el) {
+  el.id = name;
+  return h('label', { class: 'dialog-feld', for: name }, text, el);
+}
+
+function pPfeil(nachOben = false) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('width', '20'); svg.setAttribute('height', '20');
+  svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.8');
+  const pfad = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  pfad.setAttribute('d', nachOben ? 'M12 20V4m-7 7 7-7 7 7' : 'M4 12h16m-7-7 7 7-7 7');
+  svg.append(pfad); return svg;
+}
+
+function pComposerZeigen() {
+  if (P.ui) return;
+  P.ui = true; P.entwurf = pEntwurfNeu(); P.zuletzt = []; P.zielMerker = new Map();
+  try {
+    const auswahl = JSON.parse(localStorage.getItem('werkstatt.prompt-auswahl') || '{}');
+    if (['prompt', 'vorlage'].includes(auswahl.modus)) P.entwurf.modus = auswahl.modus;
+    if (typeof auswahl.prompt_typ === 'string') P.entwurf.prompt_typ = auswahl.prompt_typ;
+    if (Array.isArray(auswahl.ziele)) {
+      const ziele = auswahl.ziele.filter((z) => z && typeof z === 'object' && typeof z.zielprofil === 'string').map((z) =>
+        Object.fromEntries(['zielprofil', 'eintrag', 'testprofil', 'variante'].filter((k) => typeof z[k] === 'string' || (k === 'testprofil' && z[k] === null)).map((k) => [k, z[k]])));
+      if (ziele.length) P.entwurf.ziele = ziele;
+    }
+    P.entwurf.schreibmodell = localStorage.getItem('werkstatt.prompt-schreibmodell') || '';
+    const zuletzt = JSON.parse(localStorage.getItem('werkstatt.prompt-zuletzt') || '[]');
+    if (Array.isArray(zuletzt)) P.zuletzt = zuletzt.filter((x) => typeof x === 'string').slice(0, 6);
+  } catch { /* Vorgaben verwenden. */ }
+  const roh = h('textarea', { id: 'p-rohprompt', rows: '7', spellcheck: 'true',
+    placeholder: 'Beschreibe die Aufgabe, das gewünschte Ergebnis und wichtige Grenzen …' });
+  const titel = h('input', { id: 'p-composer-titel', type: 'text' });
+  const hinweise = h('textarea', { id: 'p-composer-hinweise', rows: '3', maxlength: '2000' });
+  const ablage = h('select', { id: 'p-ablage' }, h('option', { value: 'ordner', text: 'Eigener Prompt – Coding/Kreativ' }),
+    h('option', { value: 'sammlung', text: 'Vorhandener Wissensprompt aus der Sammlung' }));
+  const basis = h('select', { id: 'p-sammlungsbasis', 'aria-label': 'Sammlungseintrag', hidden: true });
+  const typBox = h('div', { role: 'radiogroup', 'aria-label': 'Prompt-Typ', id: 'p-typen' });
+  const typMenue = h('details', { class: 'p-auswahl', id: 'p-typmenue' }, h('summary', { id: 'p-typname', text: 'Prompt-Typ: Auto' }), typBox);
+  const schreiben = h('select', { id: 'p-schreibmodell', 'aria-label': 'Schreibmodell', disabled: true });
+  const senden = h('button', { type: 'button', class: 'knopf knopf-haupt p-senden', id: 'p-senden',
+    title: 'Prompt schärfen', 'aria-label': 'Prompt schärfen', disabled: true, onclick: pComposerSenden }, pPfeil(true));
+  const vorschau = h('details', { id: 'p-auftragsvorschau' }, h('summary', { text: 'Auftragsvorschau' }),
+    pKnopf('Auftragsvorschau berechnen', pComposerVorschau), h('div', { id: 'p-vorschauinhalt' }));
+  const material = pKnopf('Datei anhängen', () => pMaterialMenue());
+  material.id = 'p-material-knopf'; material.title = 'Datei anhängen';
+  const kontext = pKnopf('Kontext auswählen', () => pKontexteZeigen(true));
+  kontext.id = 'p-kontext-knopf'; kontext.title = 'Kontext auswählen';
+  const modus = h('fieldset', { class: 'p-modus' }, h('legend', { class: 'sr-only', text: 'Prompt oder Vorlage' }),
+    ...['prompt', 'vorlage'].map((id) => {
+      const radio = h('input', { type: 'radio', name: 'p-modus', value: id });
+      radio.checked = P.entwurf.modus === id;
+      radio.addEventListener('change', () => { if (radio.checked) { P.entwurf.modus = id; pAuswahlMerken(); } });
+      return h('label', {}, radio, id === 'prompt' ? 'Prompt' : 'Vorlage');
+    }));
+  $('#p-composer').append(h('header', { class: 'p-einstieg' }, h('h2', { text: 'Prompts gezielt verbessern' }),
+    h('p', { text: 'Schreibe deinen Rohprompt und wähle, für welche Modelle er passen soll.' })),
+    h('section', { class: 'p-composer-karte', 'aria-label': 'Neuen Prompt schärfen' },
+      h('p', { id: 'p-basis-hinweis', class: 'leise', hidden: true }), pFeld('p-rohprompt', 'Rohprompt', roh),
+      h('fieldset', { class: 'p-zielauswahl' }, h('legend', { text: 'Für welches Modell?' }),
+        h('p', { class: 'leise', text: 'Für jedes angekreuzte Modell entsteht eine eigene Fassung. Das Schreibmodell formuliert sie.' }),
+        h('div', { id: 'p-ziele' })),
+      h('div', { class: 'p-composer-fuss' }, typMenue, pFeld('p-schreibmodell', 'Schreibmodell', schreiben), kontext, material, senden),
+      h('p', { class: 'leise', text: 'Dieses Modell überarbeitet deinen Prompt.' }),
+      h('div', { id: 'p-chips', class: 'p-knoepfe' }), h('p', { id: 'p-material-hinweis', class: 'leise' })), modus,
+    h('details', { class: 'p-weitere' }, h('summary', { text: 'Weitere Angaben' }),
+      pFeld('p-composer-titel', 'Titel, optional', titel), pFeld('p-composer-hinweise', 'Hinweise', hinweise),
+      pFeld('p-ablage', 'Ablage', ablage), basis, vorschau),
+    h('p', { id: 'p-composer-status', class: 'leise', 'aria-live': 'polite', text: 'Modelle und Prompt-Typen werden geladen …' }),
+    h('div', { id: 'p-schreibgruende' }), pKnopf('Modelle verwalten …', () => pModelleVerwalten()),
+    h('div', { id: 'p-sendungsaktionen', class: 'p-knoepfe' }));
+  for (const [feld, key] of [[roh, 'text'], [titel, 'titel'], [hinweise, 'hinweise']]) feld.addEventListener('input', () => {
+    P.entwurf[key] = feld.value;
+  });
+  ablage.addEventListener('change', () => {
+    P.entwurf.ablage = ablage.value;
+    basis.hidden = ablage.value !== 'sammlung';
+    if (ablage.value === 'ordner') { P.entwurf.basis = null; roh.readOnly = false; }
+  });
+  basis.addEventListener('change', () => {
+    const e = P.eintraege.find((x) => x.id === basis.value);
+    if (e) pComposerBasis(e);
+  });
+  schreiben.addEventListener('change', () => { P.entwurf.schreibmodell = schreiben.value; pAuswahlMerken(); pComposerZusammenfassung(); });
+  roh.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); return pComposerSenden(); }
+  });
+  for (const [id, name] of [['neu', 'Neuer Prompt'], ['bibliothek', 'Bibliothek'], ['kontexte', 'Kontextbausteine'], ['suche', 'Suche']]) {
+    const b = pKnopf(name, () => id === 'kontexte' ? pKontexteZeigen(false) : pAnsichtZeigen(id));
+    b.ansicht = id; $('#p-navigation').append(b);
+  }
+  const suche = h('input', { id: 'p-katalog-suche', type: 'search', placeholder: 'Prompts suchen …', 'aria-label': 'Entdecken durchsuchen' });
+  suche.addEventListener('input', pEntdeckenZeichnen);
+  $('#p-entdecken').append(h('div', { class: 'p-entdecken-kopf' }, h('div', {}, h('h2', { text: 'Entdecken' }),
+    h('p', { class: 'leise', text: 'Wähle einen Prompt und passe ihn an deine Aufgabe an.' })), suche),
+    h('div', { id: 'p-kategorien', class: 'p-kategorien', 'aria-label': 'Prompt-Kategorien' }), h('div', { id: 'p-karten' }));
+  document.addEventListener?.('keydown', (e) => {
+    if (e.key !== 'Escape' || document.querySelector('dialog[open]')) return;
+    const offen = [...$('#p-composer').querySelectorAll('details.p-auswahl')].filter((d) => d.open).at(-1);
+    if (offen) { offen.open = false; offen.querySelector('summary').focus(); e.preventDefault(); }
+    else {
+      const menue = [...document.querySelectorAll('.p-schaerfen-menue')].filter((m) => !m.hidden).at(-1);
+      if (menue) { menue.hidden = true; const b = menue.parentElement.querySelector('button'); b.setAttribute('aria-expanded', 'false'); b.focus(); e.preventDefault(); }
+    }
+  });
+  window.addEventListener?.('beforeunload', (e) => {
+    if (P.entwurf.text.trim() || P.sendung) { e.preventDefault(); e.returnValue = ''; }
+  });
+  pAnsichtZeigen('neu'); pEntdeckenZeichnen(); pZuletztZeichnen();
+}
+
+async function pOptionenLaden(neu = false) {
+  if (P.optionenLaeuft || (P.optionen && !neu)) return;
+  P.optionenLaeuft = true;
+  try {
+    const d = await api('/api/prompt-optionen');
+    P.optionen = d;
+    const typ = d.typen.find((x) => x.id === P.entwurf.prompt_typ) || d.typen[0];
+    P.entwurf.prompt_typ = typ.id;
+    const ziele = P.entwurf.ziele.filter((z) => d.zielprofile.some((p) => p.id === z.zielprofil) || z.zielprofil in d.generatoren);
+    if (P.entwurf.ziele.length && !ziele.length) P.entwurf.ziele = pEntwurfNeu().ziele;
+    else P.entwurf.ziele = ziele;
+    $('#p-typen').replaceChildren(...d.typen.map((t) => {
+      const radio = h('input', { type: 'radio', name: 'p-prompt-typ', value: t.id });
+      radio.checked = typ.id === t.id;
+      radio.addEventListener('change', () => { if (radio.checked) pTypWaehlen(t.id); });
+      return h('label', { class: 'p-typoption' }, radio, h('span', {}, h('strong', { text: t.name }), h('small', { text: t.untertitel })));
+    }));
+    $('#p-typname').textContent = 'Prompt-Typ: ' + typ.name;
+    const erlaubt = (p) => p.prompts_verfuegbar;
+    const modell = d.schreibmodelle.find((p) => p.id === P.entwurf.schreibmodell && erlaubt(p))
+      || d.schreibmodelle.find((p) => erlaubt(p) && ['claude', 'codex'].includes(p.anbieter)) || d.schreibmodelle.find(erlaubt);
+    P.entwurf.schreibmodell = modell?.id || '';
+    $('#p-schreibmodell').replaceChildren(...d.schreibmodelle.map((p) => h('option', { value: p.id,
+      disabled: !erlaubt(p), text: pBeschriftung(p.name, p.zugang_text, p.prompts_grund) })));
+    $('#p-schreibmodell').value = P.entwurf.schreibmodell; $('#p-schreibmodell').disabled = !modell;
+    pZieleZeichnen(); pComposerZusammenfassung(); pEntdeckenZeichnen();
+  } catch (err) { $('#p-composer-status').textContent = err.message; }
+  finally { P.optionenLaeuft = false; }
+}
+
+function pTypWaehlen(id) {
+  const generatorAlt = ['bild', 'video'].includes(P.entwurf.prompt_typ);
+  const generatorNeu = ['bild', 'video'].includes(id);
+  if (!generatorAlt && generatorNeu) P.textziele = P.entwurf.ziele;
+  P.entwurf.prompt_typ = id;
+  if (generatorNeu) P.entwurf.ziele = [{ zielprofil: id }];
+  else if (generatorAlt) P.entwurf.ziele = P.textziele || pEntwurfNeu().ziele;
+  P.entwurf.realismus = false;
+  $('#p-typname').textContent = 'Prompt-Typ: ' + P.optionen.typen.find((t) => t.id === id).name;
+  $('#p-typmenue').open = false; $('#p-typmenue').querySelector('summary').focus();
+  pZieleZeichnen(); pAuswahlMerken(); pComposerZusammenfassung();
+}
+
+function pZieleZeichnen() {
+  const d = P.entwurf;
+  if (['bild', 'video'].includes(d.prompt_typ)) {
+    d.ziele = [{ zielprofil: d.prompt_typ }];
+    const real = h('input', { type: 'checkbox', id: 'p-realismus' }); real.checked = !!d.realismus;
+    real.addEventListener('change', () => { d.realismus = real.checked; });
+    $('#p-ziele').replaceChildren(h('p', { text: P.optionen.generatoren[d.prompt_typ].name }),
+      h('label', { class: 'wahl' }, real, 'Fotorealistische Menschen'));
+    return;
+  }
+  $('#p-ziele').replaceChildren(...P.optionen.zielprofile.map((p) => {
+    let wahl = d.ziele.find((z) => z.zielprofil === p.id) || P.zielMerker.get(p.id);
+    const varianten = p.varianten || [];
+    const lokal = p.anbieter === 'lokal';
+    if (!wahl) wahl = lokal ? { zielprofil: p.id, eintrag: varianten[0]?.eintrag || '', testprofil: null }
+      : { zielprofil: p.id, testprofil: varianten[0]?.testprofil || null };
+    if (lokal && !varianten.some((v) => v.eintrag === wahl.eintrag)) wahl = { zielprofil: p.id, eintrag: varianten[0]?.eintrag || '', testprofil: null };
+    if (!lokal && !varianten.some((v) => v.testprofil === wahl.testprofil)) wahl.testprofil = varianten[0]?.testprofil || null;
+    P.zielMerker.set(p.id, wahl);
+    const cb = h('input', { type: 'checkbox', 'aria-label': p.name });
+    cb.checked = d.ziele.some((z) => z.zielprofil === p.id);
+    cb.disabled = !varianten.length;
+    if (cb.checked) d.ziele = d.ziele.map((z) => z.zielprofil === p.id ? wahl : z);
+    const details = h('div', { class: 'p-ziel-details', hidden: !cb.checked });
+    cb.addEventListener('change', () => {
+      d.ziele = d.ziele.filter((z) => z.zielprofil !== p.id);
+      if (cb.checked) d.ziele.push(wahl);
+      details.hidden = !cb.checked; pAuswahlMerken(); pComposerZusammenfassung();
+    });
+    const select = h('select', { 'aria-label': 'Variante für ' + p.name }, ...varianten.map((v) => h('option', {
+      value: lokal ? v.eintrag : v.testprofil, text: v.name })));
+    select.value = lokal ? wahl.eintrag : wahl.testprofil || '';
+    const lokalDetails = h('div');
+    const ergaenzen = () => {
+      if (!lokal) return;
+      const v = varianten.find((x) => x.eintrag === wahl.eintrag);
+      if (!v) return;
+      const test = h('select', { 'aria-label': 'Testprofil für ' + p.name }, h('option', { value: '', text: 'Testprofil fehlt / später wählen' }),
+        ...(v.testprofile || []).map((x) => h('option', { value: x.id, text: x.name })));
+      if (!v.testprofile?.some((x) => x.id === wahl.testprofil)) wahl.testprofil = v.testprofile?.[0]?.id || null;
+      test.value = wahl.testprofil || '';
+      test.addEventListener('change', () => { wahl.testprofil = test.value || null; pAuswahlMerken(); pComposerZusammenfassung(); });
+      lokalDetails.replaceChildren(test);
+      if (v.varianten?.length) {
+        if (wahl.variante && !v.varianten.some((x) => x.id === wahl.variante)) delete wahl.variante;
+        const variante = h('select', { 'aria-label': 'Zentrale-Variante für ' + p.name },
+          h('option', { value: '', text: 'In der Zentrale gewählte Variante' }),
+          ...v.varianten.map((x) => h('option', { value: x.id, text: x.name })));
+        variante.value = wahl.variante || '';
+        variante.addEventListener('change', () => { if (variante.value) wahl.variante = variante.value; else delete wahl.variante; pAuswahlMerken(); });
+        lokalDetails.append(variante);
+      }
+      if (v.hinweis) lokalDetails.append(h('p', { class: 'leise', text: v.hinweis }));
+      if (!v.testprofile?.length) lokalDetails.append(pKnopf('Testprofil anlegen …', () => pModelleVerwalten()));
+    };
+    select.addEventListener('change', () => {
+      if (lokal) { wahl.eintrag = select.value; wahl.testprofil = null; delete wahl.variante; ergaenzen(); }
+      else wahl.testprofil = select.value;
+      pAuswahlMerken(); pComposerZusammenfassung();
+    });
+    ergaenzen(); details.append(select, lokalDetails);
+    return h('section', { class: 'p-ziel' }, h('label', { class: 'wahl' }, cb, p.name), details,
+      ...(!varianten.length ? [h('p', { class: 'leise', text: 'Kein passendes Profil vorhanden.' }),
+        pKnopf('Testprofil anlegen …', () => pModelleVerwalten())] : []));
+  }));
+}
+
+function pComposerZusammenfassung(meldung = '') {
+  const p = P.optionen?.schreibmodelle.find((x) => x.id === P.entwurf.schreibmodell);
+  $('#p-senden').disabled = !!P.sendenLaeuft || !!P.sendung || !p?.prompts_verfuegbar;
+  if (!meldung && P.sendung?.unklar) meldung = 'Die Bestätigung fehlt. Prüfe den Auftragsstatus, bevor du erneut sendest.';
+  $('#p-composer-status').textContent = meldung || (!p ? 'Kein Schreibmodell verfügbar.' :
+    `${P.entwurf.ziele.length} ${P.entwurf.ziele.length === 1 ? 'Zielmodell' : 'Zielmodelle'} · ${P.entwurf.ziele.length} ${P.entwurf.ziele.length === 1 ? 'Schärfen-Lauf' : 'Schärfen-Läufe'} · Schreibmodell: ${pBeschriftung(p.name, p.zugang_text)}`);
+  $('#p-material-hinweis').textContent = p?.cloud && (P.entwurf.materialien.length || P.entwurf.kontexte.length)
+    ? `Ausgewähltes Material und Kontext werden an ${p.name} mitgesendet.` : '';
+  pProfilProblemeZeichnen();
+}
+
+function pProfilProblemeZeichnen() {
+  const box = $('#p-schreibgruende');
+  const offen = box.querySelector('details')?.open || false;
+  const fehlt = (P.optionen?.schreibmodelle || []).filter((p) => !(p.prompts_verfuegbar ?? p.verfuegbar));
+  const gewaehlt = new Set([P.entwurf.schreibmodell, ...P.entwurf.ziele.map((z) => z.testprofil)]);
+  const zeile = (p) => h('p', { class: 'leise', text: pBeschriftung(p.name, p.prompts_grund || p.grund) });
+  const details = h('details', {}, h('summary', { text: `Nicht verfügbare Modelle (${fehlt.length})` }), ...fehlt.map(zeile));
+  details.open = offen;
+  box.replaceChildren(...fehlt.filter((p) => gewaehlt.has(p.id)).map(zeile), ...(fehlt.length ? [details] : []));
+}
+
+function pComposerDaten() {
+  return JSON.parse(JSON.stringify(P.entwurf));
+}
+
+async function pComposerVorschau() {
+  try {
+    const v = await api('/api/prompt', { ...pComposerDaten(), aktion: 'composer_vorschau' });
+    $('#p-vorschauinhalt').replaceChildren(...v.ziele.map((z) => h('section', {}, h('h3', { text: z.zielmodell.name }),
+      h('pre', { class: 'p-text', text: z.auftrag }), h('p', { class: 'leise', text: z.gesendet_stand }))));
+    $('#p-auftragsvorschau').open = true;
+  } catch (err) { pComposerZusammenfassung(err.message); }
+}
+
+async function pComposerSenden(fortsetzen = false) {
+  if (P.sendenLaeuft || (P.sendung && fortsetzen !== true)) return;
+  if (!P.optionen?.schreibmodelle.some((p) => p.id === P.entwurf.schreibmodell && p.prompts_verfuegbar)) {
+    pComposerZusammenfassung(P.optionen ? 'Kein Schreibmodell verfügbar.' : 'Modelle und Prompt-Typen werden geladen …');
+    return;
+  }
+  P.sendenLaeuft = true;
+  let gesendet = false;
+  try {
+    if (!P.sendung) {
+      const daten = pComposerDaten();
+      if (!daten.text.trim()) throw Error('Bitte einen Rohprompt eingeben.');
+      if (!daten.ziele.length) throw Error('Bitte mindestens ein Zielmodell wählen.');
+      P.sendung = { daten: { ...daten, anfrage_id: crypto.randomUUID() } };
+    }
+    pComposerZusammenfassung('Auftrag wird geprüft …');
+    if (!P.sendung.daten.gesendet_staende) {
+      const v = await api('/api/prompt', { ...P.sendung.daten, aktion: 'composer_vorschau' });
+      P.sendung.daten.gesendet_staende = v.gesendet_staende;
+    }
+    gesendet = true;
+    const status = await api('/api/prompt', { ...P.sendung.daten, aktion: 'composer_senden' });
+    await pSendungUebernommen(status);
+  } catch (err) {
+    if (gesendet) pSendungUnklar(err.message);
+    else { P.sendung = null; pComposerZusammenfassung(err.message); }
+  } finally {
+    P.sendenLaeuft = false;
+    $('#p-senden').disabled = !!P.sendung || !P.optionen?.schreibmodelle.some((p) => p.id === P.entwurf.schreibmodell && p.prompts_verfuegbar);
+  }
+}
+
+function pSendungUnklar(grund = '') {
+  P.sendung.unklar = true;
+  pComposerZusammenfassung('Die Bestätigung fehlt. Prüfe den Auftragsstatus, bevor du erneut sendest.');
+  $('#p-sendungsaktionen').replaceChildren(h('p', { class: 'leise', text: grund }), pKnopf('Status prüfen', pSendungStatus));
+}
+
+async function pSendungStatus() {
+  if (!P.sendung || P.sendenLaeuft) return;
+  try {
+    const s = await api('/api/prompt', { aktion: 'composer_status', anfrage_id: P.sendung.daten.anfrage_id });
+    if (s.gefunden && s.vollstaendig) await pSendungUebernommen(s);
+    else if (s.gefunden) $('#p-sendungsaktionen').replaceChildren(pKnopf('Einreihung fortsetzen', () => pComposerSenden(true)));
+    else { P.sendung = null; $('#p-sendungsaktionen').replaceChildren(); pComposerZusammenfassung('Die Sendung wurde nicht gefunden. Du kannst erneut senden.'); }
+  } catch (err) { pSendungUnklar(err.message); }
+}
+
+async function pSendungUebernommen(s) {
+  P.letzteGruppe = s.auftragsgruppe;
+  const alt = P.sendung.daten;
+  if (P.entwurf.text === alt.text && P.entwurf.hinweise === alt.hinweise) {
+    P.entwurf.text = ''; P.entwurf.titel = ''; P.entwurf.hinweise = ''; P.entwurf.basis = null;
+    P.entwurf.materialien = []; P.entwurf.kontexte = [];
+    P.entwurf.ablage = 'ordner'; delete P.entwurf.schaerfen_aktion;
+    $('#p-ablage').value = 'ordner'; $('#p-sammlungsbasis').hidden = true;
+    for (const id of ['p-rohprompt', 'p-composer-titel', 'p-composer-hinweise']) $('#' + id).value = '';
+    $('#p-rohprompt').readOnly = false; $('#p-basis-hinweis').hidden = true;
+  }
+  P.sendung = null; $('#p-sendungsaktionen').replaceChildren(); pComposerZusammenfassung('Schärfen wartet.');
+  pChipsZeichnen();
+  P.gewaehlt = s.id; pAnsichtZeigen('bibliothek'); $('#p-inhalt').tabIndex = -1; $('#p-inhalt').focus();
+  await pWaehlen(s.id); P.ladenNoetig = true;
+}
+
+function pComposerBasis(e, name = null) {
+  pComposerZeigen();
+  const f = e.fassungen.find((x) => x.name === (name || e.bevorzugt)) || e.fassungen[0];
+  P.entwurf.text = f.text; P.entwurf.basis = { id: e.id, fassung: f.name, stand: f.stand };
+  P.entwurf.ablage = e.herkunft; P.entwurf.titel = e.titel;
+  delete P.entwurf.schaerfen_aktion;
+  $('#p-rohprompt').value = f.text; $('#p-rohprompt').readOnly = true;
+  $('#p-composer-titel').value = e.titel; $('#p-ablage').value = e.herkunft;
+  $('#p-sammlungsbasis').hidden = e.herkunft !== 'sammlung'; $('#p-sammlungsbasis').value = e.id;
+  $('#p-basis-hinweis').textContent = `${e.titel} · ${f.name}. Änderungen am Auftrag trägst du unter Hinweise ein.`;
+  $('#p-basis-hinweis').hidden = false;
+  pAnsichtZeigen('neu'); $('#p-composer-hinweise').focus();
+}
+
+async function pComposerNochmal(e, b) {
+  if (!b.eingaben?.bau_version) return pSchaerfendialog(e, b.fassung, b.aktion);
+  if (!P.optionen) await pOptionenLaden();
+  pComposerBasis(e, b.fassung);
+  P.entwurf.text = b.original;
+  P.entwurf.basis.stand = b.fassung_stand;
+  $('#p-rohprompt').value = b.original;
+  const eingaben = b.eingaben;
+  P.entwurf.prompt_typ = eingaben.typ.id; P.entwurf.modus = eingaben.modus.id;
+  P.entwurf.hinweise = eingaben.hinweise; P.entwurf.realismus = eingaben.realismus;
+  P.entwurf.schaerfen_aktion = eingaben.aktion;
+  P.entwurf.materialien = JSON.parse(JSON.stringify(eingaben.materialien || []));
+  if (eingaben.material) P.entwurf.materialien.push({ art: 'antwort', eintrag: eingaben.material.eintrag, beleg: eingaben.material.beleg });
+  P.entwurf.kontexte = (eingaben.kontexte || []).map((k) => ({ id: k.id, stand: k.stand }));
+  const [zielprofil, eintrag, variante] = b.zielschluessel.split(':');
+  P.entwurf.ziele = [{ zielprofil, ...(eingaben.zielmodell.anbieter === 'lokal' ? { eintrag } : {}),
+    ...(!['bild', 'video'].includes(zielprofil) ? { testprofil: b.testprofil_id || null } : {}), ...(variante ? { variante } : {}) }];
+  P.entwurf.schreibmodell = P.optionen.schreibmodelle.find((p) => p.name === b.auswerter)?.id || '';
+  $('#p-composer-hinweise').value = eingaben.hinweise;
+  $('#p-schreibmodell').value = P.entwurf.schreibmodell;
+  $('#p-typname').textContent = 'Prompt-Typ: ' + eingaben.typ.name;
+  for (const el of $('#p-composer').querySelectorAll('input[name="p-modus"]')) el.checked = el.value === eingaben.modus.id;
+  pZieleZeichnen(); pChipsZeichnen(); pComposerZusammenfassung();
+}
+
+async function pGruppeZeichnen(box, e, gruppe) {
+  box.append(h('h3', { text: 'Zuletzt gestarteter Auftrag' }));
+  for (const b of gruppe.ergebnisse) {
+    const inhalt = h('div');
+    const a = (e.warteschlange || []).find((a) => a.art === 'schaerfen' && a.prompt?.eintrag === e.id
+      && a.prompt.beleg + '.md' === b.datei);
+    const aktionen = h('div', { class: 'p-knoepfe' });
+    if (a && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand)) {
+      const aktiv = ['wartet', 'laeuft'].includes(a.zustand);
+      if (aktiv || !b.fehler) aktionen.append(pKnopf(aktiv ? 'Abbrechen' : 'Wiederholen', async () => {
+        await api('/api/fassung', { id: a.id, aktion: aktiv ? 'abbrechen' : 'wiederholen' });
+        await pLaden();
+      }));
+    } else if (!a && b.verwaist && !b.fehler && ['fehler', 'abgebrochen'].includes(b.zustand)) {
+      aktionen.append(pKnopf('Wiederholen', () => pAktion({ aktion: 'wiederholen_beleg', id: e.id,
+        datei: b.datei, art_ordner: 'schaerfen' })));
+    }
+    box.append(h('article', { class: 'p-fassung' }, h('h4', { text: b.zielmodell }),
+      h('p', { class: 'leise', text: [b.zustand === 'wartet' ? 'Schärfen wartet.' : b.zustand === 'laeuft' ? 'Prompt wird geschärft …' : ZUSTAND[b.zustand] || b.zustand,
+        b.auswerter, b.ergebnis, b.meldung].filter(Boolean).join(' · ') }),
+      pKnopf('Schärfen-Beleg öffnen', () => pOeffnen(e, 'schaerfen', b.datei)), aktionen, inhalt));
+    if (b.antwort_vorhanden) {
+      try { pSchaerfenErgebnis(inhalt, await pBeleg(e, b, 'schaerfen'), e, b); }
+      catch (err) { inhalt.textContent = err.message; }
+    }
+  }
+}
+
+function pZuletztZeichnen() {
+  if (!P.ui) return;
+  $('#p-zuletzt').replaceChildren(h('h3', { class: 'abschnitt', text: 'Zuletzt' }), ...P.zuletzt
+    .map((id) => P.eintraege.find((e) => e.id === id)).filter(Boolean).map((e) => {
+      const b = pKnopf(e.titel, () => pWaehlen(e.id));
+      b.replaceChildren(h('span', { class: 'p-zuletzt-titel', text: e.titel }));
+      b.title = e.titel;
+      return b;
+    }));
+}
+
+function pKatalogTyp(e) {
+  if (e.prompt_typ !== 'auto') return e.prompt_typ;
+  const letzter = [...(e.schaerfen || [])].filter((b) => b.ergebnis_gueltig)
+    .sort((a, b) => (b.erstellt || '').localeCompare(a.erstellt || '') || (b.datei || '').localeCompare(a.datei || '', 'de', { numeric: true }))[0];
+  const typ = letzter?.prompt_typ_erkannt;
+  return typ !== 'auto' && P.optionen?.typen.some((t) => t.id === typ) ? typ : null;
+}
+
+function pEntdeckenZeichnen() {
+  if (!P.ui) return;
+  const lesbar = P.eintraege.filter((e) => !e.fehler && e.fassungen.length);
+  const abschnitte = [...new Map(lesbar.filter((e) => e.abschnitt).sort((a, b) => a.abschnitt_reihenfolge - b.abschnitt_reihenfolge)
+    .map((e) => [e.abschnitt, e.abschnitt])).values()];
+  const kategorien = ['Alle', 'Eigene Prompts', ...abschnitte];
+  if (!kategorien.includes(P.kategorie)) P.kategorie = 'Alle';
+  $('#p-kategorien').replaceChildren(...kategorien.map((name) => {
+    const b = pKnopf(name, () => {
+      P.kategorie = name; pEntdeckenZeichnen();
+      [...$('#p-kategorien').querySelectorAll('button')].find((x) => x.textContent === name)?.focus();
+    });
+    b.setAttribute('aria-pressed', String(P.kategorie === name)); return b;
+  }));
+  if (P.letztesLaden == null && !P.eintraegeGezeigt) {
+    $('#p-karten').replaceChildren(h('p', { class: 'leise', text: P.ladenFehler
+      ? 'Liste nicht geladen – neuer Versuch läuft.' : 'Prompts werden geladen …' }));
+    return;
+  }
+  const suche = $('#p-katalog-suche').value.toLocaleLowerCase('de');
+  const gruppen = new Map();
+  for (const e of lesbar) {
+    if (P.kategorie === 'Eigene Prompts' && e.herkunft !== 'ordner') continue;
+    if (!['Alle', 'Eigene Prompts'].includes(P.kategorie) && e.abschnitt !== P.kategorie) continue;
+    if (![e.titel, e.schlagworte, e.quelle, ...e.fassungen.map((f) => f.text)].join('\n').toLocaleLowerCase('de').includes(suche)) continue;
+    const typId = pKatalogTyp(e);
+    const typ = P.optionen?.typen.find((t) => t.id === typId)?.name;
+    const name = e.herkunft === 'sammlung' ? e.abschnitt || 'Sammlung' :
+      typId && (e.prompt_typ_gespeichert || (e.prompt_typ && e.prompt_typ !== 'standard')) ? typ || typId : 'Weitere Prompts';
+    if (!gruppen.has(name)) gruppen.set(name, []);
+    gruppen.get(name).push(e);
+  }
+  $('#p-karten').replaceChildren(...[...gruppen].map(([name, liste]) => {
+    liste.sort((a, b) => (a.reihenfolge || 0) - (b.reihenfolge || 0));
+    const reihe = h('div', { class: 'p-kartenreihe', tabindex: '0', 'aria-label': name });
+    for (const e of liste) reihe.append(h('button', { type: 'button', class: 'p-katalogkarte', onclick: () => pWaehlen(e.id) },
+      h('strong', { text: e.titel }), h('span', { class: 'p-kurztext', text: e.kurztext || e.fassungen[0].text.split('\n').find((z) => z.trim())?.slice(0, 180) || '' }),
+      h('small', { text: `${e.herkunft === 'sammlung' ? 'Sammlung' : 'Eigener Prompt'} · ${P.optionen?.typen.find((t) => t.id === pKatalogTyp(e))?.name || (e.prompt_typ === 'auto' ? 'Weitere Prompts' : 'Allgemein')}` }),
+      pPfeil()));
+    return h('section', { class: 'p-kataloggruppe' }, h('div', { class: 'p-entdecken-kopf' }, h('h3', { text: name }),
+      h('div', { class: 'p-knoepfe' }, pKnopf('Vorherige Prompts aus ' + name, () => reihe.scrollBy({ left: -reihe.clientWidth, behavior: 'auto' })),
+        pKnopf('Weitere Prompts aus ' + name, () => reihe.scrollBy({ left: reihe.clientWidth, behavior: 'auto' })))), reihe);
+  }));
+  if (!gruppen.size) $('#p-karten').append(h('p', { class: 'leise', text: suche ? 'Keine passenden Prompts.' : 'Noch keine eigenen Prompts. Schreibe deinen ersten Rohprompt.' }));
+  const sammlung = lesbar.filter((e) => e.herkunft === 'sammlung');
+  $('#p-sammlungsbasis').replaceChildren(h('option', { value: '', text: 'Sammlungseintrag wählen …' }),
+    ...sammlung.map((e) => h('option', { value: e.id, text: e.titel })));
+}
+
+function pChipsZeichnen() {
+  if (!P.ui) return;
+  $('#p-chips').replaceChildren(...P.entwurf.materialien.map((m, i) => pKnopf(
+    `${m.name || m.beleg} · ${m.zeichen ?? 0} Zeichen${m.gekuerzt ? ' · auf 30.000 Zeichen gekürzt' : ''} · Entfernen`,
+    () => { P.entwurf.materialien.splice(i, 1); pChipsZeichnen(); })),
+    ...P.entwurf.kontexte.map((k) => pKnopf(`${P.kontextNamen?.get(k.id) || k.id} · Kontext entfernen`, () => {
+      P.entwurf.kontexte = P.entwurf.kontexte.filter((x) => x.id !== k.id); pChipsZeichnen();
+    })));
+  pComposerZusammenfassung();
+}
+
+async function pMaterialHinzufuegen(materialien) {
+  const d = await api('/api/prompt', { aktion: 'material_pruefen', materialien: [...P.entwurf.materialien, ...materialien] });
+  P.entwurf.materialien = d.materialien;
+  pChipsZeichnen();
+}
+
+async function pMaterialBrowserHinzufuegen(dateien) {
+  const grenze = P.optionen?.feld_max_zeichen || 400000;
+  if (dateien.length + P.entwurf.materialien.length > 5) throw Error('Bitte höchstens fünf Materialien auswählen.');
+  const materialien = [];
+  for (const f of dateien) {
+    if (!/\.(txt|md|markdown|json|csv|tsv|yaml|yml|log|html?|css|js|py|xml|rst|toml)$/i.test(f.name))
+      throw Error('Bitte eine Textdatei auswählen. PDF, Office-Dateien, Bilder, Audio und Video sind hier nicht vorgesehen.');
+    if (f.size > grenze * 4) throw Error('Die Textdatei überschreitet die Materialgrenze.');
+    materialien.push({ art: 'text', name: f.name, wert: await f.text() });
+  }
+  await pMaterialHinzufuegen(materialien);
+}
+
+function pMaterialMenue() {
+  const fehler = h('p', { class: 'warnung', 'aria-live': 'polite' });
+  const browser = h('input', { type: 'file', multiple: true, accept: '.txt,.md,.markdown,.json,.csv,.tsv,.yaml,.yml,.log,.html,.css,.js,.py,.xml,.rst,.toml', 'aria-label': 'Textdatei auswählen …' });
+  browser.addEventListener('change', async () => {
+    try { await pMaterialBrowserHinzufuegen([...browser.files]); d.close(); }
+    catch (err) { fehler.textContent = err.message; }
+  });
+  const antworten = P.eintraege.flatMap((e) => (e.tests || []).filter((b) => b.antwort_vorhanden && !b.fehler).map((b) => ({ eintrag: e.id, beleg: b.datei, name: `${e.titel} · ${b.erstellt || ''} · ${b.auswerter}` })));
+  const antwort = h('select', { 'aria-label': 'Vorhandene Antwort auswählen …' }, h('option', { value: '', text: 'Vorhandene Antwort auswählen …' }),
+    ...antworten.map((a, i) => h('option', { value: String(i), text: a.name })));
+  const pfad = h('input', { type: 'text', 'aria-label': 'Material aus Dateipfad', placeholder: 'Dateipfad einer Textdatei' });
+  const ausDatei = async (waehlen) => {
+    try {
+      const m = await api('/api/prompt', { aktion: waehlen ? 'material_datei_waehlen' : 'material_datei_lesen', pfad: pfad.value });
+      if (!m.abgebrochen) { await pMaterialHinzufuegen([m]); d.close(); }
+    } catch (err) { fehler.textContent = err.message; }
+  };
+  const d = dialogOeffnen('Textmaterial anhängen', [h('p', { class: 'leise', text: 'Bis zu fünf Textmaterialien. Neue Anhänge werden vollständig übernommen oder abgelehnt.' }),
+    browser, pKnopf('Textdatei am Rechner wählen …', () => ausDatei(true)), pfad, pKnopf('Pfad lesen', () => ausDatei(false)),
+    antwort, pKnopf('Antwort anhängen', async () => {
+      try {
+        const a = antworten[Number(antwort.value)];
+        if (antwort.value === '' || !a) throw Error('Bitte eine vorhandene Antwort wählen.');
+        await pMaterialHinzufuegen([{ art: 'antwort', eintrag: a.eintrag, beleg: a.beleg }]); d.close();
+      } catch (err) { fehler.textContent = err.message; }
+    }), fehler], [pKnopf('Fertig', () => d.close())], true);
+}
+
+window.promptsMaterialAblegen = async (e) => {
+  try {
+    if ([...(e.dataTransfer.items || [])].some((i) => i.webkitGetAsEntry?.()?.isDirectory)) throw Error('Bitte einzelne Textdateien auswählen.');
+    await pMaterialBrowserHinzufuegen([...e.dataTransfer.files]);
+    pAnsichtZeigen('neu');
+  } catch (err) { pFehler(err); }
+};
+
+async function pKontexteZeigen(auswahl = false) {
+  const d = await api('/api/prompt-kontexte');
+  P.kontextNamen = new Map(d.kontexte.map((k) => [k.id, k.titel]));
+  const liste = h('div', { class: 'p-kontextliste' });
+  for (const k of d.kontexte) {
+    const cb = h('input', { type: 'checkbox', disabled: !!k.fehler });
+    cb.checked = P.entwurf.kontexte.some((x) => x.id === k.id);
+    cb.addEventListener('change', () => {
+      P.entwurf.kontexte = P.entwurf.kontexte.filter((x) => x.id !== k.id);
+      if (cb.checked) P.entwurf.kontexte.push({ id: k.id, stand: k.stand });
+      pChipsZeichnen();
+    });
+    liste.append(h('article', { class: 'p-fassung' }, h('label', { class: 'wahl' }, cb, k.titel),
+      h('p', { class: 'leise', text: k.fehler || `${k.zeichen} Zeichen` }),
+      ...(!k.fehler ? [pKnopf('Bearbeiten …', () => pKontextDialog(k, auswahl))] : [])));
+  }
+  if (!d.kontexte.length) liste.append(h('p', { class: 'leise', text: 'Noch keine Kontextbausteine.' }));
+  const inhalt = [h('p', { class: 'leise', text: 'Wähle Projekt- und Sachkontext bewusst aus. Ausgewählte Bausteine werden mitgesendet.' }),
+    pKnopf('Kontextbaustein anlegen …', () => pKontextDialog(null, auswahl)), liste];
+  if (auswahl) {
+    const dialog = dialogOeffnen('Kontext auswählen', inhalt, [pKnopf('Fertig', () => dialog.close())], true);
+  } else { $('#p-kontexte').replaceChildren(h('h2', { text: 'Kontextbausteine' }), ...inhalt); pAnsichtZeigen('kontexte'); }
+}
+
+async function pKontextDialog(meta, auswahl) {
+  const k = meta ? await api('/api/prompt', { aktion: 'kontext_lesen', id: meta.id }) : { titel: '', wert: '' };
+  const titel = h('input', { type: 'text', 'aria-label': 'Titel des Kontextbausteins' }); titel.value = k.titel;
+  const text = h('textarea', { rows: '12', maxlength: '20000', 'aria-label': 'Kontexttext' }); text.value = k.wert;
+  const fehler = h('p', { class: 'warnung', 'aria-live': 'polite' });
+  const d = dialogOeffnen(meta ? 'Kontextbaustein bearbeiten' : 'Kontextbaustein anlegen', [
+    pFeld('p-kontext-titel', 'Titel', titel), pFeld('p-kontext-text', 'Projekt- und Sachkontext', text), fehler],
+  [pKnopf('Abbrechen', () => d.close()), pKnopf('Speichern', async () => {
+    try {
+      const neu = await api('/api/prompt', { aktion: meta ? 'kontext_speichern' : 'kontext_neu',
+        id: k.id, stand: k.stand, titel: titel.value, wert: text.value });
+      P.entwurf.kontexte = P.entwurf.kontexte.map((x) => x.id === neu.id ? { id: neu.id, stand: neu.stand } : x);
+      d.close(); await pKontexteZeigen(auswahl); pChipsZeichnen();
+    } catch (err) { fehler.textContent = err.message; }
+  })], true);
+  titel.focus();
+}

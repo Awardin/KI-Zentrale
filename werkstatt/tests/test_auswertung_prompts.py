@@ -86,6 +86,74 @@ class ClaudeAblage(unittest.TestCase):
         self.assertIsNone(self.claude.exe())
 
 
+class AboZugang(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.basis = Path(tmp.name)
+        self.enterContext(patch.object(auswertung, 'HOME', str(self.basis)))
+        self.codex = auswertung.Codex({})
+        self.claude = auswertung.Claude({})
+        self.enterContext(patch.object(self.codex, 'exe', return_value='fake-codex.exe'))
+        self.enterContext(patch.object(self.claude, 'exe', return_value='fake-claude.exe'))
+        self.au = auswertung.Auswertungen.__new__(auswertung.Auswertungen)
+        self.au.anbieter = {'codex': self.codex, 'claude': self.claude}
+        self.p = {'id': 'c', 'name': 'Codex', 'anbieter': 'codex', 'modell': 'modell'}
+        self.enterContext(patch.object(self.codex, 'kontext', return_value=131072))
+        self.enterContext(patch.object(self.claude, 'kontext', return_value=131072))
+
+    def auth(self, wert):
+        datei = self.basis / '.codex/auth.json'
+        datei.parent.mkdir(exist_ok=True)
+        datei.write_text(json.dumps(wert), encoding='utf-8')
+
+    def test_codex_abo_api_unbekannt_keiner_ohne_geheimnisse(self):
+        self.assertEqual(self.codex.zugang(), 'keiner')
+        for modus, erwartet in [('chatgpt', 'abo'), ('api', 'api'), ('neu', 'unklar'), ([], 'unklar'), (None, 'unklar')]:
+            self.auth({'auth_mode': modus, 'tokens': {'access_token': 'GEHEIM-TEST'}})
+            info = self.au.profil_info(self.p)
+            self.assertEqual(info['zugang'], erwartet)
+            self.assertEqual(info['prompts_verfuegbar'], erwartet == 'abo')
+            self.assertTrue(info['verfuegbar'])  # Zusammenfassungsweg bleibt erhalten.
+            self.assertNotIn('GEHEIM', json.dumps(info))
+        self.auth({'tokens': {'access_token': 'GEHEIM-TEST'}})
+        self.assertEqual(self.codex.zugang(), 'unklar')
+
+    def test_claude_abo_api_keine_anmeldung(self):
+        p = dict(self.p, anbieter='claude')
+        for art, erwartet in [('claude.ai', 'abo'), ('api_key', 'api'), ('unbekannt', 'unklar'), (None, 'keiner')]:
+            with patch.object(self.claude, 'anmeldung', return_value=art):
+                info = self.au.profil_info(p)
+                self.assertEqual(info['zugang'], erwartet)
+                self.assertEqual(info['prompts_verfuegbar'], erwartet == 'abo')
+                self.assertEqual(info['verfuegbar'], art is not None)
+
+    def test_claude_frische_anmeldung_umgeht_cache(self):
+        self.claude._cache['anmeldung'] = (auswertung.time.time(), 'claude.ai')
+        with patch.object(auswertung, '_ausgabe', return_value='{"loggedIn":true,"authMethod":"api_key"}') as aufruf:
+            self.assertEqual(self.claude.zugang(), 'abo')
+            self.assertEqual(self.claude.zugang(frisch=True), 'api')
+        self.assertEqual(aufruf.call_count, 1)
+
+    def test_codex_kindprozess_ohne_api_overrides(self):
+        from unittest.mock import Mock
+        lauf = Mock(id='test', leer=str(self.basis))
+        def programm(argv, text, env):
+            Path(argv[argv.index('-o') + 1]).write_text('Antwort', encoding='utf-8')
+            self.assertEqual(text, 'Test')
+            self.assertNotIn('OPENAI_API_KEY', env)
+            self.assertNotIn('OPENAI_BASE_URL', env)
+            self.assertNotIn('CODEX_API_KEY', env)
+            self.assertEqual(env['TEST_BEHALTEN'], 'ja')
+            return 0, '', ''
+        lauf.programm.side_effect = programm
+        with patch.dict(os.environ, {'OPENAI_API_KEY': 'fake', 'OPENAI_BASE_URL': 'fake',
+                                     'CODEX_API_KEY': 'fake', 'TEST_BEHALTEN': 'ja'}):
+            self.assertEqual(self.codex.ausfuehren(self.p, 'Test', lauf)['text'], 'Antwort')
+            self.assertEqual(os.environ['OPENAI_API_KEY'], 'fake')
+        self.assertEqual(lauf.programm.call_count, 1)
+
+
 class Fake(auswertung.Anbieter):
     schluessel, name, cloud = 'fake', 'Fake', None
 
@@ -146,6 +214,27 @@ class PromptLaeufe(unittest.TestCase):
         daten['gesendet_stand'] = {f['name']: f['gesendet_stand'] for f in v['fassungen']}
         ids = self.p.testen(daten)['auftraege']
         return [a for a in self.au.liste if a['id'] in ids]
+
+    def test_abo_unmittelbar_vor_aufruf_erneut_pruefen(self):
+        a = self.einreihen()[0]
+        a['auswerter'] = dict(a['auswerter'], anbieter='codex')
+        codex = self.au.anbieter['codex']
+        auth = self.basis / '.codex/auth.json'
+        auth.parent.mkdir()
+        auth.write_text('{"auth_mode":"chatgpt"}', encoding='utf-8')
+        def kontext(p):
+            auth.write_text('{"auth_mode":"api"}', encoding='utf-8')
+            return 131072, 'Fake', 'modell'
+        with patch.object(auswertung, 'HOME', str(self.basis)), \
+                patch.object(codex, 'exe', return_value='fake.exe'), \
+                patch.object(codex, 'kontext_geladen', side_effect=kontext), \
+                patch.object(codex, 'ausfuehren') as senden:
+            self.assertTrue(self.au.prompt_verfuegbar(a['auswerter'])[0])
+            self.arbeiten()
+        senden.assert_not_called()
+        self.assertEqual(a['zustand'], 'fehler')
+        self.assertIn('Abo-Anmeldung nicht bestätigt', a['meldung'])
+        self.assertNotIn('auth_mode', '\n'.join(self.logs))
 
     def arbeiten(self):
         """Echte Schleife in genau einem Faden bis zum Leerlauf; deterministisch beenden."""
@@ -733,6 +822,526 @@ class GeladenerKontext(unittest.TestCase):
                 self.assertEqual((a['zustand'], basis.beleg(a)['kontext_quelle']), ('fertig', '/health'))
         finally:
             basis.doCleanups()
+
+
+class ComposerLaeufe(unittest.TestCase):
+    neu = PromptLaeufe.neu
+    arbeiten = PromptLaeufe.arbeiten
+    beleg = SchaerfenLaeufe.beleg
+
+    def setUp(self):
+        import uuid
+        PromptLaeufe.setUp(self)
+        SchaerfenLaeufe.vorbereiten(self)
+        self.regeln = self.basis / 'profile.json'
+        self.regeln.write_bytes((Path(__file__).parent / 'werkstatt-profile.json').read_bytes())
+        self.cfg['prompts']['profile'] = str(self.regeln)
+        realismus = self.basis / 'Realismus.md'
+        realismus.write_text('Fachregeln für fotorealistische Menschen', encoding='utf-8')
+        self.cfg['prompts']['skill_realismus'] = str(realismus)
+        self.zc = self.basis / 'zentrale.json'
+        self.zc.write_text(json.dumps({'eintraege': [
+            {'id': 'qwen27-unsloth', 'name': 'Qwen', 'art': 'llamacpp', 'modell_id': 'qwen-q4',
+             'port': 8106, 'untertitel': '128K'},
+            {'id': 'qwen27-iq3s', 'name': 'Qwen IQ3', 'art': 'llamacpp', 'modell_id': 'qwen-iq3',
+             'port': 8103, 'untertitel': '128K'},
+            {'id': 'flash-next-strata', 'name': 'Flash', 'art': 'strata', 'port': 8095,
+             'varianten': [{'id': '128k', 'name': '128K', 'kontext': 131072, 'modell': 'flash', 'standard': True},
+                           {'id': '256k', 'name': '256K', 'kontext': 262144, 'modell': 'flash'}]}]}), encoding='utf-8')
+        self.cfg['zentrale_config'] = str(self.zc)
+        self.au.profile.append({'id': 'c', 'anbieter': 'claude', 'modell': 'modell', 'name': 'Claude · Test'})
+        self.au._speichern()
+        self.cloud_fake()
+        self.enterContext(patch.object(self.au.anbieter['lokal'], 'verfuegbar', return_value=(False, 'nicht geladen')))
+        self.enterContext(patch.object(self.au.anbieter['lokal'], '_ollama_kontexte', return_value={}))
+        self.enterContext(patch.object(auswertung._OHNE_PROXY, 'open', side_effect=AssertionError('Kein Modellnetz')))
+        self.enterContext(patch.object(auswertung._NETZ, 'open', side_effect=AssertionError('Keine Cloud')))
+        self.cd = {'anfrage_id': str(uuid.uuid4()), 'text': 'Baue [A].', 'titel': '', 'ablage': 'ordner',
+                   'basis': None, 'prompt_typ': 'code', 'modus': 'prompt', 'schreibmodell': 'p',
+                   'ziele': [{'zielprofil': 'qwen27', 'eintrag': 'qwen27-unsloth', 'testprofil': None},
+                             {'zielprofil': 'flash_next', 'eintrag': 'flash-next-strata', 'testprofil': None},
+                             {'zielprofil': 'claude', 'testprofil': 'c'}],
+                   'hinweise': '', 'materialien': [], 'kontexte': []}
+
+    def cloud_fake(self):
+        class Abo(Fake):
+            schluessel, cloud = 'claude', 'Anthropic'
+            def zugang(self, frisch=False):
+                return 'abo'
+        self.au.anbieter['claude'] = Abo()
+
+    def senden(self):
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        return self.p.composer_senden(self.cd)
+
+    def neustart(self):
+        self.au = self.neu()
+        self.p = self.au.prompts
+        self.fake = self.au.anbieter['fake']
+        self.cloud_fake()
+        self.enterContext(patch.object(self.au.anbieter['lokal'], 'verfuegbar', return_value=(False, 'nicht geladen')))
+        self.enterContext(patch.object(self.au.anbieter['lokal'], '_ollama_kontexte', return_value={}))
+        SchaerfenLaeufe.vorbereiten(self)
+
+    def test_drei_ziele_ein_original_drei_belege_drei_aufrufe(self):
+        vorher = len([e for e in self.p.alle()['eintraege'] if e['herkunft'] == 'ordner'])
+        status = self.senden()
+        self.assertTrue(status['vollstaendig'])
+        self.assertEqual(len(status['auftraege']), 3)
+        d = self.p.lesen(status['id'])
+        self.assertEqual(len([e for e in self.p.alle()['eintraege'] if e['herkunft'] == 'ordner']), vorher + 1)
+        self.assertEqual(d['titel'], 'Baue [A].')
+        self.assertEqual(d['composer_auftrag'], self.cd['anfrage_id'])
+        self.assertEqual(d['prompt_typ'], 'code')
+        self.assertEqual(len(d['schaerfen']), 3)
+        self.assertEqual(len(d['auftragsgruppen']), 1)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+        self.assertEqual([a['zustand'] for a in self.au.liste], ['fertig']*3)
+        d = self.p.lesen(d['id'])
+        self.assertEqual(len(d['fassungen']), 4)
+        self.assertEqual(d['bevorzugt'], 'Fassung 1')
+        self.assertEqual(d['fassungen'][0]['text'], self.cd['text'])
+        for a in self.au.liste:
+            b = self.beleg(a)
+            self.assertEqual(b['eingaben']['bau_version'], 2)
+            self.assertEqual(b['auftragsgruppe'], self.cd['anfrage_id'])
+            self.assertLessEqual(len(b['ergebnis_fassung']), 60)
+            self.assertIn(' · ', b['ergebnis_fassung'])
+            self.assertIn(b['zielmodell'].split(' · ')[0], b['ergebnis_fassung'])
+            self.assertEqual(a['prompt']['zielschluessel'], b['zielschluessel'])
+        verwaltung = self.p._sendung_pfad(self.cd['anfrage_id'])
+        meta = json.loads(Path(verwaltung).read_text(encoding='utf-8'))
+        self.assertEqual(set(meta), {'eingabe_stand', 'eintrag', 'beleg_eintrag', 'vollstaendig', 'ziele'})
+        self.assertTrue(all(set(z) == {'zielschluessel', 'beleg', 'auftrags_id', 'eingereiht'} for z in meta['ziele']))
+        self.assertNotIn('Regeln zum Schärfen', Path(verwaltung).read_text(encoding='utf-8'))
+        self.assertNotIn('Baue [A]', '\n'.join(self.logs))
+
+    def test_auftragskennung_aus_dem_beleg_nur_in_hexform(self):
+        self.senden()
+        a = self.au.liste[0]
+        eid, datei = a['prompt']['eintrag'], a['prompt']['beleg'] + '.md'
+        self.assertEqual(self.p.auftrag_aus_beleg(eid, datei, 'schaerfen')['id'], a['id'])
+        echt = prompts.schaerfen_lesen
+        for boese in ('..\\..\\x', 'ABCDEF12', 'a' * 17, 'abc', 7, None):
+            with self.subTest(boese=boese), patch.object(
+                    prompts, 'schaerfen_lesen', lambda p, b=boese: dict(echt(p), auftrags_id=b)):
+                neu = self.p.auftrag_aus_beleg(eid, datei, 'schaerfen')['id']
+                self.assertRegex(neu, r'^[0-9a-f]{8}$')
+
+    def test_vorschau_legt_nichts_an_und_sendet_nicht(self):
+        vorher = sorted(str(p) for p in Path(self.p.ordner).rglob('*'))
+        v = self.p.composer_vorschau(self.cd)
+        self.assertEqual(v['fassung']['text'], self.cd['text'])
+        self.assertEqual(len(v['ziele']), 3)
+        self.assertEqual(sorted(str(p) for p in Path(self.p.ordner).rglob('*')), vorher)
+        self.assertEqual(self.fake.aufrufe, 0)
+        for z in v['ziele']:
+            self.assertEqual(z['gesendet_stand'], prompts.sha(z['auftrag']))
+
+    def test_doppelpost_vor_und_nach_ausfuehrung(self):
+        status = self.senden()
+        vorher = sorted(str(p) for p in Path(self.p.ordner).rglob('*'))
+        self.assertEqual(self.p.composer_senden(self.cd), status)
+        self.assertEqual(sorted(str(p) for p in Path(self.p.ordner).rglob('*')), vorher)
+        self.arbeiten()
+        self.p.composer_senden(self.cd)
+        self.assertEqual(self.fake.aufrufe, 3)
+        self.assertEqual(len(self.au.liste), 3)
+        self.assertEqual(len(self.p.lesen(status['id'])['fassungen']), 4)
+
+    def test_gleiche_id_andere_eingabe_konflikt(self):
+        self.senden()
+        for aenderung in ({'text': 'Anderer Auftrag'}, {'hinweise': 'Neu'}, {'modus': 'vorlage'},
+                          {'schreibmodell': 'c'}, {'ziele': self.cd['ziele'][:1]}):
+            with self.assertRaisesRegex(prompts.Konflikt, 'anderen Eingabestand'):
+                self.p.composer_senden(dict(self.cd, **aenderung))
+        self.assertEqual(len(self.au.liste), 3)
+
+    def test_hashkonflikt_vor_jeder_anlage(self):
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        self.regeln.write_text(self.regeln.read_text(encoding='utf-8').replace('Eine klare Hauptaufgabe', 'Andere Regel'), encoding='utf-8')
+        with self.assertRaises(prompts.Konflikt):
+            self.p.composer_senden(self.cd)
+        self.assertFalse((Path(self.p.ordner) / '_Auftraege').exists())
+        self.assertEqual(self.au.liste, [])
+
+    def absturz_anlage(self, stelle):
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        objekt, name = {'reservierung': (self.p, '_sendung_schreiben'),
+                        'original': (prompts.Eintrag, 'anlegen'),
+                        'beleg': (prompts, 'schaerfen_anlegen'),
+                        'einreihung': (self.au, 'einreihen')}[stelle]
+        original = getattr(objekt, name)
+        def abbrechen(*args, **kwargs):
+            original(*args, **kwargs)
+            raise Ende()
+        with patch.object(objekt, name, new=abbrechen):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        aid = self.cd['anfrage_id']
+        status = self.p.composer_status({'anfrage_id': aid})
+        self.assertTrue(status['gefunden'])
+        self.assertFalse(status['vollstaendig'])
+        self.neustart()
+        neu = self.p.composer_senden(self.cd)
+        self.assertTrue(neu['vollstaendig'])
+        self.assertEqual(neu['id'], status['id'])
+        self.assertEqual(neu['auftraege'], status['auftraege'])
+        self.assertEqual(len(self.au.liste), 3)
+        self.assertEqual(len(self.p.lesen(neu['id'])['schaerfen']), 3)
+        self.assertEqual(sum(e.get('composer_auftrag') == aid for e in self.p.alle()['eintraege']), 1)
+        for a in self.au.liste:
+            if a['zustand'] == 'abgebrochen':
+                self.au.aktion(a['id'], 'wiederholen')
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+
+    def test_absturz_nach_reservierung(self):
+        self.absturz_anlage('reservierung')
+
+    def test_absturz_nach_original(self):
+        self.absturz_anlage('original')
+
+    def test_absturz_nach_beleg(self):
+        self.absturz_anlage('beleg')
+
+    def test_absturz_nach_einreihung(self):
+        self.absturz_anlage('einreihung')
+
+    def test_absturz_nach_fassungsanhang_antwort_nicht_erneut_abrufen(self):
+        status = self.senden()
+        a = self.au._naechste()
+        original = prompts.Eintrag.fassung_neu
+        def abbrechen(*args, **kwargs):
+            original(*args, **kwargs)
+            raise Ende()
+        with patch.object(prompts.Eintrag, 'fassung_neu', new=abbrechen):
+            with self.assertRaises(Ende):
+                self.au._ausfuehren(a)
+        b = self.beleg(a)
+        self.assertTrue(b['antwort'])
+        self.assertTrue(b['ergebnis_fassung'])
+        self.assertEqual(self.fake.aufrufe, 1)
+        self.au._ausfuehren(a)
+        self.assertEqual(self.fake.aufrufe, 1)
+        self.assertEqual(sum(f['name'] == b['ergebnis_fassung'] for f in self.p.lesen(status['id'])['fassungen']), 1)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+
+    def test_identische_antworten_verschiedener_ziele_bleiben_getrennt(self):
+        self.antwort = '~~~text\nIdentisch [A]\n~~~'
+        status = self.senden()
+        self.arbeiten()
+        d = self.p.lesen(status['id'])
+        self.assertEqual(len(d['fassungen']), 4)
+        self.assertEqual(len({f['name'] for f in d['fassungen']}), 4)
+        self.assertEqual(len({f['stand'] for f in d['fassungen'][1:]}), 1)
+
+    def test_ein_ziel_scheitert_andere_laufen_weiter(self):
+        senden = self.fake.ausfuehren
+        def einmal_fehler(p, text, lauf):
+            if 'Zielregeln (flash_next)' in text:
+                self.fake.aufrufe += 1
+                raise RuntimeError('Gezielter Testfehler')
+            return senden(p, text, lauf)
+        self.fake.ausfuehren = einmal_fehler
+        status = self.senden()
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+        self.assertEqual([a['zustand'] for a in self.au.liste], ['fertig', 'fehler', 'fertig'])
+        self.assertEqual(len(self.p.lesen(status['id'])['fassungen']), 3)
+        self.fake.ausfuehren = senden
+        a = self.au.liste[1]
+        self.au.aktion(a['id'], 'wiederholen')
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 4)
+        self.assertEqual(a['zustand'], 'fertig')
+
+    def test_regeln_skill_und_material_bleiben_eingefroren(self):
+        datei = prompts.beleg_anlegen(str(self.basis / 'Prompts' / self.e['id'] / 'tests'),
+            {'fassung': 'Fassung 1', 'auswerter': 'Fake'}, 'Original', {'felder': {}})
+        prompts.antwort_schreiben(datei, 'Altes Material')
+        f = self.e['fassungen'][0]
+        self.cd.update(basis={'id': self.e['id'], 'fassung': f['name'], 'stand': f['stand']}, material=Path(datei).name)
+        v = self.p.composer_vorschau(self.cd)
+        self.cd['gesendet_staende'] = v['gesendet_staende']
+        self.p.composer_senden(self.cd)
+        self.regeln.write_text('ungültig', encoding='utf-8')
+        Path(self.cfg['prompts']['skill']).write_text('Ganz anderer Skill', encoding='utf-8')
+        prompts.antwort_schreiben(datei, 'Neues Material')
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+        self.assertEqual(self.fake.texte, [z['auftrag'] for z in v['ziele']])
+        self.p.composer_senden(self.cd)
+        self.assertEqual(self.fake.aufrufe, 3)
+
+    def test_sammlung_schaerfen_und_vorschlag_testen_bleibt_bytegleich(self):
+        eid = 'sammlung:Wissen#1'
+        f = self.p.lesen(eid)['fassungen'][0]
+        self.cd.update(text=f['text'], ablage='sammlung', basis={'id': eid, 'fassung': f['name'], 'stand': f['stand']})
+        vorher = self.sammlung.read_bytes()
+        status = self.senden()
+        self.arbeiten()
+        self.assertEqual(self.sammlung.read_bytes(), vorher)
+        self.assertTrue(all(self.beleg(a)['ergebnis'] == 'Vorschlag, nicht übernommen' for a in self.au.liste))
+        daten = {'id': eid, 'schaerfen_beleg': status['ziele'][0]['beleg'], 'auswerter': ['p'],
+                 'eingaben': {'felder': {'A': {'art': 'text', 'wert': 'Testwert'}}}}
+        v = self.p.vorschau(daten)
+        self.assertIn('Besser 1 Testwert', v['fassungen'][0]['auftrag'])
+        daten['gesendet_stand'] = {f['name']: f['gesendet_stand'] for f in v['fassungen']}
+        self.p.testen(daten)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 4)
+        self.assertEqual(self.sammlung.read_bytes(), vorher)
+        self.assertFalse((Path(self.p._ordner(eid)) / 'prompt.md').exists())
+        self.assertEqual(len(self.p.lesen(eid)['tests']), 1)
+
+    def test_ungueltiger_sammlungskasten_nicht_testbar(self):
+        eid = 'sammlung:Wissen#1'
+        f = self.p.lesen(eid)['fassungen'][0]
+        self.cd.update(text=f['text'], ablage='sammlung', basis={'id': eid, 'fassung': f['name'], 'stand': f['stand']})
+        self.antwort = '~~~text\nOhne nötigen Platzhalter\n~~~'
+        status = self.senden()
+        self.arbeiten()
+        with self.assertRaisesRegex(ValueError, 'gültigen Promptkasten'):
+            self.p.vorschau({'id': eid, 'schaerfen_beleg': status['ziele'][0]['beleg'], 'auswerter': ['p']})
+        self.assertTrue(self.beleg(self.au.liste[0])['ergebnis'].startswith('ungültig'))
+
+    def test_namenskonflikt_ueberschreibt_keine_fassung(self):
+        status = self.senden()
+        a = self.au._naechste()
+        prompts.antwort_schreiben(a['datei'], '~~~text\nNeue Fassung [A]\n~~~')
+        prompts._kopf_setzen(a['datei'], {'ergebnis_fassung': 'Fassung 1'})
+        with self.assertRaises(prompts.Konflikt):
+            self.au._ausfuehren(a)
+        self.assertEqual(self.p.lesen(status['id'])['fassungen'][0]['text'], self.cd['text'])
+        self.assertEqual(self.fake.aufrufe, 0)
+
+    def test_auto_typ_erkannt_oder_unbekannt_ohne_kopfveraenderung(self):
+        import uuid
+        self.cd.update(prompt_typ='auto', ziele=self.cd['ziele'][:1])
+        for zeile, erwartet in [('Prompt-Typ: code', 'code'), ('Prompt-Typ: erfunden', None), ('', None)]:
+            self.cd['anfrage_id'] = str(uuid.uuid4())
+            self.antwort = '~~~text\nGültige Fassung [A]\n~~~\n' + zeile
+            status = self.senden()
+            self.arbeiten()
+            z = status['ziele'][0]
+            ansicht = self.p.datei_inhalt(status['id'], 'schaerfen', z['beleg'])
+            self.assertEqual(ansicht['prompt_typ_erkannt'], erwartet)
+            self.assertEqual(ansicht['typ_anzeige'], erwartet or 'Typ nicht erkannt')
+            self.assertEqual(ansicht['neue_fassung'], 'Gültige Fassung [A]')
+            self.assertEqual(self.p.lesen(status['id'])['prompt_typ'], 'auto')
+
+    def test_katalog_typmetadaten_nur_aus_gueltiger_antwort_ohne_dateiaenderung(self):
+        self.cd.update(prompt_typ='auto', ziele=self.cd['ziele'][:1])
+        status = self.senden()
+        self.arbeiten()
+        a = self.au.liste[0]
+        datei = Path(a['datei'])
+        promptdatei = Path(self.p._ordner(status['id'])) / 'prompt.md'
+        original = promptdatei.read_bytes()
+        for antwort, gueltig, typ in [
+                ('~~~text\nNeue Fassung [A]\n~~~\nPrompt-Typ: wissen', True, 'wissen'),
+                ('~~~text\nPrompt-Typ: code\n[A]\n~~~', True, None),
+                ('~~~text\nPlatzhalter fehlt\n~~~\nPrompt-Typ: code', False, None),
+                ('Antwort ohne Kasten\nPrompt-Typ: code', False, None)]:
+            prompts.antwort_schreiben(str(datei), antwort)
+            beleg_vorher = datei.read_bytes()
+            d = self.p.lesen(status['id'])
+            b = d['schaerfen'][0]
+            self.assertEqual(b['ergebnis_gueltig'], gueltig)
+            self.assertEqual(b['prompt_typ_erkannt'], typ)
+            self.assertEqual(d['prompt_typ'], 'auto')
+            self.assertEqual(datei.read_bytes(), beleg_vorher)
+            self.assertEqual(promptdatei.read_bytes(), original)
+
+    def test_bild_video_mit_ohne_realismus_nur_schreibmodell(self):
+        import uuid
+        for typ in ('bild', 'video'):
+            for realismus in (False, True):
+                self.cd.update(anfrage_id=str(uuid.uuid4()), prompt_typ=typ, realismus=realismus,
+                               ziele=[{'zielprofil': typ}])
+                v = self.p.composer_vorschau(self.cd)
+                auftrag = v['ziele'][0]['auftrag']
+                self.assertIn('hat Vorrang vor dem Skilltext', auftrag)
+                self.assertIn('Keine Erzeugung starten', auftrag)
+                self.assertEqual('Fachregeln für fotorealistische Menschen' in auftrag, realismus)
+                self.assertEqual('Regeln zum Schärfen' in auftrag, not realismus)
+                self.senden()
+                self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 4)
+        self.assertEqual(self.au.anbieter['claude'].aufrufe, 0)
+
+    def test_modus_vorlage_neue_felder_und_unveraendertes_original(self):
+        self.cd.update(modus='vorlage', ziele=self.cd['ziele'][:1])
+        v = self.p.composer_vorschau(self.cd)
+        self.assertIn('Wechselnde Angaben als aussagekräftige [Platzhalter]', v['ziele'][0]['auftrag'])
+        status = self.senden()
+        self.arbeiten()
+        a = self.au.liste[0]
+        b = self.p.datei_inhalt(status['id'], 'schaerfen', Path(a['datei']).name)
+        self.assertEqual(b['neue_platzhalter'], ['Projektkontext'])
+        self.assertEqual(self.p.lesen(status['id'])['modus'], 'vorlage')
+
+    def test_flash_ziel_nimmt_tatsaechlichen_kontext_bei_gleicher_kennung(self):
+        lokal = self.au.anbieter['lokal']
+        self.cd['ziele'] = self.cd['ziele'][1:2]
+        for kontext in (131072, 262144):
+            with patch.object(lokal, 'verfuegbar', return_value=(True, '')), \
+                    patch.object(lokal, 'kontext_geladen', return_value=(kontext, '/health', 'flash')):
+                ziel = self.p.composer_vorschau(self.cd)['ziele'][0]['zielmodell']
+                self.assertEqual((ziel['kontext'], ziel['kontext_quelle'], ziel['modell_tatsaechlich']),
+                                 (kontext, '/health', 'flash'))
+
+    def test_eingabepruefung_und_keine_zweite_wissenssammlung(self):
+        f = self.e['fassungen'][0]
+        for d in (dict(self.cd, text=''), dict(self.cd, text='x'*20001), dict(self.cd, ziele=[]),
+                  dict(self.cd, ziele=self.cd['ziele']*2), dict(self.cd, hinweise='x'*2001),
+                  dict(self.cd, ablage='sammlung'), dict(self.cd, realismus=True),
+                  dict(self.cd, prompt_typ='erfunden'), dict(self.cd, modus='erfunden'),
+                  dict(self.cd, schreibmodell='fehlt'), dict(self.cd, skill='unerlaubt'),
+                  dict(self.cd, text='~~~text\nkein Rohprompt\n~~~')):
+            with self.assertRaises((ValueError, prompts.PromptFehler)):
+                self.p.composer_vorschau(d)
+        basis = {'id': self.e['id'], 'fassung': f['name'], 'stand': 'veraltet'}
+        with self.assertRaises(prompts.Konflikt):
+            self.p.composer_vorschau(dict(self.cd, basis=basis))
+        basis['stand'] = f['stand']
+        with self.assertRaises(prompts.Konflikt):
+            self.p.composer_vorschau(dict(self.cd, basis=basis, text='Geändert'))
+        self.assertEqual(self.au.liste, [])
+
+    def test_titel_erste_acht_woerter_70_zeichen_und_status_unbekannt(self):
+        import uuid
+        self.cd['text'] = ' '.join('Wort' + str(i) for i in range(12))
+        self.assertEqual(self.p.composer_vorschau(self.cd)['titel'], ' '.join(self.cd['text'].split()[:8]))
+        self.cd['text'] = 'x'*200
+        self.assertEqual(len(self.p.composer_vorschau(self.cd)['titel']), 70)
+        self.assertEqual(self.p.composer_status({'anfrage_id': str(uuid.uuid4())})['gefunden'], False)
+        for aid in ('../fremd', '', None, 'keine-uuid'):
+            with self.assertRaises(ValueError):
+                self.p.composer_status({'anfrage_id': aid})
+
+    def test_legacy_schaerfen_optional_version_zwei_weiterhin_vorschaupflicht(self):
+        d = dict(self.sd, prompt_typ='code', modus='vorlage', zielmodell='c')
+        v = self.p.schaerfen_vorschau(d)
+        self.assertEqual(v['eingaben']['bau_version'], 2)
+        with self.assertRaises(prompts.Konflikt):
+            self.p.schaerfen(d)
+        self.p.schaerfen(dict(d, gesendet_stand=v['gesendet_stand']))
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 1)
+
+    def test_fehlendes_lokales_testprofil_bewusst_anlegen_ohne_modellstart(self):
+        vorher = copy.deepcopy(self.au.profile)
+        optionen = self.p.optionen()
+        qwen = optionen['zielprofile'][0]['varianten'][0]
+        self.assertEqual(qwen['testprofile'], [])
+        self.assertEqual(self.au.profile, vorher)
+        self.assertEqual(self.au.profil_neu({'anbieter': 'lokal', 'modell': 'qwen27-unsloth', 'stufe': 'high'})[0], 400)
+        self.assertEqual(self.au.profil_neu({'anbieter': 'lokal', 'modell': 'qwen27-unsloth'})[0], 200)
+        qwen = self.p.optionen()['zielprofile'][0]['varianten'][0]
+        self.assertEqual(len(qwen['testprofile']), 1)
+        p = self.au.profile[-1]
+        self.assertFalse(self.au.profil_info(p)['prompts_verfuegbar'])
+        self.cd['ziele'][0]['testprofil'] = p['id']
+        self.assertEqual(self.p.composer_vorschau(self.cd)['ziele'][0]['testprofil_id'], p['id'])
+        self.assertEqual(self.fake.aufrufe, 0)
+
+    def test_einreihung_speicherfehler_idempotent_erneut_sichern(self):
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        speichern = self.au._speichern
+        anzahl = 0
+        def fehlschlag():
+            nonlocal anzahl
+            anzahl += 1
+            if anzahl == 1:
+                raise OSError('Test: Speichern fehlgeschlagen')
+            speichern()
+        with patch.object(self.au, '_speichern', side_effect=fehlschlag):
+            with self.assertRaises(OSError):
+                self.p.composer_senden(self.cd)
+            self.assertEqual(len(self.au.liste), 1)
+            self.p.composer_senden(self.cd)
+        self.assertEqual(len(self.au.liste), 3)
+        self.assertEqual(len(json.loads(Path(self.au.datei).read_text(encoding='utf-8'))['auswertungen']), 3)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
+
+    def test_neue_bewusste_sendung_mit_gleichem_titel_bekommt_eigene_kennung(self):
+        import uuid
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        schreiben = self.p._sendung_schreiben
+        def reservieren_und_absturz(*args):
+            schreiben(*args)
+            raise Ende()
+        with patch.object(self.p, '_sendung_schreiben', side_effect=reservieren_und_absturz):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        zuerst = self.p.composer_status(self.cd)['id']
+        self.cd['anfrage_id'] = str(uuid.uuid4())
+        danach = self.p.composer_senden(self.cd)['id']
+        self.assertNotEqual(zuerst, danach)
+
+    def test_zusaetzlicher_oder_offener_kasten_ist_ungueltig(self):
+        for antwort in ('~~~text\nNeu [A]\n~~~\n```json\n{}\n```',
+                        '~~~text\nNeu [A]\n~~~\n```\noffen'):
+            a = prompts.schaerfen_auswerten(antwort, '[A]', 'Schärfen', 2)
+            self.assertTrue(a['grund'])
+
+    def test_material_und_gewaehlter_kontext_bleiben_nach_einreihung_eingefroren(self):
+        material = self.basis / 'Material.txt'
+        material.write_text('Material vor dem Senden', encoding='utf-8')
+        k = self.p.kontext_neu({'titel': 'Kontext A', 'wert': 'Ausgewählter Kontext'})
+        self.p.kontext_neu({'titel': 'Kontext B', 'wert': 'Ungewählter geheimer Sachtext'})
+        self.cd.update(materialien=[{'art': 'datei', 'pfad': str(material)}], kontexte=[{'id': k['id'], 'stand': k['stand']}])
+        v = self.p.composer_vorschau(self.cd)
+        self.assertIn('Ausgewählter Kontext', v['ziele'][0]['auftrag'])
+        self.assertNotIn('Ungewählter geheimer Sachtext', v['ziele'][0]['auftrag'])
+        self.cd['gesendet_staende'] = v['gesendet_staende']
+        self.p.composer_senden(self.cd)
+        material.write_text('Material nach dem Senden', encoding='utf-8')
+        self.p.kontext_speichern(dict(k, wert='Kontext nach dem Senden'))
+        self.arbeiten()
+        self.assertEqual(self.fake.texte, [z['auftrag'] for z in v['ziele']])
+        self.assertNotIn('Material vor dem Senden', '\n'.join(self.logs))
+
+    def test_material_entfernen_aendert_naechste_vorschau(self):
+        self.cd['materialien'] = [{'art': 'text', 'name': 'Text.txt', 'wert': 'Textmaterial'}]
+        vorher = self.p.composer_vorschau(self.cd)
+        self.cd['materialien'] = []
+        nachher = self.p.composer_vorschau(self.cd)
+        self.assertNotEqual(vorher['gesendet_staende'], nachher['gesendet_staende'])
+
+    def test_paralleler_doppelpost_einreihung_dedupliziert(self):
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        original = self.au.einreihen
+        barriere = threading.Barrier(2)
+        lokal = threading.local()
+        def gleichzeitige_einreihung(a):
+            if not getattr(lokal, 'gestartet', False):
+                lokal.gestartet = True
+                barriere.wait(timeout=3)
+            original(a)
+        ergebnisse, fehler = [], []
+        def senden():
+            try:
+                ergebnisse.append(self.p.composer_senden(copy.deepcopy(self.cd)))
+            except BaseException as ex:
+                fehler.append(ex)
+        with patch.object(self.au, 'einreihen', side_effect=gleichzeitige_einreihung):
+            faeden = [threading.Thread(target=senden) for _ in range(2)]
+            for t in faeden:
+                t.start()
+            for t in faeden:
+                t.join(5)
+                self.assertFalse(t.is_alive())
+        self.assertEqual(fehler, [])
+        self.assertEqual(ergebnisse[0]['auftraege'], ergebnisse[1]['auftraege'])
+        self.assertEqual(len(self.au.liste), 3)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 3)
 
 
 if __name__ == '__main__':

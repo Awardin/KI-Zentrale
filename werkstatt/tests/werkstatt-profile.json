@@ -1,0 +1,126 @@
+{
+  "schema": 1,
+  "typen": [
+    {
+      "id": "auto",
+      "name": "Auto",
+      "untertitel": "Passenden Typ aus der Aufgabe bestimmen",
+      "regeln": "Einen Typ aus dieser Liste wählen; keine zusätzliche Klassifikationsanfrage. Bei Unklarheit Standard verwenden."
+    },
+    {
+      "id": "standard",
+      "name": "Allgemein",
+      "untertitel": "Aufgaben klar und vollständig formulieren",
+      "regeln": "Ziel, benötigte Eingaben, Grenzen und Ausgabe klären; keine unnötige Rollenbeschreibung."
+    },
+    {
+      "id": "wissen",
+      "name": "Wissen & Quellen",
+      "untertitel": "Quellen auswerten, Wissen und Ergebnisse festhalten",
+      "regeln": "Quelle, Ableitung und persönlichen Transfer trennen; Fundstellen nur verlangen, wenn das Material sie ermöglicht; fehlende Quellen benennen."
+    },
+    {
+      "id": "recherche",
+      "name": "Recherche & Analyse",
+      "untertitel": "Fragen untersuchen und Ergebnisse vergleichen",
+      "regeln": "Untersuchungsfrage, Kriterien und Belegbedarf nennen; Recherchezugriff nur voraussetzen, wenn vorhanden."
+    },
+    {
+      "id": "schreiben",
+      "name": "Schreiben",
+      "untertitel": "Texte, E-Mails und Inhalte ausarbeiten",
+      "regeln": "Zielgruppe, Zweck, Ton und Textform konkretisieren; keine Aussagen oder Fakten erfinden."
+    },
+    {
+      "id": "planung",
+      "name": "Planung",
+      "untertitel": "Vorhaben in nachvollziehbare Schritte übersetzen",
+      "regeln": "Ergebnis, Randbedingungen, Abhängigkeiten und Prüfpunkte; keine erfundenen Termine oder Ressourcen."
+    },
+    {
+      "id": "code",
+      "name": "Code",
+      "untertitel": "Software entwickeln, prüfen und verbessern",
+      "regeln": "Laufzeit, vorhandenen Code, erlaubte Änderungen und Abnahme benennen; Kontextzugriff nicht behaupten."
+    },
+    {
+      "id": "agent",
+      "name": "Agent & Assistent",
+      "untertitel": "Dauerhafte Aufgaben und Arbeitsregeln beschreiben",
+      "regeln": "Systemanweisung vom einzelnen Auftrag trennen; Werkzeuge, Zuständigkeit und Grenzen ausdrücklich behandeln."
+    },
+    {
+      "id": "automatisierung",
+      "name": "Automatisierung",
+      "untertitel": "Wiederkehrende Abläufe zuverlässig beschreiben",
+      "regeln": "Auslöser, Eingaben, Bedingungen, Aktionen und Fehlerfälle; vorhandene Systeme statt erfundener Integrationen."
+    },
+    {
+      "id": "bild",
+      "name": "Bild",
+      "untertitel": "Motive, Stil und Bildaufbau beschreiben",
+      "regeln": "Motiv, Handlung, Umgebung, Licht, Kamera und Stil konkret; gewünschte Schrift wörtlich; keine Bilder erzeugen."
+    },
+    {
+      "id": "video",
+      "name": "Video",
+      "untertitel": "Szenen, Bewegung und Kamera beschreiben",
+      "regeln": "Personen, Ort, zeitlicher Verlauf der Handlung, Kamera und Ton konkret; keine Videos erzeugen."
+    }
+  ],
+  "zielprofile": [
+    {
+      "id": "qwen27",
+      "name": "Qwen 27B (lokal)",
+      "regeln": "Eine klare Hauptaufgabe; kurze, eindeutig geordnete Schritte; wichtige Einschränkungen nahe an die zugehörige Aufgabe; festes, möglichst einfaches Ausgabeformat; benötigten Kontext direkt einsetzen oder als Feld vorsehen; keine verschachtelten Rollen oder langen Wiederholungen. IQ3_S erhält dieselben Regeln mit besonderem Augenmerk auf eindeutige Begriffe.",
+      "anbieter": "lokal",
+      "eintraege": [
+        "qwen27-unsloth",
+        "qwen27-iq3s"
+      ]
+    },
+    {
+      "id": "flash_next",
+      "name": "Flash-Next (lokal)",
+      "regeln": "Aufgabe und Material klar trennen; längere Quellen in benannte Abschnitte gliedern; Vollständigkeitskriterien und Belegform nennen; bei mehrstufiger Arbeit Zwischenprodukte nur verlangen, wenn sie hilfreich sind; keine Werkzeuge oder Projektkenntnis aus dem Modellnamen ableiten.",
+      "anbieter": "lokal",
+      "eintraege": [
+        "flash-next-strata"
+      ]
+    },
+    {
+      "id": "claude",
+      "name": "Claude",
+      "regeln": "Übersichtliche Abschnitte; XML-Tags nur bei mehreren Materialarten oder komplexen Abgrenzungen; zusätzliche Erläuterung zulassen, wenn sie einen konkreten Zweck hat; im Werkstatt-Test ohne Werkzeuge und ohne geladenes Projektgedächtnis formulieren.",
+      "anbieter": "claude",
+      "eintraege": []
+    },
+    {
+      "id": "codex",
+      "name": "OpenAI/Codex",
+      "regeln": "Konkrete Aufgabe, verfügbare Eingaben, erlaubter Änderungsumfang und überprüfbares Ergebnis; für Werkstatt-Tests die lesende Sandbox berücksichtigen. Keine Schreibfähigkeit versprechen. Allgemeine Textaufgaben nicht unnötig in Coding-Anweisungen verwandeln.",
+      "anbieter": "codex",
+      "eintraege": []
+    }
+  ],
+  "modi": {
+    "prompt": {
+      "name": "Prompt",
+      "regeln": "Konkrete Angaben erhalten; fehlende Angaben nicht erfinden."
+    },
+    "vorlage": {
+      "name": "Vorlage",
+      "regeln": "Wechselnde Angaben als aussagekräftige [Platzhalter] ausweisen; vorhandene Feldnamen nicht umbenennen."
+    }
+  },
+  "generatoren": {
+    "bild": {
+      "name": "Qwen-Image 2.1",
+      "regeln": "Qwen-Image 2.1 rechnet ohne Negativ-Prompt. Motiv, Handlung, Umgebung, Licht, Kamera und Blickwinkel sowie Stil konkret beschreiben. Das Aussehen jeder Person nennen (Alter, Typ bzw. Herkunft, Haare), auch im Hintergrund; fehlt es, als Annahme ergänzen und in den Erläuterungen nennen, im Modus Vorlage als [Platzhalter]. Gegenstände genau benennen (Material, Form, Farbe). Farben mit Namen, Hex-Code höchstens in Klammern. Sichtbare Schrift wörtlich in Anführungszeichen und mit klarer Anzahl; ist keine Schrift verlangt, „ohne Schrift“ schreiben. Mehrteilige Layouts nummerieren. Ausschlüsse in den Haupttext schreiben. Wird Platz für Text gebraucht, eine ruhige, leere Bildzone mit ihrer Lage beschreiben. Beim Bearbeiten nennen, was genau gleich bleibt. Keine Bilder erzeugen."
+    },
+    "video": {
+      "name": "MiniMax-H3",
+      "regeln": "Für MiniMax-H3 beschreiben, wer zu sehen ist (Aussehen jeder Person wie bei Bildern: Alter, Typ bzw. Herkunft, Haare), wie der Ort aussieht, was nacheinander geschieht, was die Kamera tut und was zu hören ist. Gesprochenes als <d>[Deutsch] …</d>, etwa 20–24 Wörter je 8 Sekunden; „scharfes Bild“ verlangen. Hintergrundvideos: ruhige, gleichmäßige Bewegung ohne Schnitte und ohne Gesprochenes. Mehrere Szenen: Figuren, Ort, Licht und Stil im gemeinsamen Teil, Handlung, Kamera und Gesprochenes je Szene; Gesprochenes nie in den gemeinsamen Teil. Ausschlüsse in den Haupttext schreiben. Keine Videos erzeugen."
+    }
+  }
+}

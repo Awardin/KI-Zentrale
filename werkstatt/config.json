@@ -2,6 +2,8 @@
   "prompts": {
     "ordner": "C:\\Workstation\\Arbeitsmaterial\\Prompts",
     "skill": "C:\\Workstation\\Skills\\aktiv\\prompt-schaerfen\\SKILL.md",
+    "profile": "C:\\Workstation\\Skills\\aktiv\\prompt-schaerfen\\references\\werkstatt-profile.json",
+    "skill_realismus": "C:\\Workstation\\Skills\\aktiv\\prompt-realismus\\SKILL.md",
     "dateiwurzeln": ["C:\\Workstation", "C:\\Users\\sasch\\Desktop"],
     "gesperrt": ["C:\\Workstation\\00_Secrets"],
     "feld_max_zeichen": 400000

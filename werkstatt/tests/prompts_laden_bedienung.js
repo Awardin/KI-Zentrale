@@ -80,7 +80,7 @@ function umgebung() {
   u.pruefen();
   u.fehler(); await fertig();
   assert.equal(u.liste.children[0].textContent, 'Liste nicht geladen – neuer Versuch läuft.');
-  assert.equal(u.rueck, 'Dienst startet noch.');
+  assert.equal(u.rueck, 'Die Werkstatt antwortet gerade nicht. Bitte kurz warten und erneut versuchen.');
   assert.equal(u.aus('P.letztesLaden'), undefined);
   u.pruefen();
   const neuerVersuch = u.takt();
@@ -158,7 +158,7 @@ function umgebung() {
   const lauf = v.laden(); v.fehler(); await lauf;
   assert(v.liste.children.every((k, i) => k === vorher[i]));
   assert.equal(v.aus('P.letztesLaden'), letzterErfolg);
-  assert.equal(v.rueck, 'Dienst startet noch.');
+  assert.equal(v.rueck, 'Die Werkstatt antwortet gerade nicht. Bitte kurz warten und erneut versuchen.');
   const takt = v.takt(); assert.equal(v.anzahl, 3);
   v.antwort({...daten(), fehler: ['Hinweis aus der Liste']}); await takt;
   assert.equal(v.rueck, 'Hinweis aus der Liste'); v.pruefen();

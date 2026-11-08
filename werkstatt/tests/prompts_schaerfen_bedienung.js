@@ -19,7 +19,7 @@ class Element {
   querySelector(s) { return this.nachkommen().find((k) => s === '.f-text' && k.className === 'f-text') || null; }
 }
 const ids = new Map(), anfragen = [], speicher = new Map([['werkstatt.prompt-auswerter', '["ziel"]']]);
-let dialog = null, verfuegbar = true;
+let dialog = null, verfuegbar = true, aboTest = false;
 const fenster = { scrollTo() {} };
 const document = {
   querySelector(s) {
@@ -55,7 +55,9 @@ const kontext = vm.createContext({document, window: fenster, console,
     if (pfad === '/api/zusammenfassung') wert = {auswerter: [
       {id: 'ziel', name: 'Ziel', anbieter: 'lokal', verfuegbar: true},
       {id: 'claude', name: 'Claude', anbieter: 'claude', verfuegbar: false, grund: 'Bitte auth login'},
-      {id: 'codex', name: 'Codex', anbieter: 'codex', verfuegbar: true, cloud: 'OpenAI'}]};
+      {id: 'codex', name: 'Codex', anbieter: 'codex', verfuegbar: true, cloud: 'OpenAI'},
+      ...(aboTest ? [{id:'api',name:'Claude API',anbieter:'claude',verfuegbar:true,prompts_verfuegbar:false,
+        prompts_grund:'Abo-Anmeldung nicht bestätigt',zugang_text:'API'}] : [])]};
     else if (d?.aktion === 'schaerfen_vorschau') wert = {auftrag: 'Skill\nOriginal [A]', gesendet_stand: 'hash',
       schreibmodell: {name: 'Codex', verfuegbar, grund: verfuegbar ? '' : 'Bitte auth login',
         verarbeitung: 'Cloud (OpenAI)', kontext: 200000, kontext_quelle: 'Anbieter', geschaetzt: 123,
@@ -122,7 +124,7 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
   assert.equal(pre.length, 2); assert.equal(pre[0].textContent, ergebnis.original); assert.equal(pre[1].textContent, ergebnis.neue_fassung);
   assert(alle(details).some((k) => k.className === 'p-vergleich'));
   assert(alle(details).some((k) => k.textContent.includes('Neue Platzhalter: [Projektkontext]')));
-  assert(alle(details).some((k) => k.innerHTML === 'Markdown: - Klarer.'));
+  assert(alle(details).some((k) => k.textContent === '- Klarer.'));
   keinFremdText(details);
   // Regression: Ohne neue Platzhalter darf replaceChildren keinen null-Text anhängen.
   ergebnis.neue_platzhalter = [];
@@ -137,7 +139,7 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
   ergebnis.aktion = 'Erst klären'; ergebnis.fragen = '1. Welches Ziel?';
   await details.events.toggle();
   assert.equal(alle(details).filter((k) => k.tag === 'pre').length, 0);
-  assert(alle(details).some((k) => k.innerHTML === 'Markdown: 1. Welches Ziel?'));
+  assert(alle(details).some((k) => k.textContent === '1. Welches Ziel?'));
   // Aktive Schärfen-Dateien verwenden den bestehenden Ladepfad.
   e.warteschlange = []; e.schaerfen[0].zustand = 'wartet';
   await vm.runInContext('pLaden()', kontext);
@@ -152,4 +154,10 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
   assert(alle(dialog).some((k) => k.textContent.includes('auth login')));
   assert.equal(anfragen.filter(([, d]) => d?.aktion === 'schaerfen').length, vorher);
   for (const wurzel of [...ids.values(), dialog]) keinFremdText(wurzel);
+  aboTest = true; speicher.set('werkstatt.prompt-schreibmodell', 'api');
+  await vm.runInContext('pSchaerfendialog(e)', kontext);
+  assert.equal(feld('Schreibmodell').value, 'codex');
+  const apiOption = feld('Schreibmodell').children.find((k) => k.value === 'api');
+  assert(apiOption.disabled); assert(apiOption.textContent.includes('Abo-Anmeldung nicht bestätigt'));
+  assert(!feld('Zielmodell').children.find((k) => k.value === 'api').disabled);
 })().catch((err) => { console.error(err); process.exitCode = 1; });
