@@ -3751,6 +3751,33 @@ Testen“, danach „Es lohnt auf jeden Fall ein Eintrag … Den kannst Du schon
     (9 von 11 min). Bild als Vorlage für den Planer (Strata kann Bilder) wäre der nächste Versuch.
 - **Offen:** GLB in Blender/Godot importieren (nur im Browser geprüft); Bild als Vorlage beim Planen.
 
+## Reiter Prompts: neue Oberfläche nach Vorlage, Zielmodelle, Abo (08.11.2026)
+
+Auftrag Sascha (08.11.2026): Reiter „Prompts“ nach Bildschirmfotos eines Prompt-Verbesserers (Composer mittig,
+Prompt-Typ, Modellwahl, Prompt|Vorlage, Entdecken-Karten), Häkchen für Qwen 27B, Flash-Next und Claude mit je
+angepasstem Prompt, Claude und OpenAI über Abo. Plan von Astra (xhigh): [SPEC-prompts-oberflaeche.md](SPEC-prompts-oberflaeche.md);
+Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“. Bau Codex Sol xhigh in drei Läufen (Scheiben 1–3,
+4–6, eine Fixrunde), Abnahme Claude; Log [SPEC-prompts-oberflaeche-REVIEW-LOG.md](SPEC-prompts-oberflaeche-REVIEW-LOG.md).
+- **Composer:** Rohprompt, vier Textziele als Häkchen (Qwen 27B lokal, Flash-Next lokal, Claude, OpenAI/Codex), bei
+  Bild/Video Qwen-Image 2.1 bzw. MiniMax-H3 (nur Prompt, keine Erzeugung); je Ziel ein Schärfen-Lauf mit eigenen
+  Zielregeln, ein gemeinsames Schreibmodell. Prompt-Typen (Auto + 10), Modus Prompt/Vorlage, Kontextbausteine
+  (`Prompts\_Kontext\<Kennung>.md`), bis fünf Textmaterialien. Entdecken nach Sammlungsabschnitten und eigenen Typen.
+- **Regeldatei** `C:\Workstation\Skills\aktiv\prompt-schaerfen\references\werkstatt-profile.json` (Schema 1, frisch je
+  Auftrag gelesen); Bild-/Videoregeln nach STUDIO.md §7. Testkopie `werkstatt\tests\werkstatt-profile.json`.
+- **Abo:** `zugang` abo/api/unklar/keiner je Claude-/Codex-Profil; neue Läufe nur mit Abo, Prüfung direkt vor dem Aufruf,
+  Codex ohne `OPENAI_*`/`CODEX_API_*`; Qwen 27B (`llamacpp`) als lokales Profil, wenn die Zentrale es geladen hat.
+- **Senden** idempotent über `anfrage_id` (`Prompts\_Auftraege\<id>.json`), verlorene Bestätigung → „Status prüfen“;
+  Schärfen-Bauversion 2 getrennt vom alten Aufbau (alte Belege bleiben reproduzierbar).
+- **Alle Reiter:** `api()` meldet „Die Werkstatt antwortet gerade nicht …“ statt „Failed to fetch“.
+- **Geprüft:** Werkstatt-Suite 471 OK (vorher 403); Browser am Abnahme-Harness (127.0.0.1:3897, Fake-Anbieter) bei
+  1366/1920/390 px; Sicherheitsprüfung des Diffs (Ergebnis im Log).
+- **Offen:** echte Abo- und lokale Läufe mit kurzen Testtexten nach dem Neustart von 3895; A/B, ob die Zielregeln die
+  Antworten der Zielmodelle wirklich verbessern; Diktat (später).
+- **Zusammengeführt (08.11.2026, Sascha: „Ja, alles“):** Commit bf4d471 auf `bau/prompts-oberflaeche`, Merge b244ff8
+  in main, Suite in main grün. Werkstatt 3895 neu gestartet (nichts lief): neuer Reiter da, Claude (Sonnet 5) und
+  Codex (GPT-6-Sol, mittel) als Abo erkannt, Konsole ohne Fehler. Für Qwen 27B und Flash-Next fehlt noch je ein
+  Testprofil („Testprofil anlegen …“). Die alte ungetrackte Spec-Kopie im Hauptordner liegt im Scratchpad der Sitzung.
+
 ## Offen
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update
