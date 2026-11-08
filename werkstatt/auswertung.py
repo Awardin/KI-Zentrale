@@ -86,6 +86,9 @@ class Anbieter:
     def verfuegbar(self, profil):
         return True, ''
 
+    def zugang(self, frisch=False):
+        return 'api' if self.cloud else 'keiner'
+
     def kontext(self, profil):
         m = next((m for m in self.katalog() if m['modell'] == profil['modell']), None)
         return (m or {}).get('kontext')
@@ -120,13 +123,23 @@ class Codex(Anbieter):
             return False, 'Codex ist nicht angemeldet. Bitte einmal die Codex-App öffnen und anmelden.'
         return True, ''
 
+    def zugang(self, frisch=False):
+        pfad = os.path.join(HOME, '.codex', 'auth.json')
+        if not os.path.isfile(pfad):
+            return 'keiner'
+        d = _json_datei(pfad)
+        modus = d.get('auth_mode') if isinstance(d, dict) else None
+        if not isinstance(modus, str):
+            return 'unklar'
+        return {'chatgpt': 'abo', 'api': 'api', 'api_key': 'api', 'apikey': 'api'}.get(modus, 'unklar')
+
     def ausfuehren(self, profil, prompt, lauf):
         ziel = os.path.join(lauf.leer, f"codex-{lauf.id}.txt")
         argv = [self.exe(), 'exec', '--ephemeral', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules',
                 '-s', 'read-only', '-m', profil['modell'], '-C', lauf.leer, '-o', ziel, '-']
         if profil.get('stufe'):
             argv[2:2] = ['-c', f'model_reasoning_effort="{profil["stufe"]}"']
-        code, aus, err = lauf.programm(argv, prompt)
+        code, aus, err = lauf.programm(argv, prompt, _ohne_codex_overrides())
         try:
             with open(ziel, encoding='utf-8') as f:
                 text = f.read()
@@ -182,6 +195,13 @@ class Claude(Anbieter):
                            f'& "{exe}" auth login')
         return True, ''
 
+    def zugang(self, frisch=False):
+        if frisch:
+            self._cache.pop('anmeldung', None)
+        art = self.anmeldung() if self.exe() else None
+        return ('abo' if art == 'claude.ai' else 'unklar' if art == 'unbekannt'
+                else 'api' if art else 'keiner')
+
     def ausfuehren(self, profil, prompt, lauf):
         argv = [self.exe(), '-p', '--model', profil['modell'], '--output-format', 'json', '--no-session-persistence',
                 '--tools', '', '--setting-sources', '', '--strict-mcp-config', '--disable-slash-commands',
@@ -208,6 +228,11 @@ def _ohne_app_umgebung():
     """Umgebung ohne die Variablen einer Claude-App-Sitzung: Wurde die Werkstatt aus der App gestartet, würde
     claude.exe sonst deren Anmeldung und Zugang erwarten statt der eigenen Anmeldung."""
     return {k: v for k, v in os.environ.items() if not k.upper().startswith(('CLAUDE', 'ANTHROPIC'))}
+
+
+def _ohne_codex_overrides():
+    return {k: v for k, v in os.environ.items()
+            if not k.upper().startswith(('OPENAI_', 'CODEX_API_'))}
 
 
 def _cloud_anfrage(lauf, anfrage, name, fehlertexte):
@@ -496,7 +521,8 @@ class Lokal(Anbieter):
     def _eintraege(self):
         d = _json_datei(self.cfg['zentrale_config']) or {}
         return ({e['id']: e for e in d.get('eintraege', [])
-                 if e['art'] in ('ollama', 'ninfer', 'strata', 'polystrata')}, d.get('ollama', {}))
+                 if e['art'] in ('ollama', 'ninfer', 'strata', 'polystrata')
+                 or (e['art'] == 'llamacpp' and e['id'] in ('qwen27-unsloth', 'qwen27-iq3s'))}, d.get('ollama', {}))
 
     @staticmethod
     def _kennungen(e):
@@ -831,12 +857,29 @@ class Auswertungen:
     def profil_info(self, p):
         a = self.anbieter.get(p['anbieter'])
         if not a:
-            return dict(p, verfuegbar=False, grund='Unbekannter Anbieter.', cloud=None, kontext=None)
+            return dict(p, verfuegbar=False, grund='Unbekannter Anbieter.', cloud=None, kontext=None,
+                        zugang='keiner', prompts_verfuegbar=False, prompts_grund='Unbekannter Anbieter.')
         try:
             ok, grund = a.verfuegbar(p)
         except Exception as e:
             ok, grund = False, f'Prüfung fehlgeschlagen: {e}'
-        return dict(p, verfuegbar=ok, grund=grund, cloud=a.cloud, kontext=a.kontext(p))
+        zugang = a.zugang()
+        erlaubt = ok and (p['anbieter'] not in ('claude', 'codex') or zugang == 'abo')
+        prompts_grund = grund if not ok else '' if erlaubt else 'Abo-Anmeldung nicht bestätigt'
+        kennzeichnung = ('Abo' if zugang == 'abo' else 'lokal' if not a.cloud else
+                         'kostenloser Anbieter' if p['anbieter'] == 'openrouter' else
+                         'API' if zugang == 'api' else 'Abo-Anmeldung nicht bestätigt')
+        return dict(p, verfuegbar=ok, grund=grund, cloud=a.cloud, kontext=a.kontext(p), zugang=zugang,
+                    prompts_verfuegbar=erlaubt, prompts_grund=prompts_grund, zugang_text=kennzeichnung)
+
+    def prompt_verfuegbar(self, p, frisch=False):
+        a = self.anbieter[p['anbieter']]
+        ok, grund = a.verfuegbar(p, frisch=frisch) if p['anbieter'] == 'lokal' else a.verfuegbar(p)
+        if not ok:
+            return ok, grund
+        if p['anbieter'] in ('claude', 'codex') and a.zugang(frisch=frisch) != 'abo':
+            return False, 'Abo-Anmeldung nicht bestätigt'
+        return True, ''
 
     def stand(self):
         with self._lock:
@@ -954,7 +997,13 @@ class Auswertungen:
 
     def einreihen(self, auftrag):
         with self._lock:
-            self.liste.append(auftrag)
+            vorhanden = next((a for a in self.liste if a['id'] == auftrag['id']), None)
+            if vorhanden:
+                if vorhanden.get('datei') != auftrag.get('datei') or vorhanden.get('art') != auftrag.get('art'):
+                    raise anweisungen.Konflikt('Die Auftragskennung ist bereits anders zugeordnet.')
+            else:
+                self.liste.append(auftrag)
+            # Auch nach einem zuvor fehlgeschlagenen Speichern die Zuordnung dauerhaft sichern.
             self._speichern()
         self._wecker.set()
 
@@ -1157,7 +1206,7 @@ class Auswertungen:
             if gs != a['prompt']['gesendet_stand']:
                 raise prompts.PromptFehler('beleg_geaendert', 'Der Beleg wurde seit dem Einreihen geändert.')
             a['zeichen'] = len(text)
-            ok, grund = anbieter.verfuegbar(p, frisch=True) if p['anbieter'] == 'lokal' else anbieter.verfuegbar(p)
+            ok, grund = self.prompt_verfuegbar(p, frisch=True)
             if not ok:
                 raise prompts.PromptFehler('anbieter', grund)
             try:
@@ -1166,6 +1215,8 @@ class Auswertungen:
             except Exception as ex:
                 raise prompts.PromptFehler('kontext', str(ex)) from ex
             kontext_kopf = {'kontext': kontext, 'kontext_quelle': quelle}
+            if p['anbieter'] in ('claude', 'codex') and anbieter.zugang(frisch=True) != 'abo':
+                raise prompts.PromptFehler('anbieter', 'Abo-Anmeldung nicht bestätigt')
             self._belegzustand(a, **kontext_kopf)
             vorher = prompts.sha(prompts._lesen(datei))
             ergebnis = anbieter.ausfuehren(p, text, _Lauf(a['id'], self.leer, self._abbruch[a['id']],
@@ -1188,6 +1239,8 @@ class Auswertungen:
             if not prompts.pfad_erlaubt(pfad, [self.prompts.ordner]):
                 raise ValueError('Promptpfad nicht erlaubt.')
             prompts.schaerfen_uebernehmen(prompts.Eintrag(pfad), datei)
+            if a['prompt'].get('auftragsgruppe'):
+                a['prompt']['ergebnis_fassung'] = prompts.schaerfen_lesen(datei).get('ergebnis_fassung')
         html = 'nein' if schaerfen else prompts.html_schreiben(datei, antwort)
         dauer = b.get('dauer_s') or round(time.time() - a['begonnen'])
         kopf = {k: ergebnis[k] for k in ('tokens', 'kosten_usd') if ergebnis.get(k) is not None}

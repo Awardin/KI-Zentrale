@@ -330,6 +330,66 @@ class PromptRouten(unittest.TestCase):
         self.h.path = pfad
         return self.h.do_GET()
 
+    def test_prompt_optionen_regelfehler_und_herkunftsschutz(self):
+        from pathlib import Path
+        datei = Path(self.tmp.name) / 'profile.json'
+        datei.write_bytes((Path(__file__).parent / 'werkstatt-profile.json').read_bytes())
+        self.p.cfg['profile'] = str(datei)
+        self.assertEqual(len(self.get('/api/prompt-optionen')[1]['typen']), 11)
+        self.h.headers['Host'] = 'fremd.example'
+        self.assertEqual(self.get('/api/prompt-optionen')[0], 403)
+        self.h.headers['Host'] = '127.0.0.1:3895'
+        datei.write_text('{kaputt', encoding='utf-8')
+        code, d = self.get('/api/prompt-optionen')
+        self.assertEqual(code, 400)
+        self.assertIn('Prompt-Regeln', d['fehler'])
+        self.assertEqual(self.get('/api/prompts')[0], 200)
+        self.h.werkstatt.log.assert_not_called()
+
+    def test_composer_routen_konflikt_status_und_herkunftsschutz(self):
+        from werkstatt.tests.test_auswertung_prompts import ComposerLaeufe
+        basis = ComposerLaeufe('test_vorschau_legt_nichts_an_und_sendet_nicht')
+        basis.setUp()
+        try:
+            self.h.werkstatt.prompts = basis.p
+            code, v = self.post(dict(basis.cd, aktion='composer_vorschau'))
+            self.assertEqual(code, 200)
+            self.assertEqual(basis.fake.aufrufe, 0)
+            daten = dict(basis.cd, aktion='composer_senden', gesendet_staende=v['gesendet_staende'])
+            code, s = self.post(daten)
+            self.assertEqual(code, 200)
+            self.assertEqual(self.post(daten), (200, s))
+            code, status = self.post({'aktion': 'composer_status', 'anfrage_id': daten['anfrage_id']})
+            self.assertEqual((code, status), (200, s))
+            self.assertEqual(self.post(dict(daten, text='Andere Aufgabe'))[0], 409)
+            self.assertEqual(len(basis.au.liste), 3)
+            self.assertEqual(len(self.get('/api/prompt?id=' + s['id'])[1]['auftragsgruppen']), 1)
+            del self.h.headers['X-Werkstatt']
+            for aktion in ('composer_vorschau', 'composer_senden', 'composer_status'):
+                self.assertEqual(self.post(dict(daten, aktion=aktion))[0], 403)
+            self.h.headers['X-Werkstatt'] = '1'
+            self.h.headers['Origin'] = 'http://fremd.example'
+            self.assertEqual(self.post(daten)[0], 403)
+            self.assertEqual(basis.fake.aufrufe, 0)
+            self.h.werkstatt.log.assert_not_called()
+        finally:
+            basis.doCleanups()
+
+    def test_kontext_und_material_routen_herkunft_und_konflikte(self):
+        code, k = self.post({'aktion': 'kontext_neu', 'titel': 'Projekt', 'wert': 'Sachkontext'})
+        self.assertEqual(code, 200)
+        self.assertEqual(self.get('/api/prompt-kontexte')[1]['kontexte'][0]['id'], k['id'])
+        self.assertNotIn('wert', self.get('/api/prompt-kontexte')[1]['kontexte'][0])
+        self.assertEqual(self.post(dict(k, aktion='kontext_speichern', wert='Neu'))[0], 200)
+        self.assertEqual(self.post(dict(k, aktion='kontext_speichern', wert='Veraltet'))[0], 409)
+        self.assertEqual(self.post({'aktion': 'material_pruefen', 'materialien': [{'art': 'text', 'name': 'x.txt', 'wert': 'Text'}]})[0], 200)
+        del self.h.headers['X-Werkstatt']
+        for aktion in ('kontext_lesen', 'kontext_neu', 'kontext_speichern', 'material_pruefen', 'material_datei_lesen', 'material_datei_waehlen'):
+            self.assertEqual(self.post({'aktion': aktion})[0], 403)
+        self.h.headers['Host'] = 'fremd.example'
+        self.assertEqual(self.get('/api/prompt-kontexte')[0], 403)
+        self.h.werkstatt.log.assert_not_called()
+
     def test_neu_liste_detail_und_alle_schreibaktionen(self):
         code, e = self.post({'aktion': 'neu', 'titel': 'Test', 'quelle': '', 'schlagworte': 'html', 'text': 'HTML'})
         self.assertEqual(code, 200)

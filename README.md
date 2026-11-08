@@ -200,8 +200,42 @@ Reiter **Zusammenfassung** (oder „Zusammenfassen“ an einem fertigen Auftrag)
 ### Prompts
 
 Der Reiter **Prompts** sammelt Coding- und Kreativprompts unter
-`C:\Workstation\Arbeitsmaterial\Prompts\<Kennung>\prompt.md`. „Neu“ legt Titel, Quelle,
-Schlagworte und „Fassung 1“ an. Links lassen sich Titel, Quelle, Schlagworte und Fassungen
+`C:\Workstation\Arbeitsmaterial\Prompts\<Kennung>\prompt.md`. Seit 08.11.2026 öffnet er mit dem
+**Composer** („Neuer Prompt“) und **Entdecken**; die linke Leiste zeigt „Neuer Prompt“, „Bibliothek“ und die
+zuletzt geöffneten Einträge (unter 1.100 px Fensterbreite als Kopfzeile).
+
+**Composer:** Rohprompt eingeben, Zielmodelle ankreuzen (Qwen 27B lokal, Flash-Next lokal, Claude, OpenAI/Codex),
+Prompt-Typ (Auto oder ein fester Typ), Schreibmodell und Modus „Prompt“ oder „Vorlage“ (wechselnde Angaben als
+`[Platzhalter]`) wählen. Für jedes angekreuzte Ziel entsteht ein eigener Schärfen-Lauf mit den Regeln dieses Modells;
+das Schreibmodell formuliert alle Fassungen. Bei Typ Bild oder Video ist das Ziel Qwen-Image 2.1 bzw. MiniMax-H3: Der
+fertige Prompt wird im Reiter Bild & Video eingesetzt, erzeugt wird nichts. „Weitere Angaben“ enthält Titel, Hinweise,
+Ablage (eigener Prompt oder vorhandener Wissensprompt aus der Sammlung) und die Auftragsvorschau. Darunter stehen nur
+Hinweise zur aktuellen Auswahl, alle nicht verfügbaren Modelle eingeklappt unter „Nicht verfügbare Modelle (n)“.
+Strg+Enter sendet, Esc schließt das oberste Menü. Typen, Zielregeln, Modi und Generatorregeln stehen in einer Datei,
+`C:\Workstation\Skills\aktiv\prompt-schaerfen\references\werkstatt-profile.json` (`prompts.profile` in
+`werkstatt\config.json`); sie wird bei jedem Auftrag frisch gelesen.
+
+Claude und OpenAI/Codex schreiben nur mit bestätigter **Abo-Anmeldung** (Kennzeichnung „Abo“, „API“ oder
+„Abo-Anmeldung nicht bestätigt“); unmittelbar vor dem Aufruf wird erneut geprüft, Codex startet ohne
+API-Schlüssel-Variablen, eine Ausweichroute zur API gibt es nicht. Qwen 27B (`qwen27-unsloth`, `qwen27-iq3s`) steht als
+lokales Modell bereit, sobald die Zentrale es geladen hat.
+
+Jede Sendung trägt eine eigene Kennung (`Prompts\_Auftraege\<Kennung>.json`). Geht die Bestätigung verloren, bietet der
+Reiter „Status prüfen“ an, statt doppelt zu senden. Ein neuer eigener Prompt wird mit „Fassung 1“ angelegt; gültige
+Ergebnisse kommen als weitere Fassungen dazu, bei Sammlungseinträgen nur als Vorschlag. Die Ergebnisgruppe des zuletzt
+gestarteten Auftrags zeigt je Ziel Zustand, Original und neue Fassung nebeneinander, Kopieren, „Testen …“, „Nochmal …“,
+bei Fehler oder Abbruch „Wiederholen“ und während des Wartens „Abbrechen“.
+
+**Material und Kontext:** Die Büroklammer nimmt bis zu fünf Textdateien (aus dem Browser nur Inhalt und Dateiname, sonst
+über einen Pfad unter den `dateiwurzeln`) oder eine vorhandene Antwort, zusammen höchstens `feld_max_zeichen` Zeichen.
+PDF, Office, Bilder, Audio und Video werden mit Hinweis abgelehnt, nichts wird still gekürzt. Kontextbausteine
+(Projekt- und Sachkontext) liegen als `Prompts\_Kontext\<Kennung>.md` (Titel und ein Textkasten, je höchstens
+20.000 Zeichen), lassen sich anlegen, bearbeiten und auswählen; nur ausgewählte gehen an das Schreibmodell.
+
+**Entdecken** zeigt die Sammlungskästen nach ihren `##`-Abschnitten (ohne den Werkstatt-Abschnitt) und eigene Prompts
+nach Prompt-Typ; Einträge mit Typ Auto stehen unter dem zuletzt erkannten Typ, sonst unter „Weitere Prompts“.
+
+**Bibliothek:** Titel, Quelle, Schlagworte und Fassungen
 durchsuchen sowie Herkunft und getestet/ungetestet filtern. Rechts stehen Kopf und Fassungen
 als unveränderter Text. „Bearbeiten“, „Neue Fassung“ und „Als bevorzugt“ speichern in der
 Datei; Handänderungen bleiben erhalten. Bei einem veralteten Stand bitte neu einlesen.
@@ -525,3 +559,8 @@ Auslastung und Belegung; mit `bedarf_mib` und `reservieren` wird geprüft und an
 
 Tests im Ordner `KI-Zentrale`: `python -m unittest discover -s zentrale\tests` und
 `python -m unittest discover -s werkstatt\tests`.
+Für eine Browserabnahme des Reiters Prompts ohne echte Modelle:
+`python -m werkstatt.tests.abnahme_harness --datenordner <Ordner im Temp-Verzeichnis oder unter _uebergabe>`,
+dann `http://127.0.0.1:3897/#prompts`. Das Harness nutzt nur Port 3897 und Fake-Anbieter; Verzögerungen und Fehler je
+Ziel stellt `steuerung.json` im Datenordner ein, `aufrufe.json` zählt die Aufrufe. Die Regeldatei der Tests ist
+`werkstatt\tests\werkstatt-profile.json` (Kopie der Skill-Datei zum Testzeitpunkt).

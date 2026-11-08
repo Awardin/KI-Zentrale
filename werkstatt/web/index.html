@@ -83,9 +83,13 @@
   </div>
 </main>
 
-<main id="reiter-prompts" hidden>
-  <div class="zf-raster">
-    <aside class="zf-liste" aria-labelledby="p-liste-titel">
+<main id="reiter-prompts" class="breit" hidden>
+  <div class="p-layout">
+    <aside class="p-seitenleiste" aria-label="Prompts">
+      <nav id="p-navigation" aria-label="Prompt-Bereiche"></nav>
+      <section id="p-zuletzt" aria-label="Zuletzt geöffnet"></section>
+      <details id="p-bibliotheksliste" open hidden>
+      <summary>Bibliothek durchsuchen</summary>
       <div class="zf-liste-kopf">
         <h2 id="p-liste-titel" class="abschnitt">Prompts</h2>
         <button class="knopf knopf-klein" id="p-neu" type="button">Neu …</button>
@@ -97,10 +101,14 @@
         <label>Status<select id="p-status"><option value="">Alle</option><option value="getestet">Getestet</option><option value="ungetestet">Ungetestet</option></select></label>
       </div>
       <ol class="p-liste" id="p-liste"></ol>
+      </details>
     </aside>
-    <section class="zf-haupt" aria-live="polite">
-      <div id="p-rueck" class="warnung"></div>
-      <div id="p-inhalt"><p class="zf-leer">Links einen Prompt wählen.</p></div>
+    <section class="p-haupt">
+      <div id="p-rueck" class="warnung" aria-live="polite"></div>
+      <div id="p-composer"></div>
+      <section id="p-entdecken" aria-label="Entdecken"></section>
+      <section id="p-kontexte" hidden aria-label="Kontextbausteine"></section>
+      <div id="p-inhalt" hidden><p class="zf-leer">Links einen Prompt wählen.</p></div>
     </section>
   </div>
 </main>
