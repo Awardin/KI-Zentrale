@@ -138,8 +138,12 @@ def _kopfwert(wert, schluessel):
 def beleg_anlegen(ordner, kopf, fassung, eingaben):
     with _SPERRE:
         os.makedirs(ordner, exist_ok=True)
+        teil = dateiname(kopf.get('aktion', kopf['fassung']))
+        if isinstance(kopf.get('zielmodell'), str) and kopf['zielmodell'].strip():
+            # Schärfen-Belege: Das Ziel gehört in den Namen, sonst heißen die Belege mehrerer Ziele nur nach dem Schreibmodell.
+            teil += ' für ' + dateiname(kopf['zielmodell'], 40)
         basis = (datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S') + ' – '
-                 + dateiname(kopf.get('aktion', kopf['fassung'])) + ' – ' + dateiname(kopf['auswerter']))
+                 + teil + ' – ' + dateiname(kopf['auswerter']))
         n = 1
         while True:
             name = basis + (f' ({n})' if n > 1 else '')

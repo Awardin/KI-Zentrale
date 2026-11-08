@@ -584,7 +584,7 @@ class SchaerfenLaeufe(unittest.TestCase):
         self.vorbereiten()
         a = self.schaerfen()
         self.assertEqual((a['art'], a['prompt']['art_ordner'], self.beleg(a)['zustand']), ('schaerfen', 'schaerfen', 'wartet'))
-        self.assertIn(' – Schärfen – Fake', a['datei'])
+        self.assertIn(' – Schärfen für Fake – Fake', a['datei'])
         with patch('werkstatt.auswertung.pruefung.nachpruefen', side_effect=AssertionError('Keine Nachprüfung')):
             self.arbeiten()
         b = self.beleg(a)
@@ -916,6 +916,17 @@ class ComposerLaeufe(unittest.TestCase):
         self.assertTrue(all(set(z) == {'zielschluessel', 'beleg', 'auftrags_id', 'eingereiht'} for z in meta['ziele']))
         self.assertNotIn('Regeln zum Schärfen', Path(verwaltung).read_text(encoding='utf-8'))
         self.assertNotIn('Baue [A]', '\n'.join(self.logs))
+
+    def test_belegname_nennt_ziel_und_schreibmodell(self):
+        self.senden()
+        namen = []
+        for a in self.au.liste:
+            b = self.beleg(a)
+            name = a['prompt']['beleg']
+            self.assertIn(' – Schärfen für ' + prompts.dateiname(b['zielmodell'], 40) + ' – Fake', name)
+            self.assertNotRegex(name, r' \(\d+\)$')
+            namen.append(name)
+        self.assertEqual(len(set(namen)), 3)
 
     def test_auftragskennung_aus_dem_beleg_nur_in_hexform(self):
         self.senden()

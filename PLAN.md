@@ -3777,6 +3777,19 @@ Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“
   in main, Suite in main grün. Werkstatt 3895 neu gestartet (nichts lief): neuer Reiter da, Claude (Sonnet 5) und
   Codex (GPT-6-Sol, mittel) als Abo erkannt, Konsole ohne Fehler. Für Qwen 27B und Flash-Next fehlt noch je ein
   Testprofil („Testprofil anlegen …“). Die alte ungetrackte Spec-Kopie im Hauptordner liegt im Scratchpad der Sitzung.
+- **Echter Lauf über Abo (08.11.2026, Sascha: „Ja, testen“):** Rohprompt „Python-Funktion, die prüft, ob ein Wort ein
+  Palindrom ist“, Ziele Claude und OpenAI/Codex, Schreibmodell Claude Sonnet 5 (Abo). Zwei `claude -p` parallel, fertig
+  nach 48 s bzw. 36 s. Die Fassungen unterscheiden sich wie gewollt: für Codex „Codeblock in der Antwort, keine Dateien
+  anlegen oder ändern“ (nur lesende Sandbox), für Claude feste Signatur `ist_palindrom(wort: str) -> bool` und
+  Selbstprüfung an drei Wörtern. Test der Codex-Fassung mit Codex GPT-6-Sol (Abo, Sandbox nur lesend): 5 s, 15.900 Token
+  (inkl. globaler AGENTS.md), richtige Funktion als Codeblock mit zwei Beispielaufrufen. Belege unter
+  `Arbeitsmaterial\Prompts\<Eintrag>\schaerfen\` und `…\tests\`, Auftrag in `_Auftraege\<uuid>.json`; kein Prompttext in
+  `logs\`. Lokale Ziele noch nicht getestet (Testprofile fehlen, kein Modell geladen).
+- **Belegname mit Ziel (08.11.2026, Sascha: „Ja, anpassen“):** Der Schärfen-Beleg hieß nur nach dem Schreibmodell
+  („Schärfen – Claude · Sonnet 5 (2)“ für das Ziel Codex). `beleg_anlegen` setzt bei Belegen mit `zielmodell` jetzt
+  `Schärfen für <Zielmodell> – <Schreibmodell>` (Ziel auf 40 Zeichen gekürzt); Testbelege bleiben wie bisher, alte
+  Belege behalten ihren Namen (gefunden werden sie über den Kopf). Test `test_belegname_nennt_ziel_und_schreibmodell`,
+  Suite 472 OK.
 
 ## Offen
 
