@@ -42,7 +42,11 @@ async function api(pfad, daten) {
     throw fehler;
   }
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.fehler || `Der Dienst antwortete mit Fehler ${r.status}.`);
+  if (!r.ok) {
+    const fehler = new Error(j.fehler || `Der Dienst antwortete mit Fehler ${r.status}.`);
+    fehler.status = r.status;
+    throw fehler;
+  }
   return j;
 }
 

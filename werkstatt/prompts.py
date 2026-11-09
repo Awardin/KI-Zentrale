@@ -424,7 +424,15 @@ def _gruppenergebnis_uebernehmen(eintrag, datei, b, a):
     name = b.get('ergebnis_fassung')
     if not name:
         datum = datetime.datetime.strptime(b['erstellt'], '%Y-%m-%d %H:%M:%S').strftime('%d.%m.')
-        basis = dateiname(f"{b['eingaben']['aktion']} {datum} · {b['zielmodell']}", 60)
+        anfang = f"{b['eingaben']['aktion']} {datum} · "
+        schreibteile = b['auswerter'].split(' · ', 1)
+        schreibmodell = dateiname(schreibteile[-1], 24)
+        ziel_platz = 60 - len(anfang) - len(schreibmodell) - 3
+        zielteile = b['zielmodell'].split(' · ')
+        while len(zielteile) > 1 and len(' · '.join(zielteile)) > ziel_platz:
+            zielteile.pop()
+        ziel = dateiname(' · '.join(zielteile), ziel_platz)
+        basis = anfang + ziel + ' · ' + schreibmodell
         reserviert = {f['name'] for f in d['fassungen']}
         for n in os.listdir(os.path.dirname(datei)):
             pfad = os.path.join(os.path.dirname(datei), n)
@@ -896,6 +904,7 @@ class Index:
 
     def composer_vorschau(self, daten):
         self._composer_fingerabdruck(daten)
+        schreibmodell_ids = self._composer_schreibmodelle(daten)
         regeln = profile_lesen(self.cfg)
         text = daten.get('text')
         if not isinstance(text, str):
@@ -937,16 +946,21 @@ class Index:
         titel = d['titel'] if d else titel.strip() or ' '.join(text.split()[:8])[:70].rstrip()
         if not self.auswertung:
             raise ValueError('Kein Schreibmodell verfügbar.')
-        p = next((p for p in self.auswertung.profile if p['id'] == daten.get('schreibmodell')), None)
-        if not p:
-            raise ValueError('Bitte ein Schreibmodell wählen.')
-        ok, grund = self.auswertung.prompt_verfuegbar(p, frisch=True)
-        if not ok:
-            raise PromptFehler('anbieter', grund)
-        a = self.auswertung.anbieter[p['anbieter']]
-        kontext, quelle, modell = a.kontext_geladen(p)
-        schreibmodell = dict(p, kontext=kontext, kontext_quelle=quelle, modell_tatsaechlich=modell,
-                            verarbeitung='Cloud (' + a.cloud + ')' if a.cloud else 'lokal')
+        schreibmodelle = []
+        for pid in schreibmodell_ids:
+            p = next((p for p in self.auswertung.profile if p['id'] == pid), None)
+            if not p:
+                raise ValueError(f'{pid}: Dieses Schreibmodell gibt es nicht mehr.')
+            try:
+                ok, grund = self.auswertung.prompt_verfuegbar(p, frisch=True)
+                if not ok:
+                    raise PromptFehler('anbieter', grund)
+                a = self.auswertung.anbieter[p['anbieter']]
+                kontext, quelle, modell = a.kontext_geladen(p)
+            except PromptFehler as ex:
+                raise PromptFehler(ex.code, f"{p['name']}: {ex}") from None
+            schreibmodelle.append(dict(p, kontext=kontext, kontext_quelle=quelle, modell_tatsaechlich=modell,
+                                       verarbeitung='Cloud (' + a.cloud + ')' if a.cloud else 'lokal'))
         ziele = daten.get('ziele')
         if not isinstance(ziele, list) or not ziele:
             raise ValueError('Bitte mindestens ein Zielmodell wählen.')
@@ -957,7 +971,7 @@ class Index:
         if material and (len(materialien) >= 5 or sum(m['zeichen'] for m in materialien) + len(material['wert'])
                          > self.cfg.get('feld_max_zeichen', 400000)):
             raise ValueError('Höchstens fünf Materialien innerhalb der Gesamtgrenze auswählen.')
-        auswahl, schluessel = [], set()
+        auswahl, laeufe, schluessel = [], [], set()
         for ziel in ziele:
             z = self.ziel_aufloesen(ziel, regeln)
             if (typ in ('bild', 'video') and z['zielprofil']['id'] != typ
@@ -974,12 +988,32 @@ class Index:
                  'regeldatei_stand': regeln['stand'], 'realismus': daten.get('realismus', False),
                  'material': material, 'materialien': materialien, 'kontexte': kontexte}
             auftrag, gs = schaerfen_bauen(f, e)
-            schaetzung, reserve = kontext_pruefen(auftrag, kontext)
-            auswahl.append(dict(z, auftrag=auftrag, gesendet_stand=gs, eingaben=e,
-                                geschaetzt=schaetzung, reserve=reserve))
+            for p in schreibmodelle:
+                try:
+                    schaetzung, reserve = kontext_pruefen(auftrag, p['kontext'])
+                except PromptFehler as ex:
+                    raise PromptFehler(ex.code, f"{p['name']}: {ex}") from None
+                laeufe.append(dict(zielschluessel=z['zielschluessel'], schreibmodell_id=p['id'],
+                                   geschaetzt=schaetzung, reserve=reserve))
+            auswahl.append(dict(z, auftrag=auftrag, gesendet_stand=gs, eingaben=e))
         return {'titel': titel, 'fassung': f, 'basis': basis, 'ablage': ablage,
-                'schreibmodell': schreibmodell, 'ziele': auswahl,
+                'schreibmodelle': schreibmodelle, 'ziele': auswahl, 'laeufe': laeufe,
                 'gesendet_staende': {z['zielschluessel']: z['gesendet_stand'] for z in auswahl}}
+
+    @staticmethod
+    def _composer_schreibmodelle(daten):
+        if 'schreibmodell' in daten and 'schreibmodelle' in daten:
+            raise ValueError('Bitte nur eine Schreibmodell-Angabe senden.')
+        ids = daten.get('schreibmodelle', [daten['schreibmodell']] if 'schreibmodell' in daten else [])
+        if not isinstance(ids, list) or any(not isinstance(pid, str) for pid in ids):
+            raise ValueError('Ungültige Schreibmodell-Auswahl.')
+        if not ids or any(not pid for pid in ids):
+            raise ValueError('Bitte ein Schreibmodell wählen.')
+        if len(ids) > 3:
+            raise ValueError('Höchstens drei Schreibmodelle auswählen.')
+        if len(set(ids)) != len(ids):
+            raise ValueError('Ein Schreibmodell wurde mehrfach ausgewählt.')
+        return ids
 
     @staticmethod
     def _anfrage_id(daten):
@@ -1014,7 +1048,7 @@ class Index:
     @staticmethod
     def _composer_fingerabdruck(daten):
         erlaubt = {'aktion', 'anfrage_id', 'text', 'titel', 'ablage', 'basis', 'prompt_typ', 'modus',
-                   'schreibmodell', 'ziele', 'hinweise', 'material', 'materialien', 'kontexte',
+                   'schreibmodell', 'schreibmodelle', 'ziele', 'hinweise', 'material', 'materialien', 'kontexte',
                    'gesendet_staende', 'realismus', 'schaerfen_aktion'}
         if set(daten) - erlaubt:
             raise ValueError('Unbekannte Composer-Angaben.')
@@ -1025,11 +1059,16 @@ class Index:
         import secrets
         aid = self._anfrage_id(daten)
         fingerabdruck = self._composer_fingerabdruck(daten)
+        schreibmodell_ids = self._composer_schreibmodelle(daten)
         auftraege = []
         with _SPERRE:
             s = self._sendung_lesen(aid)
             if s and s['eingabe_stand'] != fingerabdruck:
                 raise Konflikt('Diese Sendung gehört zu einem anderen Eingabestand.')
+            if s and any('schreibmodell_id' not in z for z in s['ziele']):
+                for z in s['ziele']:
+                    z.setdefault('schreibmodell_id', schreibmodell_ids[0])
+                self._sendung_schreiben(aid, s)
             if s and s.get('vollstaendig'):
                 fertig = True
             else:
@@ -1049,7 +1088,8 @@ class Index:
                     eid = v['basis']['id'] if v['basis'] else kennung(v['titel'], reserviert)
                     s = {'eingabe_stand': fingerabdruck, 'eintrag': eid, 'beleg_eintrag': eid,
                          'vollstaendig': False, 'ziele': [{'zielschluessel': z['zielschluessel'],
-                         'beleg': None, 'auftrags_id': secrets.token_hex(8), 'eingereiht': False} for z in v['ziele']]}
+                         'schreibmodell_id': z['schreibmodell_id'], 'beleg': None,
+                         'auftrags_id': secrets.token_hex(8), 'eingereiht': False} for z in v['laeufe']]}
                     self._sendung_schreiben(aid, s)
                 eid = s['eintrag']
                 if not daten.get('basis'):
@@ -1071,7 +1111,7 @@ class Index:
                 ordner = os.path.join(self._ordner(s['beleg_eintrag']), 'schaerfen')
                 if not pfad_erlaubt(ordner, [self.ordner]):
                     raise ValueError('Schärfen-Ordner nicht erlaubt.')
-                for z in s['ziele']:
+                for lauf_nr, z in enumerate(s['ziele']):
                     # Ein Absturz kann vor dem Eintragen des Dateinamens eingetreten sein.
                     belege = []
                     if os.path.isdir(ordner):
@@ -1081,12 +1121,15 @@ class Index:
                                 continue
                             try:
                                 _, _, kopf, _ = _belegkopf(_lesen(pfad))
-                                if kopf.get('auftragsgruppe') == aid and kopf.get('zielschluessel') == z['zielschluessel']:
+                                if kopf.get('auftragsgruppe') == aid and kopf.get('auftrags_id') == z['auftrags_id']:
+                                    if (kopf.get('zielschluessel') != z['zielschluessel'] or
+                                            'schreibmodell_id' in kopf and kopf['schreibmodell_id'] != z['schreibmodell_id']):
+                                        raise Konflikt('Ein Gruppenbeleg passt nicht zu seinem Lauf. Bitte die Gruppe prüfen.')
                                     belege.append(n)
                             except (ValueError, UnicodeError):
                                 continue
                     if len(belege) > 1:
-                        raise Konflikt('Mehrere Belege für dasselbe Ziel gefunden. Bitte die Gruppe prüfen.')
+                        raise Konflikt('Mehrere Belege für denselben Lauf gefunden. Bitte die Gruppe prüfen.')
                     if belege:
                         z['beleg'] = belege[0]
                     elif z['beleg']:
@@ -1096,7 +1139,8 @@ class Index:
                         if v['gesendet_staende'] != daten.get('gesendet_staende'):
                             raise Konflikt('Der Inhalt hat sich seit der Vorschau geändert.')
                         ziel = next(x for x in v['ziele'] if x['zielschluessel'] == z['zielschluessel'])
-                        p, f, e = v['schreibmodell'], v['fassung'], ziel['eingaben']
+                        p = next(p for p in v['schreibmodelle'] if p['id'] == z['schreibmodell_id'])
+                        f, e = v['fassung'], ziel['eingaben']
                         kopf = dict(prompt=v['titel'], eintrag=eid, herkunft=v['ablage'], fassung=f['name'],
                             fassung_stand=f['stand'], rahmen='nein', gesendet_stand=ziel['gesendet_stand'],
                             auswerter=p['name'], anbieter=p['anbieter'], modell=p['modell'],
@@ -1107,7 +1151,8 @@ class Index:
                             zielmodell_anbieter=e['zielmodell']['anbieter'], zielmodell_modell=e['zielmodell']['modell'],
                             zielmodell_kontext=e['zielmodell']['kontext'], auftragsgruppe=aid,
                             zielprofil_id=e['zielprofil']['id'], zielschluessel=z['zielschluessel'],
-                            testprofil_id=ziel['testprofil_id'], ergebnis_fassung=None, auftrags_id=z['auftrags_id'])
+                            testprofil_id=ziel['testprofil_id'], ergebnis_fassung=None, auftrags_id=z['auftrags_id'],
+                            schreibmodell_id=p['id'], lauf_nr=lauf_nr)
                         if p.get('stufe'):
                             kopf['denkstufe'] = p['stufe']
                         z['beleg'] = os.path.basename(schaerfen_anlegen(ordner, kopf, f['text'], e))
@@ -1147,6 +1192,8 @@ class Index:
                         kopf = {'fehler': 'Beleg nicht lesbar.'}
                 ziele.append(dict(z, zustand=schlange.get(z['auftrags_id'], kopf.get('zustand',
                     'eingereiht' if z['eingereiht'] else 'Einreihung unvollständig')),
+                    schreibmodell_id=kopf.get('schreibmodell_id', z.get('schreibmodell_id', '')),
+                    auswerter=kopf.get('auswerter', ''),
                     **{k: kopf[k] for k in ('zielmodell', 'zielprofil_id', 'testprofil_id',
                                            'ergebnis_fassung', 'ergebnis', 'fehler') if k in kopf}))
         return {'anfrage_id': aid, 'auftragsgruppe': aid, 'gefunden': True, 'id': s['eintrag'],
@@ -1484,8 +1531,8 @@ class Index:
                 'ablage': d['herkunft'], 'ziele': [ziel], 'schaerfen_aktion': daten.get('schaerfen_aktion', 'Schärfen')})
             z = v['ziele'][0]
             return {'auftrag': z['auftrag'], 'gesendet_stand': z['gesendet_stand'], 'fassung': f,
-                    'eingaben': z['eingaben'], 'schreibmodell': dict(v['schreibmodell'], verfuegbar=True, grund='',
-                    geschaetzt=z['geschaetzt'], reserve=z['reserve']), 'zielmodell': z['zielmodell']}
+                    'eingaben': z['eingaben'], 'schreibmodell': dict(v['schreibmodelle'][0], verfuegbar=True, grund='',
+                    geschaetzt=v['laeufe'][0]['geschaetzt'], reserve=v['laeufe'][0]['reserve']), 'zielmodell': z['zielmodell']}
         aktion = daten.get('schaerfen_aktion', 'Schärfen')
         if aktion not in AKTIONEN:
             raise ValueError('Unbekannte Schärfen-Aktion.')
@@ -1640,6 +1687,8 @@ class Index:
                                 a = schaerfen_anzeige(b)
                                 kopf['ergebnis_gueltig'] = bool(a['kasten']) and not a['grund']
                                 kopf['prompt_typ_erkannt'] = a['prompt_typ_erkannt'] if kopf['ergebnis_gueltig'] else None
+                                if kopf.get('ergebnis_fassung') and a['kasten']:
+                                    kopf['ergebnis_stand'] = stand(a['kasten']['text'])
                         except (ValueError, KeyError, TypeError):
                             kopf['fehler'] = 'Beleg beschädigt'
                         return dict(kopf, kopf_stand=ks)
@@ -1690,6 +1739,12 @@ class Index:
             staende = {f['stand'] for f in d['fassungen']}
             for t in d['tests']:
                 t['geaendert'] = t.get('fassung_stand') not in staende
+            for b in d['schaerfen']:
+                if b.get('ergebnis_fassung'):
+                    f = next((f for f in d['fassungen'] if f['name'] == b['ergebnis_fassung']), None)
+                    ergebnis_stand = b.pop('ergebnis_stand', None)
+                    b['ergebnis_fehlt'] = f is None
+                    b['ergebnis_geaendert'] = f is not None and ergebnis_stand != f['stand']
             d['getestet'] = bool(d['tests'])
             f = next((f for f in d['fassungen'] if f['name'] == d.get('bevorzugt')),
                      next(iter(d['fassungen']), {}))
