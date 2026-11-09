@@ -3790,6 +3790,18 @@ Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“
   `Schärfen für <Zielmodell> – <Schreibmodell>` (Ziel auf 40 Zeichen gekürzt); Testbelege bleiben wie bisher, alte
   Belege behalten ihren Namen (gefunden werden sie über den Kopf). Test `test_belegname_nennt_ziel_und_schreibmodell`,
   Suite 472 OK.
+- **Mehrere Schreibmodelle (09.11.2026, Sascha: „gleichzeitig 2 Fassungen mit Claude und OpenAI“, „Ja, so bauen“):**
+  Spec [SPEC-prompts-mehrere-schreibmodelle.md](SPEC-prompts-mehrere-schreibmodelle.md), Astra xhigh nach 3 Runden
+  APPROVED, Entscheidungen E1–E4 von Sascha bestätigt. Im Composer 1–3 Schreibmodelle (Menü mit Kontrollkästchen, letzte
+  Auswahl gemerkt); Läufe = Ziele × Schreibmodelle, Belege mit `schreibmodell_id` und `lauf_nr`, Wiederfinden über
+  `auftrags_id`. Ergebnisse je Ziel nebeneinander, je Ergebnis „Als bevorzugt“ und „Im Composer verfeinern“ (Ergebnis als
+  neue Grundlage, nur dieses Ziel, ohne automatisches „bevorzugt“); „Als neue Sendung senden“ nach abgelehnter Fortsetzung.
+  Fassungsname `<Aktion> <TT.MM.> · <Ziel> · <Schreibmodell>` (≤ 60 Zeichen, an Segmentgrenzen gekürzt). Alte Sendungen,
+  Einzelweg und alte Belege laufen unverändert. Bau Codex Sol xhigh im Worktree (2 Läufe, 28 min), Abnahme Claude: Suite
+  486 OK, Browser am Harness (3897). Commit 2a19445, Merge 90246b7. Werkstatt 3895 gestartet (der Rechner war um 10:02
+  neu gestartet, Zentrale/Werkstatt/Atelier liefen nicht): Menü da, Konsole ohne Fehler. Log
+  [SPEC-prompts-mehrere-schreibmodelle-REVIEW-LOG.md](SPEC-prompts-mehrere-schreibmodelle-REVIEW-LOG.md).
+  Offen: echter Lauf mit zwei Schreibmodellen (z. B. Claude Opus 5.5 hoch + Codex GPT-6.1-Sol sehr hoch).
 
 ## Offen
 
