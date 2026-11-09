@@ -98,8 +98,8 @@ ctx.eintrag=eintrag;
   assert.equal(offeneProbleme().length,1);assert(offeneProbleme()[0].startsWith('OpenAI/Codex'));
   box.querySelector('details').open=true;
   ziel.value='writer';await ziel.ausloesen('change');assert.deepEqual(offeneProbleme(),[]);assert(box.querySelector('details').open);
-  run("P.entwurf.schreibmodell='api';pComposerZusammenfassung()");assert.equal(offeneProbleme().length,1);
-  for(const el of [$('#p-schreibmodell').children.find((el)=>el.value==='api'),...box.querySelectorAll('p')]) {
+  run("pSchreibmodelleSetzen(['api']);pSchreibmodelleZeichnen();pComposerZusammenfassung()");assert.equal(offeneProbleme().length,1);
+  for(const el of [$('#p-schreibmodelle').querySelector('input[value="api"]').parentElement,...box.querySelectorAll('p')]) {
     assert((el.textContent.match(/Abo-Anmeldung nicht bestätigt/g)||[]).length<=1);
   }
   const dialogProfile={...eintrag,bevorzugt:'Fassung 1'};ctx.dialogProfile=dialogProfile;

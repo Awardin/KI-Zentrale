@@ -717,6 +717,15 @@ keinFremdText(box);
                               encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
 
+    def test_mehrere_schreibmodelle_bedienung(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_mehrfach_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_fuenf_frischstarts_wiederkehr_und_langsamer_index(self):
         import shutil
         import subprocess

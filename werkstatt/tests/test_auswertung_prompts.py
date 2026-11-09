@@ -913,7 +913,8 @@ class ComposerLaeufe(unittest.TestCase):
         verwaltung = self.p._sendung_pfad(self.cd['anfrage_id'])
         meta = json.loads(Path(verwaltung).read_text(encoding='utf-8'))
         self.assertEqual(set(meta), {'eingabe_stand', 'eintrag', 'beleg_eintrag', 'vollstaendig', 'ziele'})
-        self.assertTrue(all(set(z) == {'zielschluessel', 'beleg', 'auftrags_id', 'eingereiht'} for z in meta['ziele']))
+        self.assertTrue(all(set(z) == {'zielschluessel', 'schreibmodell_id', 'beleg', 'auftrags_id', 'eingereiht'}
+                            for z in meta['ziele']))
         self.assertNotIn('Regeln zum Schärfen', Path(verwaltung).read_text(encoding='utf-8'))
         self.assertNotIn('Baue [A]', '\n'.join(self.logs))
 
@@ -1353,6 +1354,286 @@ class ComposerLaeufe(unittest.TestCase):
         self.assertEqual(len(self.au.liste), 3)
         self.arbeiten()
         self.assertEqual(self.fake.aufrufe, 3)
+
+
+    def mehrfach(self, ziele=3):
+        self.cd.pop('schreibmodell', None)
+        self.cd['schreibmodelle'] = ['p', 'c']
+        self.cd['ziele'] = self.cd['ziele'][:ziele]
+        self.au.profile[0]['name'] = 'Codex · Sol · sehr hoch'
+        self.au.profile[0]['stufe'] = 'xhigh'
+        self.au.profile[-1].update(name='Claude · Opus · hoch', stufe='high')
+        self.au.anbieter['claude'].ausfuehren = self.fake.ausfuehren
+        self.au._speichern()
+
+    def test_mehrfach_zwei_schreibmodelle_drei_ziele_sechs_laeufe(self):
+        self.mehrfach()
+        v = self.p.composer_vorschau(self.cd)
+        self.assertNotIn('schreibmodell', v)
+        self.assertEqual([p['id'] for p in v['schreibmodelle']], ['p', 'c'])
+        erwartet = [(z['zielschluessel'], pid) for z in v['ziele'] for pid in ['p', 'c']]
+        self.assertEqual([(l['zielschluessel'], l['schreibmodell_id']) for l in v['laeufe']], erwartet)
+        self.assertTrue(all(set(l) == {'zielschluessel', 'schreibmodell_id', 'geschaetzt', 'reserve'}
+                            for l in v['laeufe']))
+        self.assertTrue(all('geschaetzt' not in z and 'reserve' not in z for z in v['ziele']))
+        status = self.senden()
+        self.assertTrue(status['vollstaendig'])
+        self.assertEqual(len(status['auftraege']), 6)
+        self.assertEqual(len(set(status['auftraege'])), 6)
+        for nr, (a, z) in enumerate(zip(self.au.liste, status['ziele'])):
+            p = v['schreibmodelle'][nr % 2]
+            b = self.beleg(a)
+            self.assertEqual(b['auftragsgruppe'], self.cd['anfrage_id'])
+            self.assertEqual(b['lauf_nr'], nr)
+            for feld, wert in {'auswerter': p['name'], 'anbieter': p['anbieter'], 'modell': p['modell'],
+                               'schreibmodell_id': p['id'], 'denkstufe': p['stufe'],
+                               'kontext': p['kontext'], 'kontext_quelle': p['kontext_quelle'],
+                               'verarbeitung': p['verarbeitung']}.items():
+                self.assertEqual(b[feld], wert)
+            self.assertEqual((z['schreibmodell_id'], z['auswerter']), (p['id'], p['name']))
+            self.assertEqual(b['gesendet_stand'], v['ziele'][nr // 2]['gesendet_stand'])
+            self.assertNotRegex(Path(a['datei']).stem, r' \(\d+\)$')
+        self.assertEqual(len({a['datei'] for a in self.au.liste}), 6)
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 6)
+        self.assertEqual([a['zustand'] for a in self.au.liste], ['fertig'] * 6)
+        self.assertEqual(len(self.p.lesen(status['id'])['fassungen']), 7)
+
+    def test_mehrfach_auswahlfehler_ohne_anlage(self):
+        faelle = [({'schreibmodelle': ['p']}, 'Bitte nur eine Schreibmodell-Angabe senden.'),
+                  ({'schreibmodelle': []}, 'Bitte ein Schreibmodell wählen.'),
+                  ({'schreibmodelle': ['p', 'p']}, 'Ein Schreibmodell wurde mehrfach ausgewählt.'),
+                  ({'schreibmodelle': ['p', 'c', 'd', 'e']}, 'Höchstens drei Schreibmodelle auswählen.'),
+                  ({'schreibmodelle': ['p', 7]}, 'Ungültige Schreibmodell-Auswahl.'),
+                  ({'schreibmodelle': 'p'}, 'Ungültige Schreibmodell-Auswahl.')]
+        vorher = sorted(str(p) for p in Path(self.p.ordner).rglob('*'))
+        for nr, (auswahl, meldung) in enumerate(faelle):
+            d = dict(self.cd)
+            if nr:
+                d.pop('schreibmodell')
+            d.update(auswahl)
+            with self.subTest(auswahl=auswahl), self.assertRaises(ValueError) as ex:
+                self.p.composer_senden(d)
+            self.assertEqual(str(ex.exception), meldung)
+        self.assertEqual(sorted(str(p) for p in Path(self.p.ordner).rglob('*')), vorher)
+        self.assertEqual(self.au.liste, [])
+
+    def test_drei_schreibmodelle_vier_ziele_zwoelf_laeufe(self):
+        self.mehrfach()
+        self.au.profile.append({'id': 'd', 'anbieter': 'fake', 'modell': 'modell', 'name': 'Drittes Schreibmodell'})
+        self.au.profile.append({'id': 'codex-ziel', 'anbieter': 'codex', 'modell': 'modell', 'name': 'Codex · Ziel'})
+        self.au.anbieter['codex'] = self.au.anbieter['claude']
+        self.cd['schreibmodelle'].append('d')
+        self.cd['ziele'].append({'zielprofil': 'codex', 'testprofil': 'codex-ziel'})
+        s = self.senden()
+        self.assertEqual(len(s['ziele']), 12)
+        self.assertTrue(s['vollstaendig'])
+        self.assertEqual([b['schreibmodell_id'] for b in s['ziele']], ['p', 'c', 'd'] * 4)
+        self.assertEqual([self.beleg(a)['lauf_nr'] for a in self.au.liste], list(range(12)))
+        self.arbeiten()
+        self.assertEqual(self.fake.aufrufe, 12)
+        self.assertEqual([a['zustand'] for a in self.au.liste], ['fertig'] * 12)
+
+    def test_mehrfach_unverfuegbar_oder_fehlend_mit_name_ohne_anlage(self):
+        self.mehrfach()
+        vorher = sorted(str(p) for p in Path(self.p.ordner).rglob('*'))
+        with patch.object(self.au.anbieter['claude'], 'verfuegbar', return_value=(False, 'Testgrund')):
+            with self.assertRaisesRegex(prompts.PromptFehler, 'Claude · Opus · hoch: Testgrund') as ex:
+                self.p.composer_senden(self.cd)
+            self.assertEqual(ex.exception.code, 'anbieter')
+        self.cd['schreibmodelle'] = ['p', 'geloescht']
+        with self.assertRaisesRegex(ValueError, 'geloescht:'):
+            self.p.composer_senden(self.cd)
+        self.assertEqual(sorted(str(p) for p in Path(self.p.ordner).rglob('*')), vorher)
+        self.assertEqual(self.au.liste, [])
+
+    def test_mehrfach_kontextpruefung_je_schreibmodell_ohne_anlage(self):
+        self.mehrfach()
+        vorher = sorted(str(p) for p in Path(self.p.ordner).rglob('*'))
+        with patch.object(self.au.anbieter['claude'], 'kontext_geladen', return_value=(64, 'Fake', 'modell')):
+            with self.assertRaisesRegex(prompts.PromptFehler, 'Claude · Opus · hoch: Der Auftrag ist zu lang') as ex:
+                self.p.composer_senden(self.cd)
+            self.assertEqual(ex.exception.code, 'kontext')
+        self.assertEqual(sorted(str(p) for p in Path(self.p.ordner).rglob('*')), vorher)
+        self.assertEqual(self.au.liste, [])
+
+    def test_mehrfach_fortsetzung_nach_erster_von_vier_beleganlagen(self):
+        self.mehrfach(2)
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        anlegen = prompts.schaerfen_anlegen
+        def absturz(*args):
+            anlegen(*args)
+            raise Ende()
+        with patch.object(prompts, 'schaerfen_anlegen', side_effect=absturz):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        s = self.p.composer_status(self.cd)
+        self.assertEqual(len(self.p.lesen(s['id'])['schaerfen']), 1)
+        self.assertEqual((s['ziele'][1]['schreibmodell_id'], s['ziele'][1]['auswerter']), ('c', ''))
+        status = self.p.composer_senden(self.cd)
+        self.assertTrue(status['vollstaendig'])
+        self.assertEqual(len(self.p.lesen(status['id'])['schaerfen']), 4)
+        self.assertEqual(len(self.au.liste), 4)
+        self.assertEqual(self.p.composer_senden(self.cd), status)
+
+    def test_mehrfach_geaenderte_regeln_blockieren_teilanlage_neue_sendung_moeglich(self):
+        import uuid
+        self.mehrfach(2)
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        anlegen = prompts.schaerfen_anlegen
+        def absturz(*args):
+            anlegen(*args)
+            raise Ende()
+        with patch.object(prompts, 'schaerfen_anlegen', side_effect=absturz):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        alt = self.p.composer_status(self.cd)
+        self.regeln.write_text(self.regeln.read_text(encoding='utf-8').replace(
+            'Eine klare Hauptaufgabe', 'Eine neue Hauptaufgabe'), encoding='utf-8')
+        with self.assertRaisesRegex(prompts.Konflikt, 'Inhalt hat sich seit der Vorschau geändert'):
+            self.p.composer_senden(self.cd)
+        self.assertEqual(len(self.p.lesen(alt['id'])['schaerfen']), 1)
+        self.assertEqual(self.au.liste, [])
+        self.cd['anfrage_id'] = str(uuid.uuid4())
+        neu = self.senden()
+        self.assertNotEqual(neu['id'], alt['id'])
+        self.assertTrue(neu['vollstaendig'])
+        self.assertEqual(len(self.au.liste), 4)
+        self.assertEqual(len(self.p.lesen(alt['id'])['schaerfen']), 1)
+
+    def test_mehrfach_recovery_prueft_auftrags_id_ziel_und_schreibmodell(self):
+        self.mehrfach(2)
+        s = self.senden()
+        meta = self.p._sendung_lesen(self.cd['anfrage_id'])
+        meta['vollstaendig'] = False
+        for z in meta['ziele']:
+            z['eingereiht'] = False
+        self.p._sendung_schreiben(self.cd['anfrage_id'], meta)
+        a = self.au.liste[0]
+        datei = Path(a['datei'])
+        original = datei.read_text(encoding='utf-8')
+        # Dasselbe Ziel mit anderem Schreibmodell und anderer Laufkennung gehört zum Geschwisterlauf.
+        self.assertTrue(self.p.composer_senden(self.cd)['vollstaendig'])
+        for feld, wert in [('zielschluessel', 'anderes-ziel'), ('schreibmodell_id', 'c')]:
+            self.p._sendung_schreiben(self.cd['anfrage_id'], meta)
+            prompts._kopf_setzen(str(datei), {feld: wert})
+            with self.assertRaisesRegex(prompts.Konflikt, 'Ein Gruppenbeleg passt nicht zu seinem Lauf'):
+                self.p.composer_senden(self.cd)
+            datei.write_text(original, encoding='utf-8')
+        self.p._sendung_schreiben(self.cd['anfrage_id'], meta)
+        doppelt = datei.with_name('Doppelbeleg.md')
+        doppelt.write_text(original, encoding='utf-8')
+        with self.assertRaisesRegex(prompts.Konflikt, 'Mehrere Belege für denselben Lauf'):
+            self.p.composer_senden(self.cd)
+        self.assertEqual(len(self.au.liste), 4)
+        self.assertEqual(len(s['auftraege']), 4)
+
+    def test_altfortsetzung_zweite_unterbrechung_ohne_doppelbeleg(self):
+        self.cd['ziele'] = self.cd['ziele'][:2]
+        self.cd['gesendet_staende'] = self.p.composer_vorschau(self.cd)['gesendet_staende']
+        # Alter Fingerabdruck wird direkt aus der unnormalisierten Eingabe berechnet.
+        fingerabdruck = prompts.sha(json.dumps({k: v for k, v in self.cd.items()
+            if k not in ('aktion', 'anfrage_id', 'gesendet_staende')}, ensure_ascii=False,
+            sort_keys=True, separators=(',', ':')))
+        anlegen = prompts.schaerfen_anlegen
+        def absturz(*args):
+            anlegen(*args)
+            raise Ende()
+        with patch.object(prompts, 'schaerfen_anlegen', side_effect=absturz):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        meta = self.p._sendung_lesen(self.cd['anfrage_id'])
+        for z in meta['ziele']:
+            z.pop('schreibmodell_id')
+        self.p._sendung_schreiben(self.cd['anfrage_id'], meta)
+        beleg = next(Path(self.p._ordner(meta['eintrag'])).glob('schaerfen/*.md'))
+        roh = beleg.read_text(encoding='utf-8')
+        beleg.write_text('\n'.join(z for z in roh.split('\n') if not z.startswith(('schreibmodell_id:', 'lauf_nr:'))),
+                         encoding='utf-8')
+        def zweiter_absturz(*args):
+            migration = self.p._sendung_lesen(self.cd['anfrage_id'])
+            self.assertTrue(all(z['schreibmodell_id'] == 'p' for z in migration['ziele']))
+            self.assertEqual(migration['eingabe_stand'], fingerabdruck)
+            return absturz(*args)
+        with patch.object(prompts, 'schaerfen_anlegen', side_effect=zweiter_absturz):
+            with self.assertRaises(Ende):
+                self.p.composer_senden(self.cd)
+        status = self.p.composer_senden(self.cd)
+        self.assertTrue(status['vollstaendig'])
+        self.assertEqual(len(self.p.lesen(status['id'])['schaerfen']), 2)
+        self.assertEqual(len(self.au.liste), 2)
+        self.assertEqual(self.p._sendung_lesen(self.cd['anfrage_id'])['eingabe_stand'], fingerabdruck)
+
+    def test_einzelweg_erweiterte_vorschau_behaelt_antwortformat(self):
+        v = self.p.schaerfen_vorschau(dict(self.sd, prompt_typ='code', modus='vorlage', zielmodell='c'))
+        self.assertEqual(set(v), {'auftrag', 'gesendet_stand', 'fassung', 'eingaben', 'schreibmodell', 'zielmodell'})
+        p = v['schreibmodell']
+        self.assertEqual((p['id'], p['verfuegbar'], p['grund']), ('p', True, ''))
+        self.assertEqual((p['geschaetzt'], p['reserve']), prompts.kontext_pruefen(v['auftrag'], p['kontext']))
+
+    def test_mehrfach_ergebnisnamen_kurz_eindeutig_reserviert(self):
+        self.mehrfach(1)
+        s = self.senden()
+        self.arbeiten()
+        namen = [self.beleg(a)['ergebnis_fassung'] for a in self.au.liste]
+        self.assertEqual(len(set(namen)), 2)
+        for a, name, kurz in zip(self.au.liste, namen, ['Sol · sehr hoch', 'Opus · hoch']):
+            b = self.beleg(a)
+            self.assertLessEqual(len(name), 60)
+            self.assertIn(b['zielmodell'].split(' · ')[0], name)
+            self.assertTrue(name.endswith(' · ' + kurz))
+        a = self.au.liste[0]
+        prompts._kopf_setzen(a['datei'], {'ergebnis_fassung': 'Schon reserviert'})
+        prompts.schaerfen_uebernehmen(prompts.Eintrag(Path(self.p._ordner(s['id'])) / 'prompt.md'), a['datei'])
+        self.assertEqual(self.beleg(a)['ergebnis_fassung'], 'Schon reserviert')
+        # Ein langer Zielzusatz wird vor dem Schreibmodell gekürzt.
+        prompts._kopf_setzen(a['datei'], {'ergebnis_fassung': None, 'zielmodell': 'Qwen 27B Q4 · ' + 'Zusatz' * 30,
+                                        'auswerter': 'Claude · ' + 'Modell' * 10})
+        prompts.schaerfen_uebernehmen(prompts.Eintrag(Path(self.p._ordner(s['id'])) / 'prompt.md'), a['datei'])
+        name = self.beleg(a)['ergebnis_fassung']
+        self.assertLessEqual(len(name), 60)
+        self.assertIn('Qwen 27B Q4', name)
+        self.assertTrue(name.endswith('Modell' * 4))
+
+    def test_ergebnisfassung_geaendert_oder_fehlend_in_liste(self):
+        self.cd['ziele'] = self.cd['ziele'][:1]
+        s = self.senden()
+        self.arbeiten()
+        d = self.p.lesen(s['id'])
+        b = d['schaerfen'][0]
+        self.assertFalse(b['ergebnis_geaendert'])
+        self.assertFalse(b['ergebnis_fehlt'])
+        f = next(f for f in d['fassungen'] if f['name'] == b['ergebnis_fassung'])
+        eintrag = prompts.Eintrag(Path(self.p._ordner(s['id'])) / 'prompt.md')
+        eintrag.fassung_speichern(f['name'], 'Bearbeitet [A]', f['stand'])
+        b = self.p.lesen(s['id'])['schaerfen'][0]
+        self.assertTrue(b['ergebnis_geaendert'])
+        self.assertFalse(b['ergebnis_fehlt'])
+        prompts._kopf_setzen(self.au.liste[0]['datei'], {'ergebnis_fassung': 'Nicht vorhanden'})
+        b = self.p.lesen(s['id'])['schaerfen'][0]
+        self.assertTrue(b['ergebnis_fehlt'])
+        self.assertFalse(b['ergebnis_geaendert'])
+
+    def test_ergebnisname_kuerzt_ziel_an_segmentgrenzen(self):
+        self.cd['ziele'] = self.cd['ziele'][:1]
+        status = self.senden()
+        a = self.au.liste[0]
+        prompts.antwort_schreiben(a['datei'], '~~~text\nNeue Fassung [A]\n~~~')
+        eintrag = prompts.Eintrag(Path(self.p._ordner(status['id'])) / 'prompt.md')
+        for ziel, erwartet in [
+                ('Codex · GPT-6-Sol · mittel', 'Codex'),
+                ('Qwen 27B Q4', 'Qwen 27B Q4'),
+                ('Claude · Sonnet · Abo-Test', 'Claude · Sonnet'),
+                ('EinsehrlangesZielmodell · Zusatz', 'EinsehrlangesZie')]:
+            with self.subTest(ziel=ziel):
+                prompts._kopf_setzen(a['datei'], {
+                    'ergebnis_fassung': None, 'erstellt': '2026-11-09 12:00:00', 'zielmodell': ziel,
+                    'auswerter': 'Codex · GPT-6.1-Sol · sehr hoch'})
+                prompts.schaerfen_uebernehmen(eintrag, a['datei'])
+                name = self.beleg(a)['ergebnis_fassung']
+                self.assertEqual(name, f'Schärfen 09.11. · {erwartet} · GPT-6.1-Sol · sehr hoch')
+                self.assertLessEqual(len(name), 60)
+                self.assertFalse(any(teil.endswith('-') for teil in name.split(' · ')))
 
 
 if __name__ == '__main__':

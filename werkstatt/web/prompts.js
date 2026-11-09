@@ -247,6 +247,8 @@ async function pWaehlen(id, bewusst = true) {
     }
     if (!e.tests.length) inhalt.push(h('p', { class: 'leise', text: 'Noch keine Testbelege.' }));
     box.replaceChildren(...inhalt);
+    if (gruppe) await pGruppeZeichnen(gruppenBox, e, gruppe);
+    if (anfrage !== P.anfrage) return;
     for (const d of box.querySelectorAll('details[data-p-ansicht]')) {
       if (offen.has(d.getAttribute('data-p-ansicht'))) d.open = true;
     }
@@ -257,7 +259,6 @@ async function pWaehlen(id, bewusst = true) {
     }
     P.inhaltStand = stand;
     P.inhaltId = id;
-    if (gruppe) await pGruppeZeichnen(gruppenBox, e, gruppe);
   } catch (err) { if (anfrage === P.anfrage) pFehler(err); }
 }
 
@@ -320,32 +321,42 @@ function pTextDarstellen(box, text) {
   box.replaceChildren(h('div', { class: 'p-text', text }));
 }
 
-function pSchaerfenErgebnis(box, b, e = null, beleg = null) {
-  if (b.aktion === 'Erst klären') {
+function pSchaerfenErgebnis(box, b, e = null, beleg = null, vergleich = false) {
+  const fragen = b.aktion === 'Erst klären';
+  if (fragen) {
     pTextDarstellen(box, b.fragen || 'Noch keine Antwort.');
-    if (e && beleg && !['wartet', 'laeuft'].includes(beleg.zustand)) box.append(pKnopf('Nochmal …', () => pComposerNochmal(e, b)));
-    return;
+  } else {
+    const neu = h('section', {}, h('h4', { text: 'Neue Fassung' }),
+      h('pre', { class: 'p-text', text: b.neue_fassung || 'Keine gültige neue Fassung.' }));
+    const aenderungen = h('details', { 'data-p-ansicht': JSON.stringify([beleg?.datei || b.datei, 'aenderungen']) },
+      h('summary', { text: 'Was geändert wurde' }), h('div', { class: 'p-text', text: b.stichpunkte || 'Noch keine Antwort.' }));
+    box.replaceChildren(vergleich ? neu : h('div', { class: 'p-vergleich' },
+      h('section', {}, h('h4', { text: 'Original' }), h('pre', { class: 'p-text', text: b.original })), neu), aenderungen);
+    if (b.neue_platzhalter?.length) box.append(h('p', { text: `Neue Platzhalter: ${b.neue_platzhalter.map((n) => `[${n}]`).join(', ')}` }));
+    if (b.grund) box.append(h('p', { class: 'warnung', text: b.grund }), h('pre', { class: 'p-text', text: b.antwort }));
+    if (b.eingaben?.typ?.id === 'auto') box.append(h('p', { class: 'leise', text: 'Prompt-Typ: ' + b.typ_anzeige }));
   }
-  const stichpunkte = h('div', { class: 'p-text', text: b.stichpunkte || 'Noch keine Antwort.' });
-  box.replaceChildren(h('div', { class: 'p-vergleich' },
-    h('section', {}, h('h4', { text: 'Original' }), h('pre', { class: 'p-text', text: b.original })),
-    h('section', {}, h('h4', { text: 'Neue Fassung' }), h('pre', { class: 'p-text', text: b.neue_fassung || 'Keine gültige neue Fassung.' }))),
-  // replaceChildren würde ein null als Text „null“ anhängen, darum vorher herausfiltern.
-  ...[stichpunkte, b.neue_platzhalter?.length ? h('p', { text: `Neue Platzhalter: ${b.neue_platzhalter.map((n) => `[${n}]`).join(', ')}` }) : null].filter(Boolean));
-  if (b.grund) box.append(h('p', { class: 'warnung', text: b.grund }), h('pre', { class: 'p-text', text: b.antwort }));
-  if (b.eingaben?.typ?.id === 'auto') box.append(h('p', { class: 'leise', text: 'Prompt-Typ: ' + b.typ_anzeige }));
-  const aktionen = h('div', { class: 'p-knoepfe' }, pKnopf('Original kopieren', () => navigator.clipboard.writeText(b.original)));
-  if (b.neue_fassung && !b.grund) aktionen.append(pKnopf('Neue Fassung kopieren', () => navigator.clipboard.writeText(b.neue_fassung)));
+  const aktionen = h('div', { class: 'p-knoepfe' });
+  if (!fragen && !vergleich) aktionen.append(pKnopf('Original kopieren', () => navigator.clipboard.writeText(b.original)));
+  if (!fragen && b.neue_fassung && !b.grund) aktionen.append(pKnopf('Neue Fassung kopieren', () => navigator.clipboard.writeText(b.neue_fassung)));
   if (e && beleg) {
     const generator = ['bild', 'video'].includes(b.zielprofil_id);
     if (generator) box.append(h('p', { class: 'leise', text: 'Im Reiter Bild & Video verwenden.' }));
-    else if (b.neue_fassung && !b.grund) aktionen.append(pKnopf('Testen …', async () => {
+    else if (!fragen && b.neue_fassung && !b.grund) aktionen.append(pKnopf('Testen …', async () => {
       if (e.herkunft === 'sammlung') await pTestdialog(e, null, null,
         { schaerfen_beleg: beleg.datei, text: b.neue_fassung, testprofil: b.testprofil_id });
       else await pTestdialog(await api(`/api/prompt?id=${encodeURIComponent(e.id)}`),
         b.ergebnis_fassung || /^übernommen \((.*)\)$/.exec(b.ergebnis || '')?.[1], null,
         { testprofil: b.testprofil_id });
     }));
+    const f = e.fassungen.find((f) => f.name === b.ergebnis_fassung);
+    if (f && !beleg.ergebnis_fehlt) {
+      if (beleg.ergebnis_geaendert) box.append(h('p', { class: 'leise',
+        text: `Die übernommene Fassung „${f.name}“ wurde seitdem bearbeitet. Die Knöpfe verwenden ihren aktuellen Stand.` }));
+      if (e.bearbeitbar) aktionen.append(e.bevorzugt === f.name ? h('span', { class: 'leise', text: 'Bevorzugt' })
+        : pKnopf('Als bevorzugt', () => pAktion({ aktion: 'bevorzugt', id: e.id, name: f.name, kopf_stand: e.kopf_stand })));
+      aktionen.append(pKnopf('Im Composer verfeinern', () => pComposerVerfeinern(e, b)));
+    }
     if (!['wartet', 'laeuft'].includes(beleg.zustand)) aktionen.append(pKnopf('Nochmal …', () => pComposerNochmal(e, b)));
   }
   box.append(aktionen);
@@ -580,7 +591,7 @@ window.promptsAktiv = (aktiv) => {
 function pAuswahlMerken() {
   try {
     localStorage.setItem('werkstatt.prompt-zuletzt', JSON.stringify(P.zuletzt));
-    localStorage.setItem('werkstatt.prompt-schreibmodell', P.entwurf.schreibmodell);
+    localStorage.setItem('werkstatt.prompt-schreibmodelle', JSON.stringify(P.entwurf.schreibmodelle));
     localStorage.setItem('werkstatt.prompt-auswahl', JSON.stringify({ prompt_typ: P.entwurf.prompt_typ,
       modus: P.entwurf.modus, ziele: P.entwurf.ziele }));
   } catch { /* Die Seite funktioniert auch ohne Browserablage. */ }
@@ -588,7 +599,7 @@ function pAuswahlMerken() {
 
 function pEntwurfNeu() {
   return { text: '', titel: '', hinweise: '', ablage: 'ordner', basis: null,
-    prompt_typ: 'auto', modus: 'prompt', schreibmodell: '',
+    prompt_typ: 'auto', modus: 'prompt', schreibmodelle: [],
     ziele: [{ zielprofil: 'qwen27', eintrag: 'qwen27-unsloth', testprofil: null }], materialien: [], kontexte: [] };
 }
 
@@ -632,7 +643,7 @@ function pComposerZeigen() {
         Object.fromEntries(['zielprofil', 'eintrag', 'testprofil', 'variante'].filter((k) => typeof z[k] === 'string' || (k === 'testprofil' && z[k] === null)).map((k) => [k, z[k]])));
       if (ziele.length) P.entwurf.ziele = ziele;
     }
-    P.entwurf.schreibmodell = localStorage.getItem('werkstatt.prompt-schreibmodell') || '';
+    P.entwurf.schreibmodelle = pSchreibauswahlLaden();
     const zuletzt = JSON.parse(localStorage.getItem('werkstatt.prompt-zuletzt') || '[]');
     if (Array.isArray(zuletzt)) P.zuletzt = zuletzt.filter((x) => typeof x === 'string').slice(0, 6);
   } catch { /* Vorgaben verwenden. */ }
@@ -645,7 +656,8 @@ function pComposerZeigen() {
   const basis = h('select', { id: 'p-sammlungsbasis', 'aria-label': 'Sammlungseintrag', hidden: true });
   const typBox = h('div', { role: 'radiogroup', 'aria-label': 'Prompt-Typ', id: 'p-typen' });
   const typMenue = h('details', { class: 'p-auswahl', id: 'p-typmenue' }, h('summary', { id: 'p-typname', text: 'Prompt-Typ: Auto' }), typBox);
-  const schreiben = h('select', { id: 'p-schreibmodell', 'aria-label': 'Schreibmodell', disabled: true });
+  const schreiben = h('details', { class: 'p-auswahl', id: 'p-schreibmenue' },
+    h('summary', { id: 'p-schreibname', text: 'Schreibmodell wählen' }), h('div', { id: 'p-schreibmodelle' }));
   const senden = h('button', { type: 'button', class: 'knopf knopf-haupt p-senden', id: 'p-senden',
     title: 'Prompt schärfen', 'aria-label': 'Prompt schärfen', disabled: true, onclick: pComposerSenden }, pPfeil(true));
   const vorschau = h('details', { id: 'p-auftragsvorschau' }, h('summary', { text: 'Auftragsvorschau' }),
@@ -666,10 +678,10 @@ function pComposerZeigen() {
     h('section', { class: 'p-composer-karte', 'aria-label': 'Neuen Prompt schärfen' },
       h('p', { id: 'p-basis-hinweis', class: 'leise', hidden: true }), pFeld('p-rohprompt', 'Rohprompt', roh),
       h('fieldset', { class: 'p-zielauswahl' }, h('legend', { text: 'Für welches Modell?' }),
-        h('p', { class: 'leise', text: 'Für jedes angekreuzte Modell entsteht eine eigene Fassung. Das Schreibmodell formuliert sie.' }),
+        h('p', { class: 'leise', text: 'Für jedes angekreuzte Modell entsteht eine eigene Fassung. Jedes Schreibmodell formuliert eine eigene.' }),
         h('div', { id: 'p-ziele' })),
-      h('div', { class: 'p-composer-fuss' }, typMenue, pFeld('p-schreibmodell', 'Schreibmodell', schreiben), kontext, material, senden),
-      h('p', { class: 'leise', text: 'Dieses Modell überarbeitet deinen Prompt.' }),
+      h('div', { class: 'p-composer-fuss' }, typMenue, schreiben, kontext, material, senden),
+      h('p', { id: 'p-schreibhinweis', class: 'leise', text: 'Dieses Modell überarbeitet deinen Prompt.' }),
       h('div', { id: 'p-chips', class: 'p-knoepfe' }), h('p', { id: 'p-material-hinweis', class: 'leise' })), modus,
     h('details', { class: 'p-weitere' }, h('summary', { text: 'Weitere Angaben' }),
       pFeld('p-composer-titel', 'Titel, optional', titel), pFeld('p-composer-hinweise', 'Hinweise', hinweise),
@@ -689,7 +701,6 @@ function pComposerZeigen() {
     const e = P.eintraege.find((x) => x.id === basis.value);
     if (e) pComposerBasis(e);
   });
-  schreiben.addEventListener('change', () => { P.entwurf.schreibmodell = schreiben.value; pAuswahlMerken(); pComposerZusammenfassung(); });
   roh.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.key === 'Enter' && !e.isComposing) { e.preventDefault(); return pComposerSenden(); }
   });
@@ -722,6 +733,7 @@ async function pOptionenLaden(neu = false) {
   P.optionenLaeuft = true;
   try {
     const d = await api('/api/prompt-optionen');
+    const erstesLaden = !P.optionen;
     P.optionen = d;
     const typ = d.typen.find((x) => x.id === P.entwurf.prompt_typ) || d.typen[0];
     P.entwurf.prompt_typ = typ.id;
@@ -735,16 +747,55 @@ async function pOptionenLaden(neu = false) {
       return h('label', { class: 'p-typoption' }, radio, h('span', {}, h('strong', { text: t.name }), h('small', { text: t.untertitel })));
     }));
     $('#p-typname').textContent = 'Prompt-Typ: ' + typ.name;
-    const erlaubt = (p) => p.prompts_verfuegbar;
-    const modell = d.schreibmodelle.find((p) => p.id === P.entwurf.schreibmodell && erlaubt(p))
-      || d.schreibmodelle.find((p) => erlaubt(p) && ['claude', 'codex'].includes(p.anbieter)) || d.schreibmodelle.find(erlaubt);
-    P.entwurf.schreibmodell = modell?.id || '';
-    $('#p-schreibmodell').replaceChildren(...d.schreibmodelle.map((p) => h('option', { value: p.id,
-      disabled: !erlaubt(p), text: pBeschriftung(p.name, p.zugang_text, p.prompts_grund) })));
-    $('#p-schreibmodell').value = P.entwurf.schreibmodell; $('#p-schreibmodell').disabled = !modell;
+    pSchreibmodelleSetzen(P.entwurf.schreibmodelle, erstesLaden);
+    if (erstesLaden && !P.entwurf.schreibmodelle.length) {
+      const modell = d.schreibmodelle.find((p) => p.prompts_verfuegbar && ['claude', 'codex'].includes(p.anbieter))
+        || d.schreibmodelle.find((p) => p.prompts_verfuegbar);
+      pSchreibmodelleSetzen(modell ? [modell.id] : []);
+    }
+    pSchreibmodelleZeichnen();
     pZieleZeichnen(); pComposerZusammenfassung(); pEntdeckenZeichnen();
   } catch (err) { $('#p-composer-status').textContent = err.message; }
   finally { P.optionenLaeuft = false; }
+}
+
+function pSchreibauswahlLaden() {
+  try {
+    const liste = localStorage.getItem('werkstatt.prompt-schreibmodelle');
+    const alt = localStorage.getItem('werkstatt.prompt-schreibmodell');
+    const ids = liste === null ? (alt ? [alt] : []) : JSON.parse(liste);
+    return Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : [];
+  } catch { return []; }
+}
+
+function pSchreibmodelleSetzen(ids, nurVerfuegbar = false) {
+  P.entwurf.schreibmodelle = (P.optionen?.schreibmodelle || [])
+    .filter((p) => ids.includes(p.id) && (!nurVerfuegbar || p.prompts_verfuegbar)).slice(0, 3).map((p) => p.id);
+  P.schreibmodellFehlt = false;
+}
+
+function pSchreibmodelleZeichnen() {
+  const ids = P.entwurf.schreibmodelle;
+  const profile = P.optionen?.schreibmodelle || [];
+  $('#p-schreibmodelle').replaceChildren(...profile.map((p) => {
+    const gewaehlt = ids.includes(p.id);
+    const voll = !gewaehlt && ids.length >= 3;
+    const cb = h('input', { type: 'checkbox', value: p.id, 'aria-label': p.name,
+      disabled: voll || (!gewaehlt && !p.prompts_verfuegbar), ...(voll ? { title: 'Höchstens drei Schreibmodelle' } : {}) });
+    cb.checked = gewaehlt;
+    cb.addEventListener('change', () => {
+      const auswahl = new Set(P.entwurf.schreibmodelle);
+      if (cb.checked) auswahl.add(p.id);
+      else if (auswahl.size > 1) auswahl.delete(p.id);
+      pSchreibmodelleSetzen([...auswahl]);
+      pSchreibmodelleZeichnen(); pAuswahlMerken(); pComposerZusammenfassung();
+    });
+    return h('label', { class: 'p-typoption' }, cb, h('span', { text: pBeschriftung(p.name, p.zugang_text,
+      p.prompts_verfuegbar ? '' : p.prompts_grund || p.grund) }));
+  }));
+  const namen = profile.filter((p) => ids.includes(p.id)).map((p) => pBeschriftung(p.name, p.zugang_text));
+  $('#p-schreibname').textContent = (namen.length > 1 ? 'Schreibmodelle: ' : 'Schreibmodell: ') + (namen.join(' + ') || 'Bitte wählen');
+  $('#p-schreibhinweis').textContent = namen.length > 1 ? 'Jedes gewählte Modell schreibt eine eigene Fassung.' : 'Dieses Modell überarbeitet deinen Prompt.';
 }
 
 function pTypWaehlen(id) {
@@ -828,13 +879,20 @@ function pZieleZeichnen() {
 }
 
 function pComposerZusammenfassung(meldung = '') {
-  const p = P.optionen?.schreibmodelle.find((x) => x.id === P.entwurf.schreibmodell);
-  $('#p-senden').disabled = !!P.sendenLaeuft || !!P.sendung || !p?.prompts_verfuegbar;
+  const profile = (P.optionen?.schreibmodelle || []).filter((p) => P.entwurf.schreibmodelle.includes(p.id));
+  const fehlt = profile.find((p) => !p.prompts_verfuegbar);
+  $('#p-senden').disabled = !!P.sendenLaeuft || !!P.sendung || !profile.length || !!fehlt;
   if (!meldung && P.sendung?.unklar) meldung = 'Die Bestätigung fehlt. Prüfe den Auftragsstatus, bevor du erneut sendest.';
-  $('#p-composer-status').textContent = meldung || (!p ? 'Kein Schreibmodell verfügbar.' :
-    `${P.entwurf.ziele.length} ${P.entwurf.ziele.length === 1 ? 'Zielmodell' : 'Zielmodelle'} · ${P.entwurf.ziele.length} ${P.entwurf.ziele.length === 1 ? 'Schärfen-Lauf' : 'Schärfen-Läufe'} · Schreibmodell: ${pBeschriftung(p.name, p.zugang_text)}`);
-  $('#p-material-hinweis').textContent = p?.cloud && (P.entwurf.materialien.length || P.entwurf.kontexte.length)
-    ? `Ausgewähltes Material und Kontext werden an ${p.name} mitgesendet.` : '';
+  const n = P.entwurf.ziele.length, m = profile.length;
+  let status = 'Bitte ein Schreibmodell wählen.';
+  if (fehlt) status = `${fehlt.name} ist gerade nicht verfügbar.`;
+  else if (!m && P.schreibmodellFehlt) status = 'Das Schreibmodell dieses Laufs gibt es nicht mehr. Bitte neu wählen.';
+  else if (m === 1) status = `${n} ${n === 1 ? 'Zielmodell' : 'Zielmodelle'} · ${n} ${n === 1 ? 'Schärfen-Lauf' : 'Schärfen-Läufe'} · Schreibmodell: ${pBeschriftung(profile[0].name, profile[0].zugang_text)}`;
+  else if (m > 1) status = `${n} ${n === 1 ? 'Zielmodell' : 'Zielmodelle'} × ${m} Schreibmodelle · ${n * m} Schärfen-Läufe`;
+  $('#p-composer-status').textContent = meldung || status;
+  const cloud = profile.filter((p) => p.cloud).map((p) => p.name);
+  $('#p-material-hinweis').textContent = cloud.length && (P.entwurf.materialien.length || P.entwurf.kontexte.length)
+    ? `Ausgewähltes Material und Kontext werden an ${cloud.join(' und ')} mitgesendet.` : '';
   pProfilProblemeZeichnen();
 }
 
@@ -842,7 +900,7 @@ function pProfilProblemeZeichnen() {
   const box = $('#p-schreibgruende');
   const offen = box.querySelector('details')?.open || false;
   const fehlt = (P.optionen?.schreibmodelle || []).filter((p) => !(p.prompts_verfuegbar ?? p.verfuegbar));
-  const gewaehlt = new Set([P.entwurf.schreibmodell, ...P.entwurf.ziele.map((z) => z.testprofil)]);
+  const gewaehlt = new Set([...P.entwurf.schreibmodelle, ...P.entwurf.ziele.map((z) => z.testprofil)]);
   const zeile = (p) => h('p', { class: 'leise', text: pBeschriftung(p.name, p.prompts_grund || p.grund) });
   const details = h('details', {}, h('summary', { text: `Nicht verfügbare Modelle (${fehlt.length})` }), ...fehlt.map(zeile));
   details.open = offen;
@@ -856,16 +914,19 @@ function pComposerDaten() {
 async function pComposerVorschau() {
   try {
     const v = await api('/api/prompt', { ...pComposerDaten(), aktion: 'composer_vorschau' });
+    const schreibmodelle = v.schreibmodelle || P.optionen.schreibmodelle.filter((p) => P.entwurf.schreibmodelle.includes(p.id));
     $('#p-vorschauinhalt').replaceChildren(...v.ziele.map((z) => h('section', {}, h('h3', { text: z.zielmodell.name }),
-      h('pre', { class: 'p-text', text: z.auftrag }), h('p', { class: 'leise', text: z.gesendet_stand }))));
+      h('pre', { class: 'p-text', text: z.auftrag }), h('p', { class: 'leise', text: z.gesendet_stand }),
+      h('p', { class: 'leise', text: 'Geht an: ' + schreibmodelle.map((p) => p.name).join(', ') }))));
     $('#p-auftragsvorschau').open = true;
   } catch (err) { pComposerZusammenfassung(err.message); }
 }
 
 async function pComposerSenden(fortsetzen = false) {
   if (P.sendenLaeuft || (P.sendung && fortsetzen !== true)) return;
-  if (!P.optionen?.schreibmodelle.some((p) => p.id === P.entwurf.schreibmodell && p.prompts_verfuegbar)) {
-    pComposerZusammenfassung(P.optionen ? 'Kein Schreibmodell verfügbar.' : 'Modelle und Prompt-Typen werden geladen …');
+  if (!P.entwurf.schreibmodelle.length || P.entwurf.schreibmodelle.some((id) =>
+    !P.optionen?.schreibmodelle.some((p) => p.id === id && p.prompts_verfuegbar))) {
+    pComposerZusammenfassung(P.optionen ? '' : 'Modelle und Prompt-Typen werden geladen …');
     return;
   }
   P.sendenLaeuft = true;
@@ -882,16 +943,30 @@ async function pComposerSenden(fortsetzen = false) {
       const v = await api('/api/prompt', { ...P.sendung.daten, aktion: 'composer_vorschau' });
       P.sendung.daten.gesendet_staende = v.gesendet_staende;
     }
+    P.sendung.abgelehnt = false;
     gesendet = true;
     const status = await api('/api/prompt', { ...P.sendung.daten, aktion: 'composer_senden' });
     await pSendungUebernommen(status);
   } catch (err) {
-    if (gesendet) pSendungUnklar(err.message);
+    if (gesendet && err.status >= 400 && err.status < 600) {
+      P.sendung.abgelehnt = true; P.sendung.unklar = false;
+      pComposerZusammenfassung(err.message); pSendungsaktionenZeichnen();
+    } else if (gesendet) pSendungUnklar(err.message);
     else { P.sendung = null; pComposerZusammenfassung(err.message); }
   } finally {
     P.sendenLaeuft = false;
-    $('#p-senden').disabled = !!P.sendung || !P.optionen?.schreibmodelle.some((p) => p.id === P.entwurf.schreibmodell && p.prompts_verfuegbar);
+    pComposerZusammenfassung($('#p-composer-status').textContent);
   }
+}
+
+function pSendungsaktionenZeichnen() {
+  $('#p-sendungsaktionen').replaceChildren(...(P.sendung.abgelehnt ? [h('p', { class: 'leise',
+    text: 'Bereits angelegte Läufe der alten Sendung stehen unter ‚Schärfen‘ des Eintrags.' })] : []),
+  pKnopf('Einreihung fortsetzen', () => pComposerSenden(true)),
+  ...(P.sendung.abgelehnt ? [pKnopf('Als neue Sendung senden', () => {
+    if (P.sendenLaeuft) return;
+    P.sendung = null; $('#p-sendungsaktionen').replaceChildren(); return pComposerSenden();
+  })] : []));
 }
 
 function pSendungUnklar(grund = '') {
@@ -905,7 +980,7 @@ async function pSendungStatus() {
   try {
     const s = await api('/api/prompt', { aktion: 'composer_status', anfrage_id: P.sendung.daten.anfrage_id });
     if (s.gefunden && s.vollstaendig) await pSendungUebernommen(s);
-    else if (s.gefunden) $('#p-sendungsaktionen').replaceChildren(pKnopf('Einreihung fortsetzen', () => pComposerSenden(true)));
+    else if (s.gefunden) pSendungsaktionenZeichnen();
     else { P.sendung = null; $('#p-sendungsaktionen').replaceChildren(); pComposerZusammenfassung('Die Sendung wurde nicht gefunden. Du kannst erneut senden.'); }
   } catch (err) { pSendungUnklar(err.message); }
 }
@@ -942,54 +1017,103 @@ function pComposerBasis(e, name = null) {
 }
 
 async function pComposerNochmal(e, b) {
-  if (!b.eingaben?.bau_version) return pSchaerfendialog(e, b.fassung, b.aktion);
+  if (!b.auftragsgruppe || !b.zielschluessel) return pSchaerfendialog(e, b.fassung, b.aktion);
+  pComposerZeigen();
   if (!P.optionen) await pOptionenLaden();
-  pComposerBasis(e, b.fassung);
+  const profile = P.optionen.schreibmodelle;
+  const p = profile.find((p) => p.id === b.schreibmodell_id) || profile.find((p) => p.name === b.auswerter
+    && p.anbieter === b.anbieter && p.modell === b.modell && (p.stufe ?? null) === (b.denkstufe ?? null));
+  pComposerAusBeleg(e, b, b.fassung, p ? [p.id] : []);
   P.entwurf.text = b.original;
   P.entwurf.basis.stand = b.fassung_stand;
   $('#p-rohprompt').value = b.original;
+  P.entwurf.hinweise = b.eingaben.hinweise;
+  P.entwurf.schaerfen_aktion = b.eingaben.aktion;
+  $('#p-composer-hinweise').value = b.eingaben.hinweise;
+  P.schreibmodellFehlt = !p;
+  pComposerZusammenfassung();
+}
+
+async function pComposerVerfeinern(e, b) {
+  pComposerZeigen();
+  if (!P.optionen) await pOptionenLaden();
+  pComposerAusBeleg(e, b, b.ergebnis_fassung, pSchreibauswahlLaden());
+}
+
+function pComposerAusBeleg(e, b, name, schreibmodelle) {
+  P.entwurf = pEntwurfNeu();
+  P.zielMerker = new Map(); delete P.textziele;
+  pComposerBasis(e, name);
   const eingaben = b.eingaben;
-  P.entwurf.prompt_typ = eingaben.typ.id; P.entwurf.modus = eingaben.modus.id;
-  P.entwurf.hinweise = eingaben.hinweise; P.entwurf.realismus = eingaben.realismus;
-  P.entwurf.schaerfen_aktion = eingaben.aktion;
+  P.entwurf.prompt_typ = eingaben.typ?.id || e.prompt_typ || 'auto';
+  P.entwurf.modus = eingaben.modus?.id || e.modus || 'prompt';
+  P.entwurf.realismus = !!eingaben.realismus;
+  P.entwurf.schaerfen_aktion = 'Schärfen';
   P.entwurf.materialien = JSON.parse(JSON.stringify(eingaben.materialien || []));
   if (eingaben.material) P.entwurf.materialien.push({ art: 'antwort', eintrag: eingaben.material.eintrag, beleg: eingaben.material.beleg });
   P.entwurf.kontexte = (eingaben.kontexte || []).map((k) => ({ id: k.id, stand: k.stand }));
-  const [zielprofil, eintrag, variante] = b.zielschluessel.split(':');
+  const [zielprofil, eintrag, variante] = (b.zielschluessel || b.zielprofil_id || eingaben.zielmodell.anbieter).split(':');
   P.entwurf.ziele = [{ zielprofil, ...(eingaben.zielmodell.anbieter === 'lokal' ? { eintrag } : {}),
     ...(!['bild', 'video'].includes(zielprofil) ? { testprofil: b.testprofil_id || null } : {}), ...(variante ? { variante } : {}) }];
-  P.entwurf.schreibmodell = P.optionen.schreibmodelle.find((p) => p.name === b.auswerter)?.id || '';
-  $('#p-composer-hinweise').value = eingaben.hinweise;
-  $('#p-schreibmodell').value = P.entwurf.schreibmodell;
-  $('#p-typname').textContent = 'Prompt-Typ: ' + eingaben.typ.name;
-  for (const el of $('#p-composer').querySelectorAll('input[name="p-modus"]')) el.checked = el.value === eingaben.modus.id;
-  pZieleZeichnen(); pChipsZeichnen(); pComposerZusammenfassung();
+  pSchreibmodelleSetzen(schreibmodelle);
+  $('#p-composer-hinweise').value = '';
+  $('#p-typname').textContent = 'Prompt-Typ: ' + (eingaben.typ?.name || P.optionen.typen.find((t) => t.id === P.entwurf.prompt_typ)?.name);
+  for (const el of $('#p-typen').querySelectorAll('input')) el.checked = el.value === P.entwurf.prompt_typ;
+  for (const el of $('#p-composer').querySelectorAll('input[name="p-modus"]')) el.checked = el.value === P.entwurf.modus;
+  pSchreibmodelleZeichnen(); pZieleZeichnen(); pChipsZeichnen(); pComposerZusammenfassung();
+  $('#p-composer').querySelector('.p-weitere').open = true;
+  $('#p-composer-hinweise').focus();
 }
 
 async function pGruppeZeichnen(box, e, gruppe) {
   box.append(h('h3', { text: 'Zuletzt gestarteter Auftrag' }));
-  for (const b of gruppe.ergebnisse) {
-    const inhalt = h('div');
-    const a = (e.warteschlange || []).find((a) => a.art === 'schaerfen' && a.prompt?.eintrag === e.id
-      && a.prompt.beleg + '.md' === b.datei);
-    const aktionen = h('div', { class: 'p-knoepfe' });
-    if (a && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand)) {
-      const aktiv = ['wartet', 'laeuft'].includes(a.zustand);
-      if (aktiv || !b.fehler) aktionen.append(pKnopf(aktiv ? 'Abbrechen' : 'Wiederholen', async () => {
-        await api('/api/fassung', { id: a.id, aktion: aktiv ? 'abbrechen' : 'wiederholen' });
-        await pLaden();
-      }));
-    } else if (!a && b.verwaist && !b.fehler && ['fehler', 'abgebrochen'].includes(b.zustand)) {
-      aktionen.append(pKnopf('Wiederholen', () => pAktion({ aktion: 'wiederholen_beleg', id: e.id,
-        datei: b.datei, art_ordner: 'schaerfen' })));
-    }
-    box.append(h('article', { class: 'p-fassung' }, h('h4', { text: b.zielmodell }),
-      h('p', { class: 'leise', text: [b.zustand === 'wartet' ? 'Schärfen wartet.' : b.zustand === 'laeuft' ? 'Prompt wird geschärft …' : ZUSTAND[b.zustand] || b.zustand,
-        b.auswerter, b.ergebnis, b.meldung].filter(Boolean).join(' · ') }),
-      pKnopf('Schärfen-Beleg öffnen', () => pOeffnen(e, 'schaerfen', b.datei)), aktionen, inhalt));
-    if (b.antwort_vorhanden) {
-      try { pSchaerfenErgebnis(inhalt, await pBeleg(e, b, 'schaerfen'), e, b); }
-      catch (err) { inhalt.textContent = err.message; }
+  const belege = [...gruppe.ergebnisse].sort((a, b) => {
+    const links = Number.isInteger(a.lauf_nr), rechts = Number.isInteger(b.lauf_nr);
+    if (links && rechts) return a.lauf_nr - b.lauf_nr;
+    return links ? -1 : rechts ? 1 : 0;
+  });
+  const ziele = new Map();
+  for (const b of belege) {
+    const schluessel = b.zielschluessel || b.zielmodell;
+    if (!ziele.has(schluessel)) ziele.set(schluessel, []);
+    ziele.get(schluessel).push(b);
+  }
+  for (const [schluessel, ergebnisse] of ziele) {
+    const vergleich = ergebnisse.length > 1;
+    const abschnitt = h('section', {}, h('h4', { text: ergebnisse[0].zielmodell }));
+    const original = h('pre', { class: 'p-text' });
+    if (vergleich) abschnitt.append(h('details', {
+      'data-p-ansicht': JSON.stringify(['gruppe', gruppe.id, schluessel, 'original']),
+    }, h('summary', { text: 'Original anzeigen' }), original));
+    const spalten = h('div', { class: vergleich ? 'p-ergebnisspalten' : '' });
+    abschnitt.append(spalten); box.append(abschnitt);
+    for (const b of ergebnisse) {
+      const inhalt = h('div');
+      const a = (e.warteschlange || []).find((a) => a.art === 'schaerfen' && a.prompt?.eintrag === e.id
+        && a.prompt.beleg + '.md' === b.datei);
+      const aktionen = h('div', { class: 'p-knoepfe' });
+      if (a && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand)) {
+        const aktiv = ['wartet', 'laeuft'].includes(a.zustand);
+        if (aktiv || !b.fehler) aktionen.append(pKnopf(aktiv ? 'Abbrechen' : 'Wiederholen', async () => {
+          await api('/api/fassung', { id: a.id, aktion: aktiv ? 'abbrechen' : 'wiederholen' });
+          await pLaden();
+        }));
+      } else if (!a && b.verwaist && !b.fehler && ['fehler', 'abgebrochen'].includes(b.zustand)) {
+        aktionen.append(pKnopf('Wiederholen', () => pAktion({ aktion: 'wiederholen_beleg', id: e.id,
+          datei: b.datei, art_ordner: 'schaerfen' })));
+      }
+      spalten.append(h('article', { class: 'p-fassung' }, h('h5', { text: b.auswerter }),
+        h('p', { class: 'leise', text: [b.zustand === 'wartet' ? 'Schärfen wartet.' : b.zustand === 'laeuft' ? 'Prompt wird geschärft …' : ZUSTAND[b.zustand] || b.zustand,
+          b.dauer_s != null ? dauer(Number(b.dauer_s)) : '', b.tokens != null ? `${b.tokens} Token` : '',
+          b.ergebnis, b.meldung, b.fehler].filter(Boolean).join(' · ') }),
+        pKnopf('Schärfen-Beleg öffnen', () => pOeffnen(e, 'schaerfen', b.datei)), aktionen, inhalt));
+      if (b.antwort_vorhanden || (vergleich && b === ergebnisse[0])) {
+        try {
+          const antwort = await pBeleg(e, b, 'schaerfen');
+          if (vergleich && b === ergebnisse[0]) original.textContent = antwort.original;
+          if (b.antwort_vorhanden) pSchaerfenErgebnis(inhalt, antwort, e, b, vergleich);
+        } catch (err) { inhalt.textContent = err.message; }
+      }
     }
   }
 }

@@ -1554,7 +1554,7 @@ main::before {
 .p-senden { width: 42px; height: 42px; border-radius: 50%; font-size: 22px; margin-left: auto; }
 .p-auswahl { position: relative; }
 .p-auswahl > summary { cursor: pointer; color: var(--text); padding: 8px; border: 1px solid var(--linie); border-radius: 8px; }
-#p-typen { position: absolute; bottom: calc(100% + 8px); left: 0; width: min(370px, 74vw); max-height: 390px; overflow-y: auto; z-index: 4; padding: 8px; border: 1px solid var(--linie); border-radius: 10px; background: var(--flaeche-2); }
+#p-typen, #p-schreibmodelle { position: absolute; bottom: calc(100% + 8px); left: 0; width: min(370px, 74vw); max-height: 390px; overflow-y: auto; z-index: 4; padding: 8px; border: 1px solid var(--linie); border-radius: 10px; background: var(--flaeche-2); }
 .p-typoption { display: flex; align-items: start; gap: 10px; padding: 9px; cursor: pointer; }
 .p-typoption span, .p-typoption small { display: block; }
 .p-typoption small { color: var(--leise); margin-top: 3px; }
@@ -1582,6 +1582,8 @@ main::before {
 .p-katalogkarte small { margin-top: auto; color: var(--leise); font-size: 11px; }
 .p-katalogkarte > svg { align-self: end; color: var(--akzent); flex-shrink: 0; }
 .p-ergebnisgruppe { margin: 24px 0; padding: 18px; border: 1px solid var(--linie); border-radius: 16px; }
+.p-ergebnisspalten { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.p-ergebnisspalten > article { min-width: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 1400px) { .p-kartenreihe { grid-auto-columns: calc((100% - 24px) / 3); } }
 @media (max-width: 1099px) {
@@ -1603,4 +1605,5 @@ main::before {
   .p-entdecken-kopf { align-items: start; flex-direction: column; }
   .p-kartenreihe { grid-auto-columns: 82%; }
   .p-ergebnisgruppe { padding: 12px; }
+  .p-ergebnisspalten { grid-template-columns: minmax(0, 1fr); }
 }

@@ -57,8 +57,8 @@ const input=async(el,text)=>{el.value=text;el.focus();await el.ausloesen('input'
 (async()=>{
   run('window.promptsAktiv(true)'); await new Promise(setImmediate);
   assert.equal(zeitgeber.length,1);
-  assert.equal($('#p-schreibmodell').value,'abo');
-  assert($('#p-schreibmodell').children[0].disabled);
+  assert.equal($('#p-schreibmodelle').querySelector('input[value="abo"]').checked,true);
+  assert($('#p-schreibmodelle').querySelector('input[value="api"]').disabled);
   assert($('#p-schreibgruende').textContent.includes('Abo-Anmeldung nicht bestätigt'));
   assert.equal($('#p-typen').querySelectorAll('input').length,11);
   assert($('#p-typen').textContent.includes('Passenden Typ aus der Aufgabe bestimmen'));
@@ -108,8 +108,8 @@ const input=async(el,text)=>{el.value=text;el.focus();await el.ausloesen('input'
   assert.deepEqual(kopiert,['Nur Original [A]','Nur neu [A]']);
   ctx.e=e;ctx.beleg={datei:'Ergebnis.md',zustand:'fertig'};
   ctx.b={...ctx.b,aktion:'Schärfen',fassung:'Fassung 1',fassung_stand:'alt',zielschluessel:'qwen27:qwen27-unsloth',
-    zielprofil_id:'qwen27',testprofil_id:null,auswerter:'Claude · Sonnet',typ_anzeige:'Typ nicht erkannt',
-    eingaben:{bau_version:2,typ:{id:'auto',name:'Auto'},modus:{id:'prompt'},hinweise:'Übernommener Hinweis',aktion:'Schärfen',materialien:[],kontexte:[]}};
+    zielprofil_id:'qwen27',testprofil_id:null,auswerter:'Claude · Sonnet',schreibmodell_id:'abo',auftragsgruppe:'gruppe',typ_anzeige:'Typ nicht erkannt',
+    eingaben:{bau_version:2,typ:{id:'auto',name:'Auto'},modus:{id:'prompt'},zielmodell:{anbieter:'lokal'},hinweise:'Übernommener Hinweis',aktion:'Schärfen',materialien:[],kontexte:[]}};
   run('pSchaerfenErgebnis(box,b,e,beleg)');assert(box.textContent.includes('Typ nicht erkannt'));
   const vorNochmal=uuid;const aufrufeVorNochmal=anfragen.length;
   await klick(knopf('Nochmal …',box));
