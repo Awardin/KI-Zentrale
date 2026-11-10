@@ -45,7 +45,7 @@ function dokumentBauen() {
     setAttribute(k, v) { this.attrs[k] = String(v); if (['id', 'name', 'type', 'value'].includes(k)) this[k] = String(v); if (['hidden', 'disabled', 'open'].includes(k)) this[k] = true; }
     getAttribute(k) { return this.attrs[k] ?? (k === 'id' ? this.id : null); }
     addEventListener(k, f) { (this.events[k] ||= []).push(f); }
-    async ausloesen(k, e = {}) { for (const f of this.events[k] || []) await f({ target: this, currentTarget: this, preventDefault() {}, ...e }); }
+    async ausloesen(k, e = {}) { for (const f of this.events[k] || []) await f({ type: k, target: this, currentTarget: this, preventDefault() {}, ...e }); }
     focus() { dokument.activeElement = this; }
     blur() { if (dokument.activeElement === this) dokument.activeElement = null; }
     select() {}
@@ -74,6 +74,7 @@ function dokumentBauen() {
     querySelectorAll(s) { return this.alle().filter((k) => k.matches(s)); }
     querySelector(s) { return this.querySelectorAll(s)[0] || null; }
     closest(s) { return this.matches(s) ? this : this.parentElement?.closest(s) || null; }
+    contains(el) { return el === this || this.children.some((k) => k.contains(el)); }
   }
   dokument = new Element('document');
   dokument.createElement = (tag) => new Element(tag);

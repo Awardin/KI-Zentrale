@@ -1512,6 +1512,9 @@ main::before {
 .p-vergleich { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 .p-vergleich section { min-width: 0; }
 .p-schaerfen-menue { margin-left: 8px; }
+.p-laufzeile { display: flex; align-items: center; gap: 8px; }
+.p-laufzeile::before { content: ''; flex: 0 0 9px; height: 9px; border-radius: 50%; background: var(--bernstein); }
+.p-laufzeile[data-zustand="laeuft"]::before { animation: puls 1.2s ease-in-out infinite; }
 @media (max-width: 700px) { .p-vergleich { grid-template-columns: minmax(0, 1fr); } }
 
 /* Prompts: lokale Navigation, dauerhafter Composer und Katalog. */

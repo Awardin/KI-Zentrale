@@ -726,6 +726,15 @@ keinFremdText(box);
                               encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
 
+    def test_menues_und_laufanzeige_bedienung(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_anzeige_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_fuenf_frischstarts_wiederkehr_und_langsamer_index(self):
         import shutil
         import subprocess
@@ -989,15 +998,22 @@ function elemente(e, tag) { return [e, ...(e.children || []).flatMap((k) => elem
   assert(antwort.open); assert.equal(antwort.querySelector('.f-text').innerHTML, 'Vorhandene Antwort');
   assert.equal(box.scrollTop, 123); assert.equal(box.scrollLeft, 12);
   assert.equal(liste.scrollTop, 234); assert.equal(fenster.scrollY, 456);
-  // Nutzertexte in Beleg und Warteschlange stammen aus ZUSTAND.
+  // Aktive Läufe haben eine eigene Statuszeile; abgeschlossene verwenden weiter ZUSTAND.
   for (const [roh, deutsch] of Object.entries({wartet: 'Wartet', laeuft: 'Läuft', fertig: 'Fertig',
       fehler: 'Fehlgeschlagen', abgebrochen: 'Abgebrochen'})) {
     eintraege[0].tests[0].zustand = roh;
     eintraege[0].warteschlange[0].zustand = roh;
     await vm.runInContext('pLaden()', kontext);
     const texte = elemente(box, 'p').map((k) => k.textContent);
-    assert(texte.some((t) => t.includes(deutsch) && t.includes('Urteil: gut')));
-    if (roh !== 'fertig') assert(texte.some((t) => t.startsWith('Fassung 1 · Fake · ' + deutsch)));
+    if (['wartet', 'laeuft'].includes(roh)) {
+      const zeile = roh === 'wartet' ? 'Wartet auf den Start …' : 'Läuft – das Modell arbeitet noch …';
+      assert.equal(texte.filter((t) => t === zeile).length, 2, 'Beleg und Warteschlange haben eine Laufzeile');
+      assert(texte.some((t) => t.includes('Urteil: gut') && !t.includes(deutsch)));
+      assert(texte.includes('Fassung 1 · Fake'));
+    } else {
+      assert(texte.some((t) => t.includes(deutsch) && t.includes('Urteil: gut')));
+      if (roh !== 'fertig') assert(texte.some((t) => t.startsWith('Fassung 1 · Fake · ' + deutsch)));
+    }
     assert(!texte.some((t) => t.split(' · ').includes(roh)));
   }
   // Im Leerlauf nur alle 30 s, mit aktiver Warteschlange oder aktivem Beleg alle 2,5 s.
