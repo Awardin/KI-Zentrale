@@ -111,6 +111,22 @@ function pOeffnen(e, was, datei = '') {
   return api('/api/prompt', { aktion: 'oeffnen', id: e.id, was, datei });
 }
 
+function pBelegAuftrag(e, b, art) {
+  return (e.warteschlange || []).find((a) => a.art === art && a.prompt?.eintrag === e.id
+    && a.prompt.beleg + '.md' === b.datei);
+}
+
+function pLaufanzeige(b, a = null) {
+  if (!['wartet', 'laeuft'].includes(b.zustand)) return null;
+  const start = Number.isFinite(a?.begonnen) ? new Date(a.begonnen * 1000)
+    : new Date(typeof b.erstellt === 'string' ? b.erstellt.replace(' ', 'T') : NaN);
+  const zeit = Number.isNaN(start.getTime()) ? '' : start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return h('div', { class: 'p-laufanzeige' }, h('p', { class: 'p-laufzeile', role: 'status',
+    'data-zustand': b.zustand, text: b.zustand === 'wartet' ? 'Wartet auf den Start …'
+      : `Läuft${zeit ? ` seit ${zeit}` : ''} – das Modell arbeitet noch …` }),
+  b.zustand === 'laeuft' ? h('div', { class: 'balken offen', 'aria-hidden': 'true' }, h('i')) : null);
+}
+
 async function pWaehlen(id, bewusst = true) {
   if (pGeschuetzt()) return;
   const anfrage = ++P.anfrage;
@@ -127,7 +143,7 @@ async function pWaehlen(id, bewusst = true) {
     const stand = JSON.stringify({ eintrag, warteschlange: (warteschlange || [])
       .filter((a) => a.prompt?.eintrag === id && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))
       .map((a) => ({ id: a.id, fassung: a.prompt.fassung, beleg: a.prompt.beleg,
-        auswerter: a.auswerter.name, zustand: a.zustand, meldung: a.meldung })) });
+        auswerter: a.auswerter.name, zustand: a.zustand, begonnen: a.begonnen, meldung: a.meldung })) });
     if (stand === P.inhaltStand) return;
     const box = $('#p-inhalt');
     const gleicherEintrag = P.inhaltId === id;
@@ -179,10 +195,12 @@ async function pWaehlen(id, bewusst = true) {
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Tests' }));
     for (const t of e.tests) {
+      const laufanzeige = pLaufanzeige(t, pBelegAuftrag(e, t, 'prompt'));
       const karte = h('article', { class: 'p-fassung' }, h('p', { text: [t.erstellt, t.fassung,
         t.geaendert ? 'seit dem Test geändert' : '', t.auswerter, t.dauer_s != null ? dauer(Number(t.dauer_s)) : '',
         t.tokens != null ? `${t.tokens} Token` : '', t.kosten_usd != null ? `${t.kosten_usd} USD` : '',
-        ZUSTAND[t.zustand] || t.zustand, t.urteil ? `Urteil: ${t.urteil}` : '', t.notiz, t.fehler].filter(Boolean).join(' · ') }),
+        !laufanzeige ? ZUSTAND[t.zustand] || t.zustand : '', t.urteil ? `Urteil: ${t.urteil}` : '', t.notiz, t.fehler].filter(Boolean).join(' · ') }),
+      laufanzeige,
       pKnopf('Öffnen', () => pOeffnen(e, 'beleg', t.datei)),
       t.html === 'ja' ? pKnopf('Im Browser öffnen', () => pOeffnen(e, 'html', t.datei.replace(/\.md$/i, '.html'))) : null);
       karte.append(pKnopf('Gesendet anzeigen', async () => {
@@ -219,6 +237,7 @@ async function pWaehlen(id, bewusst = true) {
     }
     inhalt.push(h('h3', { class: 'abschnitt', text: 'Schärfen' }));
     for (const t of e.schaerfen || []) {
+      const laufanzeige = pLaufanzeige(t, pBelegAuftrag(e, t, 'schaerfen'));
       const antwort = offen.get(JSON.stringify([t.datei, 'schaerfen'])) || h('div', { class: 'f-text' });
       const ansicht = JSON.stringify([t.datei, 'schaerfen']);
       const details = h('details', { 'data-p-ansicht': ansicht }, h('summary', { text: 'Ergebnis anzeigen' }), antwort);
@@ -229,7 +248,8 @@ async function pWaehlen(id, bewusst = true) {
         }
       });
       inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text: [t.erstellt, t.aktion, t.auswerter,
-        t.zielmodell, ZUSTAND[t.zustand] || t.zustand, t.ergebnis, t.fehler].filter(Boolean).join(' · ') }),
+        t.zielmodell, !laufanzeige ? ZUSTAND[t.zustand] || t.zustand : '',
+        !laufanzeige ? t.ergebnis : '', t.fehler].filter(Boolean).join(' · ') }), laufanzeige,
       pKnopf('Öffnen', () => pOeffnen(e, 'schaerfen', t.datei)), details,
       !t.fehler && t.verwaist && ['abgebrochen', 'fehler'].includes(t.zustand) ? pKnopf('Wiederholen', () =>
         pAktion({ aktion: 'wiederholen_beleg', id: e.id, datei: t.datei, art_ordner: 'schaerfen' })) : null));
@@ -238,8 +258,12 @@ async function pWaehlen(id, bewusst = true) {
     for (const a of (e.warteschlange || []).filter((a) => a.prompt?.eintrag === e.id
       && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand))) {
       const aktion = (was) => async () => { await api('/api/fassung', { id: a.id, aktion: was }); await pLaden(); };
+      const beleg = (a.art === 'schaerfen' ? e.schaerfen || [] : e.tests).find((b) => b.datei === a.prompt.beleg + '.md');
+      const laufanzeige = pLaufanzeige({ zustand: a.zustand, erstellt: beleg?.erstellt }, a);
       inhalt.push(h('article', { class: 'p-fassung' }, h('p', { text:
-        `${a.art === 'schaerfen' ? 'Schärfen · ' : ''}${a.prompt.fassung} · ${a.auswerter.name} · ${ZUSTAND[a.zustand] || a.zustand} · ${a.meldung || ''}` }),
+        laufanzeige ? `${a.art === 'schaerfen' ? 'Schärfen · ' : ''}${a.prompt.fassung} · ${a.auswerter.name}`
+          : `${a.art === 'schaerfen' ? 'Schärfen · ' : ''}${a.prompt.fassung} · ${a.auswerter.name} · ${ZUSTAND[a.zustand] || a.zustand} · ${a.meldung || ''}` }),
+      laufanzeige,
       ...(['wartet', 'laeuft'].includes(a.zustand) ? [pKnopf('Abbrechen', aktion('abbrechen'))]
         : (a.art === 'schaerfen' ? e.schaerfen || [] : e.tests).some((t) => t.datei === `${a.prompt.beleg}.md` && t.fehler) ? []
           : [pKnopf('Wiederholen', aktion('wiederholen'))]),
@@ -303,9 +327,29 @@ function pBeleg(e, t, was = 'beleg') {
   return api(`/api/prompt-datei?id=${encodeURIComponent(e.id)}&was=${was}&datei=${encodeURIComponent(t.datei)}`);
 }
 
+function pMenuesSchliessen(innerhalb) {
+  for (const d of document.querySelectorAll('#p-composer details.p-auswahl')) {
+    if (d.open && !d.contains(innerhalb)) d.open = false;
+  }
+  for (const m of document.querySelectorAll('.p-schaerfen-menue')) {
+    // Der zugehörige Schärfen-Knopf gehört für Außenklick und Fokus zum Menü.
+    if (!m.hidden && !m.parentElement.contains(innerhalb)) {
+      m.hidden = true;
+      m.parentElement.querySelector('button').setAttribute('aria-expanded', 'false');
+    }
+  }
+}
+
+function pMenueEreignis(e) {
+  if (e.type === 'toggle') {
+    if (e.target.matches('#p-composer details.p-auswahl') && e.target.open) pMenuesSchliessen(e.target);
+  } else pMenuesSchliessen(e.target);
+}
+
 function pSchaerfenMenue(e, name) {
   const menue = h('span', { class: 'p-schaerfen-menue', hidden: true });
   const b = pKnopf('Schärfen ▾', () => {
+    if (menue.hidden) pMenuesSchliessen(b);
     menue.hidden = !menue.hidden;
     b.setAttribute('aria-expanded', String(!menue.hidden));
   });
@@ -722,6 +766,8 @@ function pComposerZeigen() {
       if (menue) { menue.hidden = true; const b = menue.parentElement.querySelector('button'); b.setAttribute('aria-expanded', 'false'); b.focus(); e.preventDefault(); }
     }
   });
+  // Ein delegierter Handler bleibt auch nach dem Neuzeichnen der Auswahl gültig.
+  for (const art of ['pointerdown', 'focusin', 'toggle']) document.addEventListener?.(art, pMenueEreignis, true);
   window.addEventListener?.('beforeunload', (e) => {
     if (P.entwurf.text.trim() || P.sendung) { e.preventDefault(); e.returnValue = ''; }
   });
@@ -1089,8 +1135,8 @@ async function pGruppeZeichnen(box, e, gruppe) {
     abschnitt.append(spalten); box.append(abschnitt);
     for (const b of ergebnisse) {
       const inhalt = h('div');
-      const a = (e.warteschlange || []).find((a) => a.art === 'schaerfen' && a.prompt?.eintrag === e.id
-        && a.prompt.beleg + '.md' === b.datei);
+      const a = pBelegAuftrag(e, b, 'schaerfen');
+      const laufanzeige = pLaufanzeige(b, a);
       const aktionen = h('div', { class: 'p-knoepfe' });
       if (a && ['wartet', 'laeuft', 'fehler', 'abgebrochen'].includes(a.zustand)) {
         const aktiv = ['wartet', 'laeuft'].includes(a.zustand);
@@ -1103,7 +1149,7 @@ async function pGruppeZeichnen(box, e, gruppe) {
           datei: b.datei, art_ordner: 'schaerfen' })));
       }
       spalten.append(h('article', { class: 'p-fassung' }, h('h5', { text: b.auswerter }),
-        h('p', { class: 'leise', text: [b.zustand === 'wartet' ? 'Schärfen wartet.' : b.zustand === 'laeuft' ? 'Prompt wird geschärft …' : ZUSTAND[b.zustand] || b.zustand,
+        laufanzeige || h('p', { class: 'leise', text: [ZUSTAND[b.zustand] || b.zustand,
           b.dauer_s != null ? dauer(Number(b.dauer_s)) : '', b.tokens != null ? `${b.tokens} Token` : '',
           b.ergebnis, b.meldung, b.fehler].filter(Boolean).join(' · ') }),
         pKnopf('Schärfen-Beleg öffnen', () => pOeffnen(e, 'schaerfen', b.datei)), aktionen, inhalt));

@@ -7,16 +7,18 @@ class Element {
   constructor(tag) {
     this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.events = {};
   }
-  append(...k) { this.children.push(...kinder(...k)); }
-  replaceChildren(...k) { this.children = kinder(...k); }
+  append(...k) { const neu = kinder(...k); for (const el of neu) el.parentElement = this; this.children.push(...neu); }
+  replaceChildren(...k) { this.children = []; this.append(...k); }
   setAttribute(k, v) { this[k] = v; }
   getAttribute(k) { return this[k] ?? null; }
   addEventListener(k, f) { this.events[k] = f; }
   focus() {}
   nachkommen() { return this.children.flatMap((k) => [k, ...(k.nachkommen?.() || [])]); }
+  contains(el) { return el === this || this.nachkommen().includes(el); }
   querySelectorAll(s) { return this.nachkommen().filter((k) => s !== 'details[data-p-ansicht]'
     || (k.tag === 'details' && k['data-p-ansicht'] != null)); }
-  querySelector(s) { return this.nachkommen().find((k) => s === '.f-text' && k.className === 'f-text') || null; }
+  querySelector(s) { return this.nachkommen().find((k) => s === 'button' ? k.tag === 'button'
+    : s === '.f-text' && k.className === 'f-text') || null; }
 }
 const ids = new Map(), anfragen = [], speicher = new Map([['werkstatt.prompt-auswerter', '["ziel"]']]);
 let dialog = null, verfuegbar = true, aboTest = false;
@@ -28,6 +30,10 @@ const document = {
     return ids.get(s);
   },
   createElement: (tag) => new Element(tag),
+  querySelectorAll(s) {
+    const alle = [...new Set([...ids.values()].flatMap((el) => [el, ...el.nachkommen()]))];
+    return alle.filter((el) => s === '.p-schaerfen-menue' && el.className === 'p-schaerfen-menue');
+  },
 };
 const e = {id: 'Test', titel: 'Test', herkunft: 'ordner', bearbeitbar: true, bevorzugt: 'Zwei',
   fassungen: [{name: 'Eins', text: 'Original <script> [A]', stand: 'a'}, {name: 'Zwei', text: 'Andere Fassung', stand: 'b'}],
@@ -113,6 +119,7 @@ const klicken = async (b) => { assert(b); await b.events.click({currentTarget: b
     assert.equal(alle(box).filter((k) => k.tag === 'button'
       && k.children.some((kind) => kind.textContent === 'Schärfen ▾')).length, 3);
     await klicken(knopf(box, 'Schärfen ▾'));
+    assert(alle(box).some((k) => k.className === 'p-schaerfen-menue' && !k.hidden));
     await klicken(knopf(box, 'Erst klären'));
     assert.equal(feld('Aktion').value, 'Erst klären');
     dialog.close();
