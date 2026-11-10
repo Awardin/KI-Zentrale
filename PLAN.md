@@ -3822,6 +3822,21 @@ Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“
   bearbeitbar, Änderungen als Fassung „Bearbeitet TT.MM. · …“), „Prompt verbessern“ stellt 0–5 Fragen nach Priorität,
   „Direkt verbessern“ ohne Fragen. Astra xhigh drei Runden ohne APPROVED (Rest eingearbeitet, nicht mehr gegengelesen;
   Abnahme prüft die Punkte aus Runde 3 gezielt). Sascha: „Ja, alles“ → Bau Sol xhigh im eigenen Worktree.
+- **Arbeitsfläche gebaut und abgenommen (10.11.2026):** Sol xhigh in drei Läufen (33 + 7 + 3 min, Kontingent
+  36 → 38 %), Worktree `KI-Zentrale-bau-arbeitsflaeche`, Commit c774def, Merge 6314454. Neu ist die Aktion „Rückfragen“
+  (JSON, 0–5 Fragen). Die Antworten gehen als `rueckfragen` in den Auftrag, nach „Hinweise von Sascha“. Alte Aktionen
+  bauen Aufträge und Prüfsummen weiter byteweise gleich. Dazu kommen die Aktion `fassung_bearbeitet` mit `herkunft.json`,
+  „Neu senden“ und ein gemeinsamer Sendetransport für Composer und Arbeitsfläche.
+  Die Abnahme auf 3897 fand 10 Punkte, alle behoben:
+  - P1: Eine Composer-Sendung zeigte die neue Runde nicht, wenn eine bevorzugte Fassung fest oben stand.
+  - Editor zu niedrig, das Feld „Weitere Wünsche“ 340 px hoch (CSS-Spezifität).
+  - Laufzeile beim Fragenstellen, Reihenfolge der Fehlermeldung, Scrollsprung, Vorgabe für „Fragen stellt“, Sperre ohne
+    Hinweis (jetzt „Dorthin wechseln“).
+  - Nach Wechsel und „Status prüfen“ blieb die alte Runde stehen.
+  Suite 511 OK (1 übersprungen), 28 neue Bedienungsabläufe. Der unveränderte Test
+  `test_paralleler_doppelpost_einreihung_dedupliziert` scheiterte einmal an „Zugriff verweigert“ (Windows-Dateisperre)
+  und war danach 8 von 8 Mal grün: Wackeltest, offen. Die Suite belegt mit `test_abnahme_prompts.py` selbst Port 3897;
+  ein Abnahme-Harness deshalb vor jedem Suite-Lauf stoppen. Log: SPEC-prompts-arbeitsflaeche-REVIEW-LOG.md, Act 3.
 
 ## Offen
 
