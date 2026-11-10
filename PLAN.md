@@ -3802,6 +3802,26 @@ Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“
   neu gestartet, Zentrale/Werkstatt/Atelier liefen nicht): Menü da, Konsole ohne Fehler. Log
   [SPEC-prompts-mehrere-schreibmodelle-REVIEW-LOG.md](SPEC-prompts-mehrere-schreibmodelle-REVIEW-LOG.md).
   Offen: echter Lauf mit zwei Schreibmodellen (z. B. Claude Opus 5.5 hoch + Codex GPT-6.1-Sol sehr hoch).
+- **Echter Lauf mit zwei Schreibmodellen (09.11.2026, Sascha: „Ja, testen“):** Rohprompt „Übungsliste aus einem
+  Transkript (Ausgangsstellung, Ausführung, Wiederholungen, worauf achten; Fehlendes vermerken statt erfinden)“, Ziele
+  Qwen 27B und Flash-Next, Schreibmodelle Claude Opus 5.5 hoch und Codex GPT-6.1-Sol sehr hoch (beide Abo) → 4 Läufe
+  parallel, alle nach ~90 s fertig. Opus 26/29 s, ~8.100 Token; Sol 34/55 s, ~20.000 Token. Spalten je Ziel, Namen
+  „Schärfen 09.11. · Qwen 27B Q4 · Opus 5.5 · hoch“ wie geplant. Inhaltlich wie am 08.11.: Opus baut je Ziel aus (was als
+  Übung zählt, Varianten, feste Lückenformel, Fall „keine Übungen“/„abgeschnitten“, für Qwen das Transkript vor die
+  Anweisungen), Sol bleibt nah am Original. Beide Codex-Läufe melden wieder „Skilldatei wegen Zugriffssperre nicht
+  lesbar“ (Regeln standen im Auftrag) – offen, ob die nur lesende Sandbox den Skill-Pfad sperrt.
+- **Menüs und Laufanzeige (10.11.2026, Sascha nach dem Test: „unklar, ob das Modell noch denkt“, „hängt hier die
+  Popup-Leiste“):** Aufklappmenüs (Prompt-Typ, Schreibmodelle, „Schärfen ▾“) schließen bei Klick oder Tab-Fokus
+  daneben, höchstens eins ist offen (ein Handler auf `document`). Laufende Schärfen- und Testläufe zeigen „Läuft seit
+  HH:MM – das Modell arbeitet noch …“ mit pulsierendem Punkt und Laufbalken, wartende „Wartet auf den Start …“; das
+  missverständliche „offen“ fehlt während des Laufs. Bei `prefers-reduced-motion` (Büro-PC) stehen Punkt und Balken
+  still. Bau Sol xhigh im Worktree, Abnahme Claude: Suite 487 OK, Browser am Harness (3897). Commit de0f64b, Merge 795d505.
+- **Arbeitsfläche mit Rückfragen geplant (10.11.2026, Sascha: „Links mein Prompt … rechts neuer Prompt und dann dort
+  auch einfach auf verbessern klicken“, Rückfragen-Fenster nach seinem Vorlagebild, Anordnung nach meinem Ermessen):**
+  Spec SPEC-prompts-arbeitsflaeche.md – links dein Prompt mit Rückfragen/Versionen, rechts der neue Prompt (direkt
+  bearbeitbar, Änderungen als Fassung „Bearbeitet TT.MM. · …“), „Prompt verbessern“ stellt 0–5 Fragen nach Priorität,
+  „Direkt verbessern“ ohne Fragen. Astra xhigh drei Runden ohne APPROVED (Rest eingearbeitet, nicht mehr gegengelesen;
+  Abnahme prüft die Punkte aus Runde 3 gezielt). Sascha: „Ja, alles“ → Bau Sol xhigh im eigenen Worktree.
 
 ## Offen
 
