@@ -1636,5 +1636,150 @@ class ComposerLaeufe(unittest.TestCase):
                 self.assertFalse(any(teil.endswith('-') for teil in name.split(' · ')))
 
 
+class ArbeitsflaecheServer(unittest.TestCase):
+    setUp = ComposerLaeufe.setUp
+    neu = PromptLaeufe.neu
+    cloud_fake = ComposerLaeufe.cloud_fake
+    arbeiten = PromptLaeufe.arbeiten
+    beleg = SchaerfenLaeufe.beleg
+    senden = ComposerLaeufe.senden
+
+    def basis_waehlen(self, aktion='Rückfragen'):
+        f = self.e['fassungen'][0]
+        self.cd.update(text=f['text'], basis={'id': self.e['id'], 'fassung': f['name'], 'stand': f['stand']},
+                       ziele=self.cd['ziele'][:1], schaerfen_aktion=aktion)
+
+    def test_vertrag_und_grenzen_aller_einstiege(self):
+        self.basis_waehlen()
+        self.cd['prompt_typ'] = 'auto'
+        auftrag = self.p.composer_vorschau(self.cd)['ziele'][0]['auftrag']
+        self.assertIn('Stelle Sascha Rückfragen', auftrag)
+        self.assertIn('{"fragen": []}', auftrag)
+        self.assertNotIn('Bestimme den passenden Typ', auftrag)
+        for a in ({'basis': None}, {'ziele': self.cd['ziele'] * 2}, {'schreibmodelle': ['p', 'c'], 'schreibmodell': None}):
+            d = dict(self.cd, **a)
+            if 'schreibmodelle' in d:
+                d.pop('schreibmodell', None)
+            for weg in (self.p.composer_vorschau, self.p.composer_senden):
+                with self.assertRaisesRegex(ValueError, 'Rückfragen gibt es nur'):
+                    weg(d)
+        for weg in (self.p.schaerfen_vorschau, self.p.schaerfen):
+            with self.assertRaisesRegex(ValueError, 'Rückfragen gibt es nur'):
+                weg(dict(self.sd, schaerfen_aktion='Rückfragen', prompt_typ='auto'))
+
+    def test_rueckfragen_ohne_fassung_liste_hash_und_anzeige(self):
+        self.basis_waehlen()
+        self.antwort = '~~~json\n{"fragen":[{"prioritaet":"hoch","frage":"Format?","warum":"Ausgabe.","vorschlaege":[]}]}\n~~~'
+        self.senden()
+        with patch.object(prompts, '_gruppenergebnis_uebernehmen', side_effect=AssertionError):
+            self.arbeiten()
+        d = self.p.lesen(self.e['id'])
+        self.assertEqual(len(d['fassungen']), 1)
+        b = d['auftragsgruppen'][0]['ergebnisse'][0]
+        self.assertEqual((b['fragen_anzahl'], b['ergebnis']), (1, 'Fragen gestellt'))
+        self.assertEqual(len(b['fragen_hash']), 64)
+        a = self.p.datei_inhalt(d['id'], 'schaerfen', b['datei'])
+        self.assertEqual(a['fragen'], '')
+        self.assertEqual(a['fragenliste'][0]['frage'], 'Format?')
+
+    def test_unlesbar_keine_fassung_erst_klaeren_bleibt_text(self):
+        self.basis_waehlen()
+        self.antwort = 'kaputt'
+        self.senden()
+        self.arbeiten()
+        b = self.beleg(self.au.liste[-1])
+        self.assertEqual(b['ergebnis'], 'Fragen nicht lesbar')
+        a = self.p.datei_inhalt(self.e['id'], 'schaerfen', b['datei'])
+        self.assertEqual(a['antwort'], 'kaputt')
+        self.assertEqual(a['fragen_grund'], 'Fragen nicht lesbar')
+        b['eingaben']['aktion'] = 'Erst klären'
+        self.assertNotIn('fragenliste', prompts.schaerfen_anzeige(b))
+
+    def test_antworten_normalisiert_reproduzierbar_ohne_fragenbeleg(self):
+        self.basis_waehlen('Schärfen')
+        self.cd['rueckfragen'] = [{'prioritaet': 'kritisch', 'frage': 'Format?', 'antwort': '  Kurz\r\nKlar\rEnde  '}]
+        v = self.p.composer_vorschau(self.cd)
+        e = v['ziele'][0]['eingaben']
+        self.assertEqual(e['rueckfragen'][0]['antwort'], 'Kurz\nKlar\nEnde')
+        self.assertIn('1. [kritisch] Format?\n   Antwort: Kurz\n   Klar\n   Ende\n', v['ziele'][0]['auftrag'])
+        self.senden()
+        a = self.au.liste[-1]
+        b = self.beleg(a)
+        neu, gs = prompts.schaerfen_bauen({'name': b['fassung'], 'text': b['fassung_text']}, b['eingaben'])
+        self.assertEqual((neu, gs), (v['ziele'][0]['auftrag'], v['ziele'][0]['gesendet_stand']))
+        self.assertEqual(self.p.datei_inhalt(self.e['id'], 'schaerfen', b['datei'])['rueckfragen'], e['rueckfragen'])
+        self.assertEqual(self.p.auftrag_aus_beleg(self.e['id'], b['datei'], 'schaerfen')['id'], a['id'])
+
+    def test_gespeicherte_antworten_nach_neuen_fragen_und_geloeschtem_beleg(self):
+        import uuid
+        self.basis_waehlen()
+        self.antwort = '~~~json\n{"fragen":[{"prioritaet":"hoch","frage":"Welches Format?","warum":"Ausgabe.","vorschlaege":[]}]}\n~~~'
+        self.senden()
+        self.arbeiten()
+        fragenpfad = self.au.liste[-1]['datei']
+        self.cd.update(anfrage_id=str(uuid.uuid4()), schaerfen_aktion='Schärfen',
+                       rueckfragen=[{'prioritaet': 'hoch', 'frage': 'Welches Format?', 'antwort': 'Als Liste'}])
+        self.senden()
+        lauf = self.au.liste[-1]
+        def auftrag():
+            b = self.beleg(lauf)
+            return prompts.schaerfen_bauen({'name': b['fassung'], 'text': b['fassung_text']}, b['eingaben'])
+        vorher = auftrag()
+        prompts.antwort_schreiben(fragenpfad, '~~~json\n{"fragen":[]}\n~~~')
+        self.assertEqual(auftrag(), vorher)
+        Path(fragenpfad).unlink()
+        self.assertEqual(auftrag(), vorher)
+        self.antwort = '~~~text\nBesser [A]\n~~~'
+        self.arbeiten()
+        self.assertEqual(lauf['zustand'], 'fertig')
+        self.assertFalse(any('Welches Format' in zeile or 'Als Liste' in zeile for zeile in self.logs))
+
+    def test_antworten_formpruefung_vorschau_senden_lesen(self):
+        self.basis_waehlen('Schärfen')
+        f = {'prioritaet': 'hoch', 'frage': 'Format?', 'antwort': 'Kurz'}
+        for wert in ([], [f] * 6, None, *([dict(f, **a)] for a in ({'prioritaet': 'falsch'}, {'frage': ''},
+             {'frage': 'x' * 301}, {'frage': 'A\nB'}, {'antwort': ''}, {'antwort': 'x' * 601}, {'antwort': 'A\tB'}))):
+            d = dict(self.cd, rueckfragen=wert)
+            for weg in (self.p.composer_vorschau, self.p.composer_senden):
+                with self.assertRaises(ValueError):
+                    weg(d)
+        for a in ({'basis': None}, {'schaerfen_aktion': 'Kürzen'}, {'schaerfen_aktion': 'Rückfragen'}):
+            with self.assertRaisesRegex(ValueError, 'Antworten auf Rückfragen gibt es nur'):
+                self.p.composer_vorschau(dict(self.cd, rueckfragen=[f], **a))
+        self.cd['rueckfragen'] = [f]
+        self.senden()
+        a = self.au.liste[-1]
+        b = self.beleg(a)
+        b['eingaben']['rueckfragen'][0]['antwort'] = ''
+        with patch.object(prompts, 'beleg_lesen', return_value=b):
+            with self.assertRaises(ValueError):
+                prompts.schaerfen_lesen(a['datei'])
+
+    def test_fingerprint_fehlt_bleibt_alt_normalisierte_antworten(self):
+        self.basis_waehlen('Schärfen')
+        d = self.cd
+        alt = prompts.sha(json.dumps({k: v for k, v in d.items() if k not in ('aktion', 'anfrage_id', 'gesendet_staende')},
+                                    ensure_ascii=False, sort_keys=True, separators=(',', ':')))
+        self.assertEqual(self.p._composer_fingerabdruck(d), alt)
+        f = [{'prioritaet': 'hoch', 'frage': 'Format?', 'antwort': 'Kurz\r\nKlar'}]
+        neu = self.p._composer_fingerabdruck(dict(d, rueckfragen=f))
+        self.assertNotEqual(alt, neu)
+        f[0]['antwort'] = 'Kurz\nKlar'
+        self.assertEqual(neu, self.p._composer_fingerabdruck(dict(d, rueckfragen=f)))
+
+    def test_gruppen_stabil_nach_zeit_und_id(self):
+        import uuid
+        self.basis_waehlen('Schärfen')
+        for aid in ('ffffffff-ffff-4fff-afff-ffffffffffff', '00000000-0000-4000-a000-000000000000'):
+            self.cd['anfrage_id'] = aid
+            self.senden()
+        for a in self.au.liste:
+            prompts._kopf_setzen(a['datei'], {'erstellt': '2026-11-10 12:00:00'})
+        gruppen = self.p.lesen(self.e['id'])['auftragsgruppen']
+        self.assertEqual([g['id'] for g in gruppen], sorted(g['id'] for g in gruppen))
+        prompts._kopf_setzen(self.au.liste[0]['datei'], {'erstellt': '2026-11-09 12:00:00'})
+        self.assertEqual(self.p.lesen(self.e['id'])['auftragsgruppen'][0]['id'], 'ffffffff-ffff-4fff-afff-ffffffffffff')
+
+
 if __name__ == '__main__':
     unittest.main()

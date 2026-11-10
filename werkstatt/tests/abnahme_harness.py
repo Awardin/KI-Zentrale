@@ -226,6 +226,15 @@ class Harness:
             b = prompts.schaerfen_lesen(self.au._belegpfad(a))
             if b['eingaben']['aktion'] == 'Erst klären':
                 text = f'1. Welches Ergebnis möchtest du erreichen? (Testantwort {nummer})'
+            elif b['eingaben']['aktion'] == 'Rückfragen' and not steuerung.get('ungueltig'):
+                fragen = steuerung.get('fragen', [
+                    {'prioritaet': 'kritisch', 'frage': 'Woran erkennst du ein gelungenes Ergebnis?',
+                     'warum': 'Das Erfolgskriterium wird Teil des Prompts.', 'vorschlaege': ['Prüfbare Checkliste', 'Lauffähiger Prototyp']},
+                    {'prioritaet': 'hoch', 'frage': 'Wie ausführlich soll die Ausgabe sein?',
+                     'warum': 'Die gewünschte Tiefe bestimmt den Umfang.', 'vorschlaege': ['Kurz und konkret', 'Ausführlich mit Beispielen']},
+                    {'prioritaet': 'mittel', 'frage': 'Welchen Ton möchtest du verwenden?',
+                     'warum': 'Die Sprache wird an die Zielgruppe angepasst.', 'vorschlaege': ['Sachlich', 'Locker']}])
+                text = prompts.block_schreiben(json.dumps({'fragen': fragen}, ensure_ascii=False), 'json')
             elif steuerung.get('ungueltig'):
                 text = f'Absichtlich ungültige Testantwort {nummer} ohne Promptkasten.'
             else:

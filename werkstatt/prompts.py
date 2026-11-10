@@ -171,7 +171,8 @@ def antwort_schreiben(datei, text):
         _atomar(datei, ''.join(zs[:i]) + ('## Antwort\n' + block_schreiben(text, 'text')).replace('\n', nl))
 
 
-AKTIONEN = ('Schärfen', 'Erst klären', 'Kürzen')
+AKTIONEN = ('Schärfen', 'Erst klären', 'Kürzen', 'Rückfragen')
+_RUECKFRAGEN_GRENZE = 'Rückfragen gibt es nur für eine gespeicherte Fassung, ein Ziel und ein Schreibmodell.'
 TYPEN = ('auto', 'standard', 'wissen', 'recherche', 'schreiben', 'planung', 'code',
          'agent', 'automatisierung', 'bild', 'video')
 TEXT_ENDUNGEN = {'.txt', '.md', '.markdown', '.json', '.csv', '.tsv', '.yaml', '.yml',
@@ -243,6 +244,8 @@ def schaerfen_bauen(fassung, eingaben):
         raise ValueError('Unbekannte Auftragsversion.')
     ziel = eingaben['zielmodell']
     aktion = eingaben['aktion']
+    if aktion == 'Rückfragen':
+        raise ValueError(_RUECKFRAGEN_GRENZE)
     if aktion not in AKTIONEN:
         raise ValueError('Unbekannte Schärfen-Aktion.')
     hinweis = ('ohne Werkzeuge, Systemprompt „Du bist ein sorgfältiger Assistent.“'
@@ -280,6 +283,21 @@ def _schaerfen_bauen_v2(fassung, e):
                'Zuerst die neue Fassung in genau einem geschlossenen Promptkasten (Zeile ~~~text davor, '
                'Zeile ~~~ danach), keine weiteren Kästen. Danach die wichtigsten Änderungen als Stichpunkte. '
                'Bei Bild/Video folgen nach dem Kasten Einstellungen und kurze Erläuterungen.')
+    if e['aktion'] == 'Rückfragen':
+        vertrag = ('Stelle Sascha Rückfragen, deren Antworten diese Fassung für das Zielmodell spürbar verbessern. '
+                   'Schreibe keine neue Fassung und führe den Auftrag nicht aus. Antworte nur mit genau einem '
+                   'geschlossenen Kasten (Zeile ~~~json davor, Zeile ~~~ danach) mit diesem JSON:\n'
+                   '{"fragen": [{"prioritaet": "kritisch", "frage": "…", "warum": "…", "vorschlaege": ["…", "…"]}]}\n'
+                   'Regeln: 0 bis 5 Fragen, meist 3, die wichtigste zuerst. Ist nichts Wichtiges offen, gib '
+                   '{"fragen": []} zurück.\n'
+                   'prioritaet ist genau eines von kritisch, hoch, mittel: kritisch = ohne Antwort muss das '
+                   'Zielmodell an einer Stelle raten, die das Ergebnis unbrauchbar machen kann; hoch = die Antwort '
+                   'ändert Inhalt, Umfang oder Format deutlich; mittel = Feinschliff. Frage nichts, was Fassung, '
+                   'Material oder Kontext schon beantworten, und nichts, was das Zielmodell selbst gut entscheiden '
+                   'kann. Eine Frage je Punkt, höchstens 25 Wörter, Du-Ansprache. warum: ein Satz, was die Antwort '
+                   'am Prompt ändert. vorschlaege: 0 bis 4 kurze typische Antworten mit je höchstens 8 Wörtern, '
+                   'wenn es naheliegende gibt, sonst eine leere Liste. Keine Fragen nach Zugangsdaten oder nach '
+                   'Daten einzelner Patientinnen und Patienten.')
     text = (e['skill']['wert'] + '\n\n---\n'
             + f"Auftrag der Werkstatt: {e['aktion']}\n"
             + 'Werkstatt-Ausgabevertrag (hat Vorrang vor dem Skilltext): ' + vertrag + '\n'
@@ -294,14 +312,20 @@ def _schaerfen_bauen_v2(fassung, e):
                if z['anbieter'] == 'codex' else 'Werkstatt-Test: ohne Werkzeuge und ohne Projektgedächtnis.\n'
                if z['anbieter'] != 'generator' else 'Im Reiter Bild & Video verwenden. Keine Erzeugung starten.\n')
             + f"Prompt-Typ: {e['typ']['id']} – {e['typ']['name']}\n{e['typ']['regeln']}\n")
-    if e['typ']['id'] == 'auto':
+    if e['typ']['id'] == 'auto' and e['aktion'] != 'Rückfragen':
         text += ('Bestimme den passenden Typ in derselben Antwort; bei Unklarheit standard. '
                  'Nenne nach dem Promptkasten Prompt-Typ: <id>. Zulässige Typen:\n'
                  + '\n'.join(f"{t['id']}: {t['regeln']}" for t in e['typregeln'] if t['id'] != 'auto') + '\n')
     text += (f"Zielregeln ({e['zielprofil']['id']}): {e['zielprofil']['regeln']}\n"
              + f"Modus: {e['modus']['id']} – {e['modus']['regeln']}\n"
-             + f"Hinweise von Sascha: {e['hinweise'] or 'keine'}\n"
-             + f'Fassung „{fassung["name"]}“:\n' + block_schreiben(fassung['text'], 'text'))
+             + f"Hinweise von Sascha: {e['hinweise'] or 'keine'}\n")
+    if 'rueckfragen' in e:
+        text += ('Antworten von Sascha auf Rückfragen (gehen Annahmen vor; offene Punkte nicht raten, sondern '
+                 'frei lassen oder als Platzhalter in eckigen Klammern kennzeichnen):\n')
+        for i, frage in enumerate(e['rueckfragen'], 1):
+            text += (f"{i}. [{frage['prioritaet']}] {frage['frage']}\n"
+                     + '   Antwort: ' + frage['antwort'].replace('\n', '\n   ') + '\n')
+    text += f'Fassung „{fassung["name"]}“:\n' + block_schreiben(fassung['text'], 'text')
     if e.get('material'):
         m = e['material']
         text += '\nMaterial, frühere Antwort des Zielmodells:\n' + block_schreiben(m['wert'], 'text')
@@ -314,6 +338,29 @@ def _momentaufnahme(d):
     return dict(d, stand=sha(json.dumps(d, ensure_ascii=False, sort_keys=True, separators=(',', ':'))))
 
 
+def rueckfragen_pruefen(wert, aktion, basis):
+    """Nur die übergebene Momentaufnahme prüfen, keine veränderlichen Belege auflösen."""
+    if aktion != 'Schärfen' or not basis:
+        raise ValueError('Antworten auf Rückfragen gibt es nur beim Schärfen einer gespeicherten Fassung.')
+    if not isinstance(wert, list) or not 1 <= len(wert) <= 5:
+        raise ValueError('Bitte eine bis fünf beantwortete Rückfragen senden.')
+    ergebnis = []
+    for f in wert:
+        if not isinstance(f, dict) or f.get('prioritaet') not in ('kritisch', 'hoch', 'mittel'):
+            raise ValueError('Die Priorität der Rückfrage ist ungültig.')
+        frage, antwort = f.get('frage'), f.get('antwort')
+        if (not isinstance(frage, str) or not frage.strip() or len(frage) > 300
+                or _STEUERZEICHEN.search(frage)):
+            raise ValueError('Eine Rückfrage braucht 1 bis 300 Zeichen ohne Steuerzeichen.')
+        if not isinstance(antwort, str):
+            raise ValueError('Eine Antwort braucht 1 bis 600 Zeichen ohne Steuerzeichen außer Zeilenumbrüchen.')
+        antwort = antwort.replace('\r\n', '\n').replace('\r', '\n').strip()
+        if not 1 <= len(antwort) <= 600 or _STEUERZEICHEN.search(antwort.replace('\n', '')):
+            raise ValueError('Eine Antwort braucht 1 bis 600 Zeichen ohne Steuerzeichen außer Zeilenumbrüchen.')
+        ergebnis.append({'prioritaet': f['prioritaet'], 'frage': frage, 'antwort': antwort})
+    return ergebnis
+
+
 def schaerfen_anlegen(ordner, kopf, fassung, eingaben):
     return beleg_anlegen(ordner, dict(kopf, ergebnis='offen'), fassung, eingaben)
 
@@ -321,6 +368,10 @@ def schaerfen_anlegen(ordner, kopf, fassung, eingaben):
 def schaerfen_lesen(datei):
     b = beleg_lesen(datei, schaerfen=True)
     e = b['eingaben']
+    if e.get('aktion') == 'Rückfragen' and e.get('bau_version') != 2:
+        raise ValueError(_RUECKFRAGEN_GRENZE)
+    if 'rueckfragen' in e:
+        e['rueckfragen'] = rueckfragen_pruefen(e['rueckfragen'], e.get('aktion'), e.get('bau_version') == 2)
     if (e.get('aktion') not in AKTIONEN or not isinstance(e.get('hinweise'), str)
             or not isinstance(e.get('skill'), dict) or not isinstance(e['skill'].get('wert'), str)
             or not isinstance(e.get('zielmodell'), dict)
@@ -337,6 +388,34 @@ def schaerfen_lesen(datei):
 
 def schaerfen_auswerten(antwort, original_text, aktion, bau_version=1):
     ergebnis = {'kasten': None, 'grund': '', 'neue_platzhalter': []}
+    if aktion == 'Rückfragen':
+        ergebnis.update(fragenliste=[], fragen_grund='Fragen nicht lesbar', grund='Fragen nicht lesbar')
+        try:
+            kaesten = bloecke(antwort)
+            if len(kaesten) != 1 or not kaesten[0]['geschlossen'] or kaesten[0]['kennung'] not in ('json', ''):
+                return ergebnis
+            d = json.loads(kaesten[0]['text'])
+            if not isinstance(d, dict) or not isinstance(d.get('fragen'), list):
+                return ergebnis
+            fragen = []
+            def normalisieren(text, grenze):
+                return ' '.join(_STEUERZEICHEN.sub(' ', text).split())[:grenze]
+            for f in d['fragen'][:5]:
+                if (not isinstance(f, dict) or f.get('prioritaet') not in ('kritisch', 'hoch', 'mittel')
+                        or not isinstance(f.get('frage'), str) or not isinstance(f.get('warum'), str)
+                        or not isinstance(f.get('vorschlaege'), list)
+                        or any(not isinstance(v, str) for v in f['vorschlaege'])):
+                    return ergebnis
+                frage = normalisieren(f['frage'], 300)
+                if not frage:
+                    return ergebnis
+                fragen.append({'prioritaet': f['prioritaet'], 'frage': frage,
+                               'warum': normalisieren(f['warum'], 300),
+                               'vorschlaege': [normalisieren(v, 80) for v in f['vorschlaege'][:4]]})
+            ergebnis.update(fragenliste=fragen, fragen_grund='', grund='')
+        except (ValueError, TypeError):
+            pass
+        return ergebnis
     if aktion == 'Erst klären':
         return ergebnis
     if bau_version == 2:
@@ -378,7 +457,8 @@ def schaerfen_anzeige(b):
         typ = b['eingaben']['typ']['id']
         treffer = re.search(r'^Prompt-Typ:\s*([a-z_]+)\s*$', stichpunkte, re.M)
         erkannt = typ if typ != 'auto' else (treffer[1] if treffer and treffer[1] in TYPEN else None)
-    return dict(a, stichpunkte=stichpunkte, prompt_typ_erkannt=erkannt, typ_anzeige=erkannt or 'Typ nicht erkannt')
+    return dict(a, stichpunkte=stichpunkte, prompt_typ_erkannt=erkannt, typ_anzeige=erkannt or 'Typ nicht erkannt',
+                **({'rueckfragen': b['eingaben']['rueckfragen']} if 'rueckfragen' in b['eingaben'] else {}))
 
 
 def schaerfen_uebernehmen(eintrag, datei):
@@ -386,6 +466,10 @@ def schaerfen_uebernehmen(eintrag, datei):
         b = schaerfen_lesen(datei)
         aktion = b['eingaben']['aktion']
         a = schaerfen_auswerten(b['antwort'], b['fassung_text'], aktion, b['eingaben'].get('bau_version', 1))
+        if aktion == 'Rückfragen':
+            ergebnis = a['grund'] or 'Fragen gestellt'
+            _kopf_setzen(datei, {'ergebnis': ergebnis})
+            return ergebnis
         if b.get('auftragsgruppe') and aktion != 'Erst klären' and not a['grund'] and b['herkunft'] != 'sammlung':
             return _gruppenergebnis_uebernehmen(eintrag, datei, b, a)
         if b.get('auftragsgruppe') and a['grund']:
@@ -613,6 +697,40 @@ def _kopf(text):
     return anfang, ende, werte, stand(''.join(zeilen[anfang:ende]))
 
 
+_HERKUNFT_FEHLER = 'Die Herkunftsdatei des Eintrags ist beschädigt. Es wurde nichts gespeichert.'
+
+
+def _herkunft_lesen(pfad):
+    if not os.path.exists(pfad):
+        return {'version': 1, 'fassungen': {}}
+    try:
+        d = json.loads(_lesen(pfad))
+        if not isinstance(d, dict) or type(d.get('version')) is not int or d['version'] != 1:
+            raise ValueError
+        if not isinstance(d.get('fassungen'), dict):
+            raise ValueError
+        anfragen = set()
+        for name, h in d['fassungen'].items():
+            _name(name)
+            if (not isinstance(h, dict) or any(not isinstance(h.get(k), str) or not h[k]
+                    for k in ('von_fassung', 'von_stand', 'anfrage_id', 'fingerabdruck', 'erstellt'))
+                    or type(h.get('quelle_geaendert')) is not bool or 'quell_beleg' not in h
+                    or h['quell_beleg'] is not None and not isinstance(h['quell_beleg'], str)
+                    or 'stand' in h and not isinstance(h['stand'], str)
+                    or h['anfrage_id'] in anfragen):
+                raise ValueError
+            _name(h['von_fassung'])
+            Index._anfrage_id(h)
+            if not re.fullmatch(r'[0-9a-f]{12}', h['von_stand']) or not re.fullmatch(r'[0-9a-f]{64}', h['fingerabdruck']):
+                raise ValueError
+            if 'stand' in h and not re.fullmatch(r'[0-9a-f]{12}', h['stand']):
+                raise ValueError
+            anfragen.add(h['anfrage_id'])
+        return d
+    except (OSError, ValueError, TypeError, UnicodeError):
+        raise Konflikt(_HERKUNFT_FEHLER) from None
+
+
 class Eintrag:
     def __init__(self, pfad):
         self.pfad = os.fspath(pfad)
@@ -662,7 +780,17 @@ class Eintrag:
         bevorzugt = kopf.get('Bevorzugt')
         if bevorzugt not in namen:
             bevorzugt = namen[0] if namen else ''
+        warnung = {}
+        try:
+            herkunft = _herkunft_lesen(os.path.join(os.path.dirname(self.pfad), 'herkunft.json'))
+            for f in fassungen:
+                h = herkunft['fassungen'].get(f['name'])
+                if h:
+                    f.update(herkunft=h, herkunft_gueltig=h.get('stand') == f['stand'] and not h['quelle_geaendert'])
+        except Konflikt:
+            warnung['herkunft_fehler'] = _HERKUNFT_FEHLER
         return {'titel': zeilen[anfang][2:].strip(), 'quelle': kopf.get('Quelle', ''),
+                **warnung,
                 'prompt_typ': kopf.get('Prompt-Typ', 'standard'), 'modus': kopf.get('Modus', 'prompt'),
                 'prompt_typ_gespeichert': 'Prompt-Typ' in kopf,
                 'composer_auftrag': kopf.get('Composer-Auftrag'),
@@ -734,9 +862,85 @@ class Eintrag:
             name = d['fassung_vorschlag'] if isinstance(name, str) and not name.strip() else _name(name)
             if any(f['name'] == name for f in d['fassungen']):
                 raise ValueError('Diesen Fassungsnamen gibt es schon.')
-            nl = '\r\n' if '\r\n' in roh else '\n'
-            return self._schreiben(roh + ('' if roh.endswith('\n') else nl) + nl + f'#### {name}{nl}'
-                                   + block_schreiben(text, 'text').replace('\n', nl))
+            return self._fassung_anhaengen(roh, name, text)
+
+    def _fassung_anhaengen(self, roh, name, text):
+        nl = '\r\n' if '\r\n' in roh else '\n'
+        return self._schreiben(roh + ('' if roh.endswith('\n') else nl) + nl + f'#### {name}{nl}'
+                               + block_schreiben(text, 'text').replace('\n', nl))
+
+    def fassung_bearbeitet(self, anfrage_id, von_fassung, von_stand, text):
+        with _SPERRE:
+            pfad = os.path.join(os.path.dirname(self.pfad), 'herkunft.json')
+            herkunft = _herkunft_lesen(pfad)
+            Index._anfrage_id({'anfrage_id': anfrage_id})
+            von_fassung = _name(von_fassung)
+            if not isinstance(von_stand, str) or not re.fullmatch(r'[0-9a-f]{12}', von_stand):
+                raise ValueError('Ungültiger Stand der Ausgangsfassung.')
+            if not isinstance(text, str):
+                raise ValueError('Bitte einen Prompttext eingeben.')
+            text = text_pruefen(text.replace('\r\n', '\n').replace('\r', '\n'))
+            fingerabdruck = sha(json.dumps([von_fassung, von_stand, text], ensure_ascii=False, separators=(',', ':')))
+            roh = _lesen(self.pfad)
+            d = self.lesen(roh)
+            # Auch der Verlust der letzten Quellfassung darf den sichtbaren Entwurf nicht vernichten.
+            if not d['bearbeitbar'] and (d['fassungen'] or any(not b['geschlossen'] for b in bloecke(roh))):
+                raise ValueError('Die Datei ist nicht eindeutig lesbar. Bitte im Editor prüfen.')
+            fassungen = {f['name']: f for f in d['fassungen']}
+            vorhanden = next(((n, h) for n, h in herkunft['fassungen'].items()
+                              if h['anfrage_id'] == anfrage_id), None)
+            if vorhanden:
+                name, h = vorhanden
+                if h['fingerabdruck'] != fingerabdruck:
+                    raise Konflikt('Diese Speicheranfrage gehört zu einem anderen Eingabestand.')
+                if name in fassungen and fassungen[name]['stand'] != stand(text):
+                    raise Konflikt('Die gespeicherte Fassung wurde inzwischen geändert.')
+            else:
+                quelle = fassungen.get(von_fassung)
+                if quelle and quelle['text'] == text:
+                    raise ValueError('Der Text ist unverändert.')
+                rest = re.split(r'\d{2}\.\d{2}\. · ', von_fassung, maxsplit=1)[-1]
+                basis = 'Bearbeitet ' + datetime.date.today().strftime('%d.%m.') + ' · ' + rest
+                name, n = _name(basis[:60].rstrip()), 2
+                reserviert = set(fassungen) | set(herkunft['fassungen'])
+                while name in reserviert:
+                    zusatz = f' ({n})'
+                    name = _name(basis[:60 - len(zusatz)].rstrip() + zusatz)
+                    n += 1
+                quell_beleg = None
+                if von_fassung in herkunft['fassungen']:
+                    quell_beleg = herkunft['fassungen'][von_fassung]['quell_beleg']
+                else:
+                    ordner = os.path.join(os.path.dirname(self.pfad), 'schaerfen')
+                    belege = []
+                    if os.path.isdir(ordner):
+                        for datei in os.listdir(ordner):
+                            p = os.path.join(ordner, datei)
+                            if not datei.endswith('.md') or not pfad_erlaubt(p, [ordner]):
+                                continue
+                            try:
+                                _, _, b, _ = _belegkopf(_lesen(p))
+                                if b.get('ergebnis_fassung') == von_fassung:
+                                    belege.append((b.get('erstellt', ''), datei))
+                            except (OSError, ValueError, UnicodeError):
+                                continue
+                    if belege:
+                        quell_beleg = max(belege)[1]
+                h = {'von_fassung': von_fassung, 'von_stand': von_stand,
+                     'quelle_geaendert': not quelle or quelle['stand'] != von_stand, 'quell_beleg': quell_beleg,
+                     'anfrage_id': anfrage_id, 'fingerabdruck': fingerabdruck,
+                     'erstellt': datetime.datetime.now().isoformat(timespec='seconds')}
+                herkunft['fassungen'][name] = h
+                _atomar(pfad, json.dumps(herkunft, ensure_ascii=False, indent=2) + '\n')
+            if name not in fassungen:
+                if fassungen:
+                    self.fassung_neu(name, text)
+                else:
+                    self._fassung_anhaengen(roh, name, text)
+            if h.get('stand') != stand(text):
+                h['stand'] = stand(text)
+                _atomar(pfad, json.dumps(herkunft, ensure_ascii=False, indent=2) + '\n')
+            return name
 
     def bevorzugt(self, name, kopf_stand):
         with _SPERRE:
@@ -916,6 +1120,11 @@ class Index:
         aktion = daten.get('schaerfen_aktion', 'Schärfen')
         if aktion not in AKTIONEN:
             raise ValueError('Unbekannte Schärfen-Aktion.')
+        if aktion == 'Rückfragen' and (not daten.get('basis') or len(schreibmodell_ids) != 1
+                or not isinstance(daten.get('ziele'), list) or len(daten['ziele']) != 1):
+            raise ValueError(_RUECKFRAGEN_GRENZE)
+        antworten = (rueckfragen_pruefen(daten['rueckfragen'], aktion, daten.get('basis'))
+                     if 'rueckfragen' in daten else None)
         hinweise = daten.get('hinweise', '')
         if not isinstance(hinweise, str) or len(hinweise) > 2000:
             raise ValueError('Hinweise dürfen höchstens 2.000 Zeichen enthalten.')
@@ -987,6 +1196,8 @@ class Index:
                  'modus': _momentaufnahme(dict(regeln['modi'][modus], id=modus)),
                  'regeldatei_stand': regeln['stand'], 'realismus': daten.get('realismus', False),
                  'material': material, 'materialien': materialien, 'kontexte': kontexte}
+            if antworten is not None:
+                e['rueckfragen'] = antworten
             auftrag, gs = schaerfen_bauen(f, e)
             for p in schreibmodelle:
                 try:
@@ -1049,10 +1260,19 @@ class Index:
     def _composer_fingerabdruck(daten):
         erlaubt = {'aktion', 'anfrage_id', 'text', 'titel', 'ablage', 'basis', 'prompt_typ', 'modus',
                    'schreibmodell', 'schreibmodelle', 'ziele', 'hinweise', 'material', 'materialien', 'kontexte',
-                   'gesendet_staende', 'realismus', 'schaerfen_aktion'}
+                   'gesendet_staende', 'realismus', 'schaerfen_aktion', 'rueckfragen'}
         if set(daten) - erlaubt:
             raise ValueError('Unbekannte Composer-Angaben.')
-        return sha(json.dumps({k: v for k, v in daten.items() if k not in ('aktion', 'anfrage_id', 'gesendet_staende')},
+        if daten.get('schaerfen_aktion') == 'Rückfragen':
+            ids = daten.get('schreibmodelle', [daten.get('schreibmodell')])
+            if (not daten.get('basis') or not isinstance(ids, list) or len(ids) != 1
+                    or not isinstance(daten.get('ziele'), list) or len(daten['ziele']) != 1):
+                raise ValueError(_RUECKFRAGEN_GRENZE)
+        werte = {k: v for k, v in daten.items() if k not in ('aktion', 'anfrage_id', 'gesendet_staende')}
+        if 'rueckfragen' in daten:
+            werte['rueckfragen'] = rueckfragen_pruefen(daten['rueckfragen'], daten.get('schaerfen_aktion', 'Schärfen'),
+                                                     daten.get('basis'))
+        return sha(json.dumps(werte,
                               ensure_ascii=False, sort_keys=True, separators=(',', ':')))
 
     def composer_senden(self, daten):
@@ -1514,6 +1734,10 @@ class Index:
         return {'neu': len(neu), 'auftraege': neu}
 
     def schaerfen_vorschau(self, daten):
+        if daten.get('schaerfen_aktion') == 'Rückfragen':
+            raise ValueError(_RUECKFRAGEN_GRENZE)
+        if 'rueckfragen' in daten:
+            rueckfragen_pruefen(daten['rueckfragen'], daten.get('schaerfen_aktion', 'Schärfen'), None)
         d = self.lesen(daten.get('id', ''))
         f = next((f for f in d['fassungen'] if f['name'] == daten.get('fassung')), None)
         if d.get('fehler') or not f:
@@ -1632,6 +1856,8 @@ class Index:
                         auftrag=auftrag, auftrag_stand=gs, prompt_typ_erkannt=a['prompt_typ_erkannt'],
                         typ_anzeige=a['typ_anzeige'],
                         stichpunkte=a['stichpunkte'], neue_platzhalter=a['neue_platzhalter'], grund=a['grund'],
+                        **({k: a[k] for k in ('fragenliste', 'fragen_grund')} if 'fragenliste' in a else {}),
+                        **({'rueckfragen': b['eingaben']['rueckfragen']} if 'rueckfragen' in b['eingaben'] else {}),
                         fragen=b['antwort'] if b['eingaben']['aktion'] == 'Erst klären' else '')
         pfad = self.beleg_pfad(eid, datei)
         b = beleg_lesen(pfad)
@@ -1658,9 +1884,15 @@ class Index:
             raise ValueError('Dieser Pfad ist nicht erlaubt.')
         return pfad
 
-    def _gecacht(self, pfad, lesen):
+    def _gecacht(self, pfad, lesen, zusaetzlich=None):
         s = os.stat(pfad)
         schluessel = (s.st_mtime_ns, s.st_size)
+        if zusaetzlich:
+            try:
+                h = os.stat(zusaetzlich)
+                schluessel += (h.st_mtime_ns, h.st_size)
+            except FileNotFoundError:
+                schluessel += (None, None)
         alt = self._cache.get(pfad)
         if not alt or alt[0] != schluessel:
             alt = (schluessel, lesen())
@@ -1687,6 +1919,10 @@ class Index:
                                 a = schaerfen_anzeige(b)
                                 kopf['ergebnis_gueltig'] = bool(a['kasten']) and not a['grund']
                                 kopf['prompt_typ_erkannt'] = a['prompt_typ_erkannt'] if kopf['ergebnis_gueltig'] else None
+                                if b['eingaben']['aktion'] == 'Rückfragen' and not a['grund']:
+                                    kopf['fragen_anzahl'] = len(a['fragenliste'])
+                                    kopf['fragen_hash'] = sha(json.dumps(a['fragenliste'], ensure_ascii=False,
+                                                                       sort_keys=True, separators=(',', ':')))
                                 if kopf.get('ergebnis_fassung') and a['kasten']:
                                     kopf['ergebnis_stand'] = stand(a['kasten']['text'])
                         except (ValueError, KeyError, TypeError):
@@ -1711,7 +1947,7 @@ class Index:
                 if not os.path.exists(pfad):
                     continue
                 try:
-                    d = self._gecacht(pfad, lambda: Eintrag(pfad).lesen())
+                    d = self._gecacht(pfad, lambda: Eintrag(pfad).lesen(), self._pfad(name, 'herkunft.json'))
                 except (OSError, ValueError, UnicodeError):
                     d = {'titel': name, 'fehler': 'nicht lesbar', 'bearbeitbar': False, 'fassungen': []}
                 d.update(id=name, herkunft='ordner', tests=self._belege(name), schaerfen=self._belege(name, 'schaerfen'))
@@ -1754,7 +1990,8 @@ class Index:
             for b in reversed(d['schaerfen']):
                 if b.get('auftragsgruppe'):
                     gruppen.setdefault(b['auftragsgruppe'], []).append(b)
-            d['auftragsgruppen'] = [{'id': gid, 'ergebnisse': bs} for gid, bs in gruppen.items()]
+            d['auftragsgruppen'] = sorted([{'id': gid, 'ergebnisse': bs} for gid, bs in gruppen.items()],
+                key=lambda g: (min(b.get('erstellt', '') for b in g['ergebnisse']), g['id']))
         return {'eintraege': eintraege, 'fehler': fehler,
                 'filter': {'herkunft': ['ordner', 'sammlung'], 'status': ['getestet', 'ungetestet']}}
 
@@ -1934,6 +2171,10 @@ class Index:
             e.fassung_speichern(daten.get('name'), daten.get('text', ''), daten.get('stand'))
         elif aktion == 'fassung_neu':
             e.fassung_neu(daten.get('name', ''), daten.get('text', ''))
+        elif aktion == 'fassung_bearbeitet':
+            name = e.fassung_bearbeitet(self._anfrage_id(daten), daten.get('von_fassung'),
+                                       daten.get('von_stand'), daten.get('text'))
+            return dict(self.lesen(eid), neue_fassung=name)
         elif aktion == 'bevorzugt':
             e.bevorzugt(daten.get('name'), daten.get('kopf_stand'))
         else:

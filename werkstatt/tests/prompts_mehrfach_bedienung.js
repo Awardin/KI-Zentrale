@@ -269,6 +269,9 @@ async function offenBleibtOffenUndAktuelleFassung() {
   const a = ergebnis(u, 0), b = ergebnis(u, 1);
   u.eintrag.schaerfen = [a, b];
   u.eintrag.auftragsgruppen = [{ id: 'gruppe', ergebnisse: [b, a] }];
+  // Der gemeinsame Gruppenrenderer lebt jetzt in der ausdrücklich geöffneten Vergleichsansicht.
+  u.ctx.afZiel = a.zielschluessel;
+  u.run("P.af.Eintrag={runde:'gruppe',ziel:afZiel,lauf:'Lauf0.md',bewusst:true,vergleich:true,reiter:'Fragen'}");
   await u.run("pWaehlen('Eintrag')");
   const schluessel = JSON.stringify(['gruppe', 'gruppe', a.zielschluessel, 'original']);
   const details = (key) => u.$('#p-inhalt').querySelectorAll('details[data-p-ansicht]').find((d) => d.getAttribute('data-p-ansicht') === key);
@@ -302,6 +305,9 @@ async function neuereAuswahlWaehrendGruppenabruf() {
   const a = ergebnis(u, 0), b = ergebnis(u, 1);
   u.eintrag.schaerfen = [a, b];
   u.eintrag.auftragsgruppen = [{ id: 'gruppe', ergebnisse: [a, b] }];
+  // Auch dieser verzögerte Abruf prüft den verschobenen gemeinsamen Vergleichsrenderer.
+  u.ctx.afZiel = a.zielschluessel;
+  u.run("P.af.Eintrag={runde:'gruppe',ziel:afZiel,lauf:'Lauf0.md',bewusst:true,vergleich:true,reiter:'Fragen'}");
   await u.run("pWaehlen('Eintrag')");
   const box = u.$('#p-inhalt');
   box.scrollTop = 120; box.scrollLeft = 12;
