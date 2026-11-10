@@ -553,6 +553,22 @@ class Sammlung(Basis):
 
 
 class Schaerfen(unittest.TestCase):
+    def test_bauversion_zwei_feste_altauftraege_und_hashes(self):
+        # Vor dem Bau mit dem Builder aus git HEAD verglichen, einschließlich des vollständigen Auftragtexts.
+        e = {'bau_version': 2, 'skill': {'wert': 'Skilltext'}, 'hinweise': 'Hinweis', 'material': {'wert': 'Material'},
+             'materialien': [{'name': 'Datei', 'wert': 'Inhalt'}], 'kontexte': [{'name': 'Projekt', 'wert': 'Kontext'}],
+             'typ': {'id': 'auto', 'name': 'Auto', 'regeln': 'Typregeln'},
+             'typregeln': [{'id': 'standard', 'regeln': 'Standardregeln'}],
+             'zielprofil': {'id': 'qwen27', 'regeln': 'Zielregeln'}, 'modus': {'id': 'vorlage', 'regeln': 'Modusregeln'},
+             'zielmodell': {'name': 'Qwen', 'anbieter': 'lokal', 'modell': 'qwen27-unsloth', 'verarbeitung': 'lokal', 'kontext': 131072}}
+        for aktion, erwartet in [('Schärfen', 'ee3e76c88f5ceb3a23304700a2adf5da3b6c1b31018f81118c3c8d29c6f03793'),
+                ('Erst klären', '12330c0715a7699ab2cc669080ec0e00f0fe9dbaa1ce0d1b86ab544aabb1059f'),
+                ('Kürzen', 'a5e5dfff18a15498392da476428fbf6cbd11c73c77f7d8722b44479a3f7fffb4')]:
+            e['aktion'] = aktion
+            text, gs = prompts.schaerfen_bauen({'name': 'Eins', 'text': 'Original [A]'}, e)
+            self.assertEqual((prompts.sha(text), gs), (erwartet, erwartet))
+            self.assertNotIn('rueckfragen', e)
+
     def test_bauversion_eins_feste_hashes_aus_dem_unveraenderten_auftragsbau(self):
         e = {'skill': {'wert': 'Skilltext'}, 'aktion': 'Schärfen', 'hinweise': 'Hinweis',
              'material': {'wert': 'Antwort\n~~~\nEnde', 'erstellt': '2026-11-08'},
@@ -735,6 +751,15 @@ keinFremdText(box);
                               encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=20)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
 
+    def test_arbeitsflaeche_bedienung(self):
+        import shutil
+        import subprocess
+        node = shutil.which('node')
+        self.assertIsNotNone(node, 'Node muss für die Abnahme vorhanden sein.')
+        lauf = subprocess.run([node, 'werkstatt/tests/prompts_arbeitsflaeche_bedienung.js'], text=True,
+                              encoding='utf-8', capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=30)
+        self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
     def test_fuenf_frischstarts_wiederkehr_und_langsamer_index(self):
         import shutil
         import subprocess
@@ -888,7 +913,8 @@ kontext.e = e; kontext.beleg = beleg;
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const { kinder, keinFremdText } = require('./werkstatt/tests/dom_nachbau');
 class Element {
-  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.scrollTop = 0; this.scrollLeft = 0; }
+  constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.textContent = ''; this.scrollTop = 0; this.scrollLeft = 0;
+    this.classList = { toggle: (name, an) => { this.className = an ? name : ''; }, add() {} }; this.style = {}; }
   append(...k) { this.children.push(...kinder(...k)); }
   replaceChildren(...k) {
     this.children = kinder(...k); this.scrollTop = 0; this.scrollLeft = 0;
@@ -961,19 +987,21 @@ function elemente(e, tag) { return [e, ...(e.children || []).flatMap((k) => elem
   ids.get('#p-status').value = '';
   await vm.runInContext("pWaehlen('Hühnerfarm')", kontext);
   assert.equal(elemente(ids.get('#p-inhalt'), 'pre')[0].textContent, eintraege[0].fassungen[0].text);
-  assert.equal(elemente(ids.get('#p-inhalt'), 'details').length, 1);
+  // Auswahlmenüs der Arbeitsfläche zählen nicht zu den bisherigen gespeicherten Textansichten.
+  const ansichten = () => elemente(ids.get('#p-inhalt'), 'details').filter((d) => d['data-p-ansicht']);
+  assert.equal(ansichten().length, 1);
   assert.equal(ids.get('#p-rueck').textContent, '');
   assert.equal(anfragen.length, 2);
   for (const wurzel of ids.values()) keinFremdText(wurzel);
   // Gleiche JSON-Daten erhalten die tatsächlichen Knoten und offene Kästen.
   const box = ids.get('#p-inhalt'), liste = ids.get('#p-liste');
   let vorher = [...box.children], listenknoten = [...liste.children];
-  elemente(box, 'details')[0].open = true;
+  ansichten()[0].open = true;
   await vm.runInContext('pLaden();', kontext);
   await vm.runInContext('pLaden();', kontext);
   assert(box.children.every((k, i) => k === vorher[i]));
   assert(liste.children.every((k, i) => k === listenknoten[i]));
-  assert(elemente(box, 'details')[0].open);
+  assert(ansichten()[0].open);
   // Auch Antworten bleiben offen; beim echten Neuzeichnen werden sie anhand der Datei zugeordnet.
   eintraege[0].tests = [{datei: 'Beleg.md', fassung: 'Fassung 1', auswerter: 'Fake', zustand: 'laeuft',
     urteil: 'gut', notiz: '', kopf_stand: 'stand'}];
@@ -1029,18 +1057,187 @@ function elemente(e, tag) { return [e, ...(e.children || []).flatMap((k) => elem
   // Dialog und fokussiertes Textfeld schützen auch direkte Neuladeaufrufe.
   vorher = [...box.children]; dialogOffen = true;
   anzahl = anfragen.length; jetzt = 70000; await zeitgeber.shift().fn();
-  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
+  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video",false);', kontext);
   assert.equal(anfragen.length, anzahl); assert(box.children.every((k, i) => k === vorher[i]));
   for (const wurzel of ids.values()) keinFremdText(wurzel);
   assert(antwort.open);
   dialogOffen = false; document.activeElement = {matches() { return true; }};
-  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video");', kontext);
+  await vm.runInContext('pLaden(); pListe(); pWaehlen("Video",false);', kontext);
   assert.equal(anfragen.length, anzahl); assert(box.children.every((k, i) => k === vorher[i]));
 })().catch((e) => { console.error(e); process.exitCode = 1; });
 '''
         lauf = subprocess.run([node, '-'], input=skript, text=True, encoding='utf-8',
                               capture_output=True, cwd=Path(__file__).resolve().parents[2], timeout=15)
         self.assertEqual(lauf.returncode, 0, lauf.stdout + lauf.stderr)
+
+
+class BearbeiteteFassungen(Basis):
+    def speichern(self, text='Überarbeitet', **werte):
+        import uuid
+        return self.index.aktion(dict(aktion='fassung_bearbeitet', id=self.d['id'],
+            anfrage_id=str(uuid.uuid4()), von_fassung='Fassung 1', von_stand=self.d['fassungen'][0]['stand'],
+            text=text) | werte)
+
+    def test_namen_quellname_kuerzung_eindeutigkeit(self):
+        import datetime
+        datum = datetime.date.today().strftime('%d.%m.')
+        for quelle, rest in [('Fassung 1', 'Fassung 1'), ('Schärfen 09.11. · Qwen · Opus · hoch', 'Qwen · Opus · hoch'),
+                             ('X' * 60, 'X' * 60)]:
+            if quelle != 'Fassung 1':
+                self.e.fassung_neu(quelle, 'Quelle')
+            for i in range(2):
+                d = self.speichern(von_fassung=quelle, text='Neu ' + str(i))
+                self.assertTrue(d['neue_fassung'].startswith(('Bearbeitet ' + datum + ' · ' + rest)[:56]))
+                self.assertLessEqual(len(d['neue_fassung']), 60)
+                if i:
+                    self.assertTrue(d['neue_fassung'].endswith(' (2)'))
+
+    def test_unveraendert_und_sammlung_ohne_schreiben(self):
+        vorher = self.pfad.read_bytes()
+        with self.assertRaisesRegex(ValueError, 'unverändert'):
+            self.speichern('Baue HTML.')
+        with self.assertRaisesRegex(ValueError, 'schreibgeschützt'):
+            self.speichern(id='sammlung:Wissen#1')
+        self.assertEqual(vorher, self.pfad.read_bytes())
+
+    def test_idempotenz_fingerprint_und_nachtraegliche_aenderung(self):
+        import uuid
+        aid = str(uuid.uuid4())
+        d = self.speichern(anfrage_id=aid)
+        self.assertEqual(d['neue_fassung'], self.speichern(anfrage_id=aid)['neue_fassung'])
+        with self.assertRaises(prompts.Konflikt):
+            self.speichern('Anders', anfrage_id=aid)
+        f = d['fassungen'][-1]
+        self.e.fassung_speichern(f['name'], 'Fremd', f['stand'])
+        vorher = self.pfad.read_bytes()
+        with self.assertRaisesRegex(prompts.Konflikt, 'gespeicherte Fassung wurde inzwischen geändert'):
+            self.speichern(anfrage_id=aid)
+        self.assertEqual(vorher, self.pfad.read_bytes())
+        self.assertFalse(self.index.lesen(self.d['id'])['fassungen'][-1]['herkunft_gueltig'])
+
+    def test_normalisierter_text_hat_denselben_fingerprint(self):
+        import uuid
+        aid = str(uuid.uuid4())
+        d = self.speichern('Neu\r\nZeile\rEnde', anfrage_id=aid)
+        neu = self.speichern('Neu\nZeile\nEnde', anfrage_id=aid)
+        self.assertEqual(d['neue_fassung'], neu['neue_fassung'])
+        self.assertEqual(neu['fassungen'][-1]['text'], 'Neu\nZeile\nEnde')
+
+    def test_geaenderte_und_fehlende_quelle_erhalten_entwurf(self):
+        self.e.fassung_speichern('Fassung 1', 'Fremd', self.d['fassungen'][0]['stand'])
+        d = self.speichern()
+        self.assertTrue(d['fassungen'][-1]['herkunft']['quelle_geaendert'])
+        self.assertFalse(d['fassungen'][-1]['herkunft_gueltig'])
+        d = self.speichern(von_fassung='Fehlt')
+        self.assertTrue(d['fassungen'][-1]['herkunft']['quelle_geaendert'])
+
+    def test_auch_letzte_quelle_fehlend_entwurf_bleibt_erhaltbar(self):
+        self.schreiben(self.roh().split('#### Fassung 1')[0])
+        self.assertEqual(self.index.lesen(self.d['id'])['fassungen'], [])
+        d = self.speichern()
+        self.assertEqual(len(d['fassungen']), 1)
+        self.assertEqual(d['fassungen'][0]['text'], 'Überarbeitet')
+        self.assertTrue(d['fassungen'][0]['herkunft']['quelle_geaendert'])
+
+    def test_abbruch_reservierung_anhaengen_und_cache(self):
+        import uuid
+        for nach_anhang in (False, True):
+            aid = str(uuid.uuid4())
+            original = self.e.fassung_neu
+            def abbrechen(instanz, name, text):
+                if nach_anhang:
+                    original(name, text)
+                raise RuntimeError('Unterbrechung')
+            with patch.object(prompts.Eintrag, 'fassung_neu', abbrechen):
+                with self.assertRaises(RuntimeError):
+                    self.speichern(anfrage_id=aid)
+            vor = self.index.lesen(self.d['id'])
+            d = self.speichern(anfrage_id=aid)
+            self.assertTrue(d['fassungen'][-1]['herkunft_gueltig'])
+            self.assertEqual(sum(f['name'] == d['neue_fassung'] for f in d['fassungen']), 1)
+            if nach_anhang:
+                self.assertFalse(vor['fassungen'][-1]['herkunft_gueltig'])
+
+    def test_abbruch_ergebnis_geaendert_kein_herkunftsstand_ergaenzt(self):
+        import uuid
+        aid = str(uuid.uuid4())
+        original = self.e.fassung_neu
+        def abbrechen(instanz, name, text):
+            original(name, text)
+            raise RuntimeError
+        with patch.object(prompts.Eintrag, 'fassung_neu', abbrechen):
+            with self.assertRaises(RuntimeError):
+                self.speichern(anfrage_id=aid)
+        f = self.e.lesen()['fassungen'][-1]
+        self.e.fassung_speichern(f['name'], 'Fremd', f['stand'])
+        herkunft = self.pfad.parent / 'herkunft.json'
+        vorher = (self.pfad.read_bytes(), herkunft.read_bytes())
+        with self.assertRaises(prompts.Konflikt):
+            self.speichern(anfrage_id=aid)
+        self.assertEqual(vorher, (self.pfad.read_bytes(), herkunft.read_bytes()))
+
+    def test_reservierter_name_belegt_und_zwei_threads(self):
+        import concurrent.futures
+        import uuid
+        aid = str(uuid.uuid4())
+        with patch.object(prompts.Eintrag, 'fassung_neu', side_effect=RuntimeError):
+            with self.assertRaises(RuntimeError):
+                self.speichern(anfrage_id=aid)
+        with concurrent.futures.ThreadPoolExecutor(2) as pool:
+            ergebnisse = list(pool.map(lambda n: self.speichern('Text ' + str(n)), range(2)))
+        self.assertEqual(len({d['neue_fassung'] for d in ergebnisse}), 2)
+        name = self.speichern(anfrage_id=aid)['neue_fassung']
+        self.assertNotIn(name, [d['neue_fassung'] for d in ergebnisse])
+
+    def test_quellbeleg_geerbt(self):
+        ordner = self.pfad.parent / 'schaerfen'
+        ordner.mkdir()
+        for datum, datei in [('2026-11-09 10:00:00', 'alt.md'), ('2026-11-10 10:00:00', 'neu.md')]:
+            (ordner / datei).write_text('---\nerstellt: ' + datum + '\nergebnis_fassung: "Fassung 1"\n---\n', encoding='utf-8')
+        d = self.speichern()
+        f = d['fassungen'][-1]
+        self.assertEqual(f['herkunft']['quell_beleg'], 'neu.md')
+        d = self.speichern('Noch besser', von_fassung=f['name'], von_stand=f['stand'])
+        self.assertEqual(d['fassungen'][-1]['herkunft']['quell_beleg'], 'neu.md')
+
+    def test_beschaedigte_herkunft_409_und_warnung(self):
+        h = self.pfad.parent / 'herkunft.json'
+        for roh in ('kaputt', '[]', '{"version":1,"fassungen":{"X":{}}}'):
+            h.write_text(roh, encoding='utf-8')
+            vorher = self.pfad.read_bytes()
+            with self.assertRaisesRegex(prompts.Konflikt, 'Herkunftsdatei'):
+                self.speichern()
+            self.assertEqual(self.pfad.read_bytes(), vorher)
+            self.assertEqual(h.read_text(encoding='utf-8'), roh)
+            self.assertIn('herkunft_fehler', self.index.lesen(self.d['id']))
+
+
+class RueckfragenAuswertung(unittest.TestCase):
+    def auswerten(self, wert, kennung='json'):
+        return prompts.schaerfen_auswerten(prompts.block_schreiben(json.dumps(wert), kennung), '', 'Rückfragen', 2)
+
+    def test_gueltig_leere_kennung_null_und_begrenzung(self):
+        f = {'prioritaet': 'hoch', 'frage': 'Wohin?', 'warum': 'Format.', 'vorschlaege': ['Kurz']}
+        for kennung in ('', 'json'):
+            for n in (0, 1, 7):
+                a = self.auswerten({'fragen': [f] * n}, kennung)
+                self.assertEqual(a['grund'], '')
+                self.assertEqual(len(a['fragenliste']), min(n, 5))
+
+    def test_normalisierung_und_kuerzungen(self):
+        a = self.auswerten({'fragen': [{'prioritaet': 'mittel', 'frage': 'A\r\n\t\x00 B ' + 'x' * 400,
+              'warum': 'z' * 400, 'vorschlaege': ['X\nY ' + 'v' * 100] * 6}]})
+        f = a['fragenliste'][0]
+        self.assertTrue(f['frage'].startswith('A B '))
+        self.assertEqual((len(f['frage']), len(f['warum']), len(f['vorschlaege']), len(f['vorschlaege'][0])), (300, 300, 4, 80))
+
+    def test_ungueltige_kaesten_json_und_schema(self):
+        f = {'prioritaet': 'hoch', 'frage': 'Wohin?', 'warum': '', 'vorschlaege': []}
+        for antwort in ('kein Kasten', '~~~json\n{\n~~~', '~~~json\n{}\n~~~\n~~~\n{}\n~~~', '~~~json\n{}'):
+            self.assertEqual(prompts.schaerfen_auswerten(antwort, '', 'Rückfragen', 2)['grund'], 'Fragen nicht lesbar')
+        for wert in ([], {}, {'fragen': None}, *({'fragen': [dict(f, **a)]} for a in
+                    ({'prioritaet': 'niedrig'}, {'frage': '\n'}, {'frage': 1}, {'warum': None}, {'vorschlaege': [2]}))):
+            self.assertEqual(self.auswerten(wert)['grund'], 'Fragen nicht lesbar')
 
 
 class EchteRegeldatei(unittest.TestCase):

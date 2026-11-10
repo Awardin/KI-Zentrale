@@ -25,6 +25,7 @@ function dokumentBauen() {
       this.tag = tag; this.children = []; this.events = {}; this.attrs = {}; this.parentElement = null;
       this._text = ''; this._value = null; this.className = ''; this.hidden = false; this.disabled = false;
       this.scrollTop = 0; this.scrollLeft = 0; this.clientWidth = 800;
+      this.style = {}; this.scrollHeight = 200;
       this.classList = { add: (c) => this.klasse(c, true), remove: (c) => this.klasse(c, false),
         toggle: (c, an) => this.klasse(c, an ?? !this.className.split(' ').includes(c)) };
     }
@@ -46,15 +47,16 @@ function dokumentBauen() {
     getAttribute(k) { return this.attrs[k] ?? (k === 'id' ? this.id : null); }
     addEventListener(k, f) { (this.events[k] ||= []).push(f); }
     async ausloesen(k, e = {}) { for (const f of this.events[k] || []) await f({ type: k, target: this, currentTarget: this, preventDefault() {}, ...e }); }
-    focus() { dokument.activeElement = this; }
+    focus(options) { this.focusOptions = options; dokument.activeElement = this; }
     blur() { if (dokument.activeElement === this) dokument.activeElement = null; }
     select() {}
     scrollBy({left}) { this.scrollLeft += left; }
+    scrollIntoView(options) { this.scrollIntoViewOptions = options; }
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter((x) => x !== this); this.parentElement = null; }
     alle() { return this.children.flatMap((k) => [k, ...k.alle()]); }
     matches(selector) {
       return selector.split(',').some((s) => {
-        const teile = s.trim().split(/\s+/); const selbst = teile.pop();
+        const teile = s.trim().match(/(?:\[[^\]]*\]|[^\s\[])+/g) || []; const selbst = teile.pop();
         const pruefen = (el, t) => {
           const tag = t.match(/^[a-z][a-z0-9-]*/i)?.[0]; if (tag && el.tag !== tag) return false;
           const id = t.match(/#([\w-]+)/)?.[1]; if (id && el.id !== id) return false;

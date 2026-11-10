@@ -576,6 +576,32 @@ select {
 .p-liste li + li { margin-top: 6px; }
 .p-fassung { margin: 16px 0; padding: 16px; border: 1px solid var(--linie); background: var(--flaeche); }
 .p-text { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 var(--mono); }
+.p-arbeitsflaeche { container-type: inline-size; min-width: 0; scroll-margin-top: var(--oben); }
+.p-af-raster { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.p-af-raster > section { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.p-af-dein { grid-row: 1; }
+.p-af-rechts { grid-row: 2; }
+.p-af-links { grid-row: 3; }
+.p-af-original { display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+.p-af-original.ganz { display: block; }
+.p-arbeitsflaeche .p-af-editor { display: block; width: 100%; min-height: 20em; max-height: 60vh; overflow-y: auto; resize: vertical; field-sizing: content; }
+.p-arbeitsflaeche .p-af-wuensche { min-height: 0; resize: vertical; }
+.p-af-antwort { display: block; width: 100%; resize: vertical; field-sizing: content; }
+.p-af-fragen { list-style: none; padding: 0; }
+.p-af-fragen > li { margin: 12px 0; padding: 12px; border: 1px solid var(--linie); }
+.p-af-fragen [data-prioritaet="kritisch"] .p-af-prioritaet { color: var(--heiss); }
+.p-af-fragen [data-prioritaet="hoch"] .p-af-prioritaet { color: var(--bernstein); }
+.p-af-fragen [data-prioritaet="mittel"] .p-af-prioritaet { color: var(--leise); }
+.p-af-uebersprungen { opacity: .55; }
+.p-af-raster [role="tab"][aria-selected="true"] { border-color: var(--bernstein); }
+.p-af-raster select { max-width: 100%; }
+@container (min-width: 860px) {
+  .p-af-raster { grid-template-columns: minmax(300px, 2fr) minmax(480px, 3fr); grid-template-rows: auto 1fr; }
+  .p-af-dein { grid-column: 1; grid-row: 1; }
+  .p-af-links { grid-column: 1; grid-row: 2; }
+  .p-af-rechts { grid-column: 2; grid-row: 1 / 3; }
+  .p-arbeitsflaeche .p-af-editor { max-height: none; }
+}
 #p-inhalt { overflow-wrap: anywhere; }
 #p-inhalt summary { cursor: pointer; color: var(--akzent); }
 

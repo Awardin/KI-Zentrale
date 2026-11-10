@@ -155,6 +155,8 @@ async function laufanzeige() {
     prompt: { eintrag: u.e.id, beleg: b.datei.slice(0, -3), fassung: b.fassung } });
   u.e.tests = [t]; u.e.schaerfen = [s];
   u.e.auftragsgruppen = [{ id: 'gruppe', ergebnisse: [s] }];
+  // Die bisherige Gruppenkarte wird als Vergleich innerhalb der Arbeitsfläche geprüft.
+  u.run("P.af.Eintrag={runde:'gruppe',lauf:'S.md',bewusst:true,vergleich:true,reiter:'Fragen'}");
   u.e.warteschlange = [auftrag(s, 'schaerfen'), auftrag(t, 'prompt')];
   // Ein fremder Beleg mit gleichem Dateinamen darf nicht als Startzeit dienen.
   u.e.warteschlange.unshift({ ...auftrag(s, 'schaerfen'), begonnen: 0, prompt: { eintrag: 'Fremd', beleg: 'S' } });
