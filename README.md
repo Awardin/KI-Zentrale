@@ -54,6 +54,17 @@ nur ein weiteres Fenster, keinen zweiten Dienst.
   Text, 200–211 Code (auch mit Temperatur), Bild ~1 s, etwa 23 GiB. Die Karte wählt die Zentrale (praktisch die
   Karte ohne Monitor, seit 20.10.2026 wieder die FE) und übergibt sie mit `--gpu`; der Server läuft mit Strata's Python-Umgebung
   (nur gelesen). Die Ollama-Einträge Ornith Q4/Q5 bleiben daneben; nicht beide gleichzeitig laden, wenn der Platz fehlt.
+- **Edge0 145B** (seit 14.11.2026): „Edge0 145B · Q3_K“ (Art `polystrata`, Port 8109) ist ein Umbau von Flash-Next
+  („Latent MoE“, Edge0-AI). Engine `edge0-strata` 0.1.55 und Python kommen fertig aus dem Windows-Paket
+  (`C:\LLM\runtimes\Edge0\paket\…`), die CUDA-Dateien aus Strata's Python-Umgebung; Modell `C:\LLM\models\Edge0-145B-q3k`
+  (98 GiB, davon 47,7 GiB PLE-Tabelle, direkt von der SSD gelesen). Eine RTX 3090 nach Kartenwahl, 128K, ohne Bilder.
+  Standard seit 14.11.2026 (Sascha) ist „eine Karte · 128K · RAM sparen“ (`--resident-experts`, Einstellung
+  `…-1gpu-128k-ram-sparen.json`): **~36 GiB Arbeitsspeicher**, bis ~40 GiB mit Gesprächsspeicher, 42–44 Token/s Text,
+  51–58 Code, 70K-Prompt 1.210 Token/s – etwa halb so schnell wie Flash-Next auf beiden Karten. Variante
+  „eine Karte · 128K · schnell“ (`…-1gpu-128k.json`, alle Experten fest im RAM): ~46 GiB, 45–48 Token/s Text, 54–61 Code,
+  70K-Prompt 1.470 Token/s. Beide Karten gehen mit Engine 0.1.55 nicht (Schichtaufteilung stürzt ab,
+  Edge0-AI/Edge0#205; Suprim als Experten-Hilfscache liefert NaN). Pfade in `env` der Einstellung mit `/` schreiben,
+  sonst findet die Engine `labels.bin` nicht.
 
 ### Reiter „Monitor“ (seit 21.10.2026)
 

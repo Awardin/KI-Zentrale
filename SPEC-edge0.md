@@ -89,12 +89,59 @@ Die Art `polystrata` macht schon fast alles (Strata-artiger Server, eine Karte, 
 - Urteil Claude: Diff gelesen, passt zum Spec, nichts außerhalb von `zentrale\`. Selbst geprüft: Zentrale 204 Tests OK,
   Werkstatt OK, config.json gültig. Keine Fixrunde nötig. Kleine Grenze: Der Rückgriff über den Elternprozess bei leerem
   Pfad greift nur, wenn die Engine `strata.exe` heißt (wie Strata) – genau der Edge0-Fall.
-- Offen: Abnahme am echten System (Start, Messung, Beenden), erst nach Download und Merge.
+- Abnahme am echten System 14.11.2026: Start über die Zentrale (nach Korrektur der `env`-Pfade auf `/`) bereit nach
+  23 s, Anzeige „bereit“ auf der FE, Flash-Next und Ornith bleiben „aus“; zwei Messläufe; Beenden räumt Prozesse,
+  Grafik- und Arbeitsspeicher. Messwerte, RAM-Befund (~46 GiB) und Bildteil-Test in PLAN.md, „Edge0-145B als
+  Zentrale-Eintrag (14.11.2026)“. Nachgezogen: `ram_bedarf_gib` 46, Gründe gemessen, Tests angepasst (204 OK).
+- 14.11.2026, Runde 2 (Nachtrag „beide Karten“): Codex gpt-6.1-sol, medium, eigener Worktree, eine Runde; Diff gelesen,
+  212 Tests OK, Zentrale neu gestartet. Am echten System: Absturz (#205), Hilfscache NaN – Bau wieder herausgenommen,
+  Tests zurück auf 204 OK. Dafür Variante „RAM sparen“ (nur `config.json` und eine Einstellungsdatei), über die
+  Zentrale gestartet und geprüft; auf Saschas Wort Standard (Eintrag zeigt auf die Spar-Einstellung, „schnell“ ist die
+  Variante), Start ohne Wahl geprüft, 204 Tests OK.
+
+## Nachtrag: Variante „beide Karten“ (14.11.2026, Sascha: „Beide testen“)
+
+Anlass: Edge0 auf einer Karte belegt ~46 GiB RAM (Standard) bzw. ~36 GiB (`--resident-experts`). Auf beiden Karten
+(Schichtaufteilung wie Flash-Next, Edge0s `server.py` macht das bei mehreren Karten in `gpu` von selbst) sollen mehr
+Experten im Grafikspeicher und weniger im RAM liegen. Dafür muss die Zentrale einen `polystrata`-Eintrag auch auf
+beiden Karten starten können. Bau (Codex Sol medium, eigener Worktree):
+
+1. `planung.variante`: Ein Variantenwert `null` entfernt das Feld aus dem zusammengesetzten Eintrag (z. B.
+   `"karten": null`, `"bedarf_je_karte_mib": null`). Docstring ergänzen. Bestehende Varianten ändern sich nicht.
+2. `aktionen._polystrata_starten`: Ohne gewählte Karte, aber mit `bedarf_mib` (Karten → MiB) startet der Server mit
+   `--gpu 0,1` (Kartennummern aus `bedarf_mib`, aufsteigend, mit Komma); Logzeile nennt die Karten. Ohne beides bleibt
+   der Fehler „Keine Karte … gewählt“.
+3. `server.py` (Zentrale): Planen und Starten einer solchen Variante laufen über den vorhandenen Weg für feste
+   Karten (`bedarf_mib`, wie Strata); `/api/konfig` gibt bei Varianten auch `karten` mit, wenn die Variante das Feld
+   setzt (auch `null`).
+4. `web/app.js`, `mitVariante`: übernimmt `karten` aus der Variante, wenn sie das Feld hat (`null` entfernt es), damit
+   die Bedarfszeile „… auf der RTX 3090 FE und … auf der RTX 3090 Suprim“ zeigt.
+5. `config.json`, Eintrag `edge0-145b`: `varianten` = Standard „eine Karte · 128K“ (ohne Überschreibungen) und
+   „beide Karten · 128K (Test)“ mit `konfig` `C:\LLM\runtimes\Edge0\edge0-145b-q3k-2gpu-128k.json`, `karten` null,
+   `bedarf_je_karte_mib` null, `bedarf_mib` {"0": 23400, "1": 22000} (wie Strata), `ram_bedarf_gib` 24 (geschätzt).
+6. Tests: Variante mit `null` entfernt Felder; Start der Zwei-Karten-Variante ruft `--gpu 0,1` auf; Plan/Start im
+   Server wählen keine Einzelkarte und prüfen beide Karten; Ein-Karten-Standard, Ornith, Strata unverändert.
+
+**Ausgang (14.11.2026):** Codex hat die Punkte 1–6 in einer Runde gebaut (212 Tests grün, Diff geprüft). Am echten
+System lud die Zwei-Karten-Variante in 24 s und belegte nur ~26 GiB RAM, brach aber bei der ersten Anfrage ab („layer 22
+never rang (an illegal memory access was encountered)“) – offener Engine-Fehler
+[Edge0-AI/Edge0#205](https://github.com/Edge0-AI/Edge0/issues/205): Das latente D/U-Paar liegt in einem einzigen
+prozessweiten Zeiger auf der ersten Karte. Der zweite Weg ohne Schichtaufteilung – Suprim als Experten-Hilfscache
+(`--expert-cache-device1 12500`, Test-Einstellung über `env` `CUDA_VISIBLE_DEVICES=0,1`, ohne Codeänderung) – lud
+(~12 GiB RAM), lieferte aber bei jeder Anfrage NaN, sobald die Suprim Experten rechnete. Peer-Stufe: kein P2P zwischen
+den 3090 („CNS“). Weil keine Zwei-Karten-Art läuft, ist der Bau wieder herausgenommen (nicht committet); stattdessen
+ist „RAM sparen“ (`--resident-experts`, ohne neuen Code) seit 14.11.2026 der Standard (Sascha), die schnelle Fassung
+die Variante „schnell“. Neu bauen nach den Punkten 1–6,
+wenn eine Engine #205 behebt – vorher den Modus mit einer Test-Einstellung prüfen. Werte: PLAN.md, Edge0-Abschnitt.
 
 ## Lehre aus diesem Lauf
 
 - Zeit kostete nichts Nennenswertes; der vorher fertig angelegte Einstellungsdatei-Pfad und die geprüften Fakten im
   Bauauftrag (Engine-Name, leerer Pfad) machten eine Runde reichen. Keine Änderung an Skill oder Vorlagen.
+- Nachtrag „beide Karten“: Die Bau-Runde war umsonst, weil die Engine den Modus nicht kann. Die `env` der
+  Einstellungsdatei überschreibt `CUDA_VISIBLE_DEVICES` des Servers; so lässt sich ein Engine-Modus über die vorhandene
+  Variante ausprobieren. Regel: erst den Engine-Modus mit einer Test-Einstellung prüfen (offene Issues der Engine
+  ansehen), Zentrale-Code erst danach bauen lassen.
 
 ## Risiken
 

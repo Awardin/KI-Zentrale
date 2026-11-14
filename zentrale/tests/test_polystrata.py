@@ -198,6 +198,8 @@ class Edge0(unittest.TestCase):
                            63: (self.e['python'], server.replace('8109', '8110')),
                            64: (r'C:\Fremd\strata.exe', '--serve')})
         self.erf.messen.return_value['dienste']['edge0-145b'] = {'zustand': 'aus'}
+        # Edge0 braucht gemessen ~46 GiB Arbeitsspeicher (14.11.2026); vor dem Start waren ~50 GiB frei.
+        self.freier_arbeitsspeicher_mib.return_value = 50 * 1024
 
     def test_eintrag_und_schaetzwerte(self):
         self.assertEqual(self.e['art'], 'polystrata')
@@ -206,10 +208,17 @@ class Edge0(unittest.TestCase):
         self.assertEqual(self.e['modell'], 'edge0-145b')
         self.assertEqual(self.e['karten'], ['RTX 3090'])
         self.assertEqual((self.e['port'], self.e['bedarf_je_karte_mib'], self.e['ram_bedarf_gib'],
-                          self.e['startzeit_max_s'], self.e['fit_max_tokens']), (8109, 23500, 34, 300, True))
+                          self.e['startzeit_max_s'], self.e['fit_max_tokens']), (8109, 23500, 40, 300, True))
         self.assertNotIn('vision_exe', self.e)
+        # Standard ist „RAM sparen“ (Sascha 14.11.2026); „schnell“ nimmt die Einstellung ohne --resident-experts.
+        standard, schnell = planung.variante(self.e), planung.variante(self.e, '1gpu-128k')
+        self.assertTrue(self.e['konfig'].endswith('-1gpu-128k-ram-sparen.json'))
+        self.assertEqual((standard['variante'], standard['konfig'], standard['ram_bedarf_gib']),
+                         ('1gpu-128k-ram-sparen', self.e['konfig'], 40))
+        self.assertEqual((schnell['konfig'], schnell['ram_bedarf_gib']),
+                         (self.e['konfig'].replace('-ram-sparen', ''), 46))
         for feld in ('bedarf_grund', 'ram_grund'):
-            self.assertEqual(self.e[feld], 'geschätzt, Herstellerwerte, noch nicht gemessen')
+            self.assertIn('14.11.2026 gemessen', self.e[feld])
         for text in ('14.11.2026', 'Auftrag Sascha'):
             self.assertIn(text, self.e['eingebaut_grund'])
         self.assertNotIn(self.e['farbe'], [e['farbe'] for e in self.cfg['eintraege'] if e['id'] != self.e['id']])

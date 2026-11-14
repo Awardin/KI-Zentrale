@@ -3838,6 +3838,79 @@ Entscheidungen „Dunkel lassen“, „Diktat später“, Bau-Go „Ja, bauen“
   und war danach 8 von 8 Mal grün: Wackeltest, offen. Die Suite belegt mit `test_abnahme_prompts.py` selbst Port 3897;
   ein Abnahme-Harness deshalb vor jedem Suite-Lauf stoppen. Log: SPEC-prompts-arbeitsflaeche-REVIEW-LOG.md, Act 3.
 
+## Edge0-145B als Zentrale-Eintrag (14.11.2026)
+
+Anlass: Video „Edge0-145B … runs on 1 GPU“ (Shaown Ships AI). Edge0 ist ein Umbau von Qwen3.8 Flash-Next zu einem
+„Latent MoE“ (512 Experten je Schicht, 10 + 1 aktiv, Breite 2560, Experten in 1.792 latenten Dimensionen) mit eigener
+Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „Ja, bauen“, „Ja, starten und messen“, Bildteil
+„nach der Messung mal testen“. Spec und Bauprotokoll: [SPEC-edge0.md](SPEC-edge0.md).
+
+- **Geladen:** `edge0-chat-0.2.0-windows-x64.zip` (264 MiB, SHA-256 `c7146b76…31b9` geprüft) nach
+  `C:\LLM\runtimes\Edge0\paket\`; Engine 0.1.55 (CUDA 13.5, Architekturen 75/86/89/120) und eingebettetes Python 3.12
+  liegen bei. Das verlangte CUDA-Toolkit 13 ist nicht nötig: Die Engine läuft mit Strata's pip-DLLs (cuBLAS 13.0.2,
+  cudart 13.0.96) über `lib_dirs`. Modell `Edge0/Edge0-145B-q3k` (93 Dateien, 98,1 GiB, Größen gegen Hugging Face
+  geprüft) mit `hf` aus der Fibo-Umgebung nach `C:\LLM\models\Edge0-145B-q3k`.
+- **Gebaut** (Codex Sol medium, Worktree `bau/edge0`, eine Runde, Merge `2ba8143`): Art `polystrata` nimmt den
+  Engine-Namen aus der Konfiguration, `vision_exe` ist optional; Edge0s `strata.exe` zählt bei leerem Programmpfad nur
+  über den eigenen Server (Port 8109) zu Edge0, nicht zu Flash-Next. 10 neue Tests.
+- **Stolperstein:** Erster Start brach mit „latent dense: labels.bin missing“ ab. Die Engine leitet den Ordner von
+  `labels.bin` aus `STRATA_LATENT_A` ab und sucht dabei nur `/` (die Variable `STRATA_LATENT_LABELS` kennt diese Engine
+  gar nicht). Mit `/` in allen `env`-Pfaden der Einstellung startet sie.
+- **Gemessen über die Zentrale** (FE, Monitor an der Suprim, Proben wie Strata 20.10.2026 ohne Bild, zwei Läufe,
+  `Projekte\Lokale-Wissensextraktion\nachweise\2026-11-14-edge0\`): bereit nach 23 s, 22.846 MiB auf der FE (6.873
+  Experten-Plätze = 10,4 GiB, 858 MiB frei), **45–48 Token/s Text, 54–61 Code, 70.602 Token in 48 s (1.463–1.478
+  Token/s)**, Antwort richtig, `max_tokens` 140.000 → 200 (`--fit-max-tokens`). **Arbeitsspeicher:** frei fiel von
+  49,7 auf 2,8–3,3 GiB – alle 37,3 GiB Experten liegen fest im RAM; die PLE-Tabelle liest die Engine direkt von der
+  SSD (sie warnt: „~29 MB/s zufällige 4-KiB-Lesezugriffe“). Nach dem Beenden wieder 50,2 GiB frei, Grafikspeicher 0.
+  `ram_bedarf_gib` daher 46 statt geschätzt 34.
+- **Vergleich:** Flash-Next auf beiden Karten schreibt etwa doppelt so schnell (Q4 v3.1 88,7 Token/s, IQ3_XXS 115–117,
+  Einlesen 2.000–3.900 Token/s). Edge0 lässt zwar die zweite Karte frei, belegt aber fast den ganzen Arbeitsspeicher –
+  neben einem Studio-Video wird es eng. Die Herstellerwerte (RTX 4090: 70 Token/s Chat, 92 Agent) erreicht die 3090
+  nicht. Qualität (Coding, Agentenarbeit über DSH) noch nicht verglichen.
+- **Bildteil-Test** (Wunsch Sascha): Flash-Nexts `mmproj-Qwen3.8-Flash-Next-BF16.gguf` liefert Vektoren der Breite 2560 –
+  wie Edge0 (beide `qwen4exp`). Mit Abschnitt `vision` in der Einstellung (Strata's `strata-vision.exe` als Kopie in
+  `C:\LLM\runtimes\Edge0\vision-test\`, damit die Zentrale sie nicht Flash-Next zuordnet; auf der CPU, weil die FE voll
+  ist) meldet der Server `images: true`. Testbild Raum: drei Pflanzen richtig gezählt und verortet, Fenster, Wand, Boden,
+  Stuhl richtig; 2–10 s je Frage. **Geht.** Danach wieder ausgebaut (Einstellung ohne Bild; Fassung mit Bild liegt als
+  `vision-test\einstellung-mit-bild-cpu.json`); fest einbauen nur auf Saschas Ja (dann `vision_exe` im Eintrag).
+- **RAM sparen und beide Karten** (Sascha: ob der RAM-Bedarf „wie Flash-Next auf beide Karten verteilt“ deutlich
+  sinkt → „Beide testen“). Alle Starts über die Zentrale, Proben wie oben (`ergebnisse.jsonl`, Läufe
+  `1karte-sparmodus-a/b`, `hilfskarte-a`):
+
+  | Aufbau | RAM belegt | Schreiben (Token/s) | 70K einlesen | Ergebnis |
+  |---|---|---|---|---|
+  | eine Karte, Standard | ~46 GiB | 45–48 Text, 54–61 Code | 1.463–1.478 | läuft |
+  | eine Karte, `--resident-experts` | ~36 GiB, bis ~40 mit Gesprächsspeicher | 42–44 Text, 51–58 Code | 1.210–1.214 | läuft |
+  | beide Karten, Schichten geteilt, Sparmodus | ~26 GiB | – | – | Absturz bei der ersten Anfrage |
+  | FE rechnet, Suprim als Experten-Hilfscache, Sparmodus | ~12 GiB | – | – | jede Anfrage endet mit NaN |
+
+  - *Sparmodus:* Nur Experten außerhalb des Grafikspeichers liegen gesperrt im RAM (32,4 statt 37,3 GiB); frei nach
+    dem Laden 13,8 GiB, mit gefülltem Gesprächsspeicher 9,6 GiB. Kosten: Schreiben ~5 % langsamer, Einlesen ~18 %.
+    Seit 14.11.2026 **Standard** „eine Karte · 128K · RAM sparen“ (Sascha: „Ja, als Standard“; der Eintrag zeigt auf
+    `edge0-145b-q3k-1gpu-128k-ram-sparen.json`, RAM-Prüfung 40 GiB, kein neuer Code); die schnelle Fassung ist Variante
+    „eine Karte · 128K · schnell“ (`…-1gpu-128k.json`, RAM-Prüfung 46 GiB). Start ohne Wahl über die Zentrale geprüft:
+    Spar-Einstellung auf der FE, 13 GiB RAM frei, Antwort richtig, sauber beendet.
+  - *Schichten geteilt* (`--gpu 0,1`, Reserven 700/1800 MiB): bereit nach 24 s, 21 GiB Experten im RAM (davon 11 GiB
+    Leihbereich fürs Einlesen), 27,4 GiB auf den Karten. Erste Anfrage: „layer 22 never rang (an illegal memory access
+    was encountered)“ – Schicht 22 ist die erste auf der Suprim. Offener Engine-Fehler
+    [Edge0-AI/Edge0#205](https://github.com/Edge0-AI/Edge0/issues/205) (gleiche Meldung auf zwei sm_86-Karten): Das
+    latente D/U-Paar liegt in einem prozessweiten Zeiger auf der ersten Karte; mit Einstellungen nicht zu umgehen, auch
+    mit dem Patch des Meldenden bleibt die Anfrage hängen.
+  - *Suprim als Experten-Hilfscache* (`--expert-cache-device1 12500`, feste Zahl wegen Monitor; Ergebnisse über
+    angeheftete Host-Puffer, kein P2P nötig; ohne Zentrale-Code über `env` `CUDA_VISIBLE_DEVICES=0,1` in einer
+    Test-Einstellung): bereit nach 15 s, 12.500 Experten = 18,98 GiB auf der Suprim, nur 7,9 GiB Experten im RAM. Aber
+    „non-finite logits“ bei jeder Anfrage, sobald die Suprim Experten rechnet – der Hilfscache kann die latenten
+    Experten nicht.
+  - *Peer-Stufe* (`--peer-device`): braucht P2P; `nvidia-smi topo -p2p r` meldet für die beiden 3090 „CNS“. Nicht getestet.
+  - Den Zentrale-Umbau für zwei Karten (SPEC-edge0.md, Nachtrag; Codex Sol medium, eine Runde, 212 Tests) wieder
+    herausgenommen, nicht committet; neu bauen, wenn eine Engine #205 behebt. Test-Einstellungen
+    (`…-2gpu-128k.json`, `…-hilfskarte-128k.json`) und Protokolle liegen in `C:\LLM\runtimes\Edge0\`.
+  - **Antwort auf Saschas Frage:** Ja, auf beiden Karten fiele der RAM-Bedarf deutlich (26 bzw. 12 statt 36–46 GiB) –
+    mit Engine 0.1.55 läuft aber keine Zwei-Karten-Art. Heute spart nur der Sparmodus (~10 GiB, jetzt Standard).
+- **Offen / Ideen:** Issue #205 beobachten und mit einer neuen Engine die Schichtaufteilung erneut testen;
+  Herstelleroptionen aus `model.json` (`--pcie-mode dma`, `--pcie-frac 0.1`, `--pool-workers 24`) prüfen;
+  `--ple-io mmap` gegen `direct`; Qualitätsvergleich mit Flash-Next; Anbieter in DSH/Hermes erst danach.
+
 ## Offen
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update

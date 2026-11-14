@@ -148,6 +148,12 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   CCORE-Finetune vom 05.11. für Low-Poly-Spiel-Assets, Q8_0 + Bildteil des 3D-Coders, 128K, Sampling 0,8/0,95/40/Min-P 0,
   RTX 3080 vor RTX 3090, Bedarf 9.000 MiB, gemessen ~8.340). Three.js-Seite mit „Export GLB“: Einzel-Assets in 2,5–3 min
   meist lauffähig, Szenen mit vielen Teilen nicht. Systemprompt der Modellkarte, englische Prompts. PLAN.md, 07.11.2026.
+- **Edge0 145B** (14.11.2026, Auftrag Sascha nach Video): Eintrag `edge0-145b` (Art `polystrata`, Port 8109, eine RTX 3090
+  nach Kartenwahl, Q3_K, 128K, ohne Bilder), Flash-Next-Umbau mit eigener Engine edge0-strata aus dem Windows-Paket
+  (`C:\LLM\runtimes\Edge0`). Standard „RAM sparen“ (`--resident-experts`, Sascha 14.11.2026): ~36–40 GiB RAM, 42–44 Token/s
+  Text, 1.210 Token/s Einlesen; Variante „schnell“: ~46 GiB RAM, 45–48 Token/s, 1.470 Token/s. Beide Karten gehen mit
+  Engine 0.1.55 nicht (Edge0#205, Hilfscache NaN). Bildteil von Flash-Next passt (Breite 2560, Test richtig), ist aber
+  noch nicht eingebaut. [SPEC-edge0.md](SPEC-edge0.md), PLAN.md 14.11.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,

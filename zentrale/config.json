@@ -241,12 +241,25 @@
       "gruppe": "Sprachmodelle",
       "name": "Edge0 145B · Q3_K",
       "untertitel": "Flash-Next-Umbau · 128K · ohne Bilder · eine RTX 3090",
-      "wofuer": "Flash-Next-Umbau auf einer Karte – zweite Karte bleibt frei. OpenAI-API auf Port 8109. Noch nicht gemessen.",
+      "wofuer": "Flash-Next-Umbau auf einer Karte – zweite Karte bleibt frei. Standard „RAM sparen“: rund 36–40 GiB Arbeitsspeicher, gemessen 42–44 Token/s Text, 51–58 Code, 70K-Prompt 1.210 Token/s (etwa halb so schnell wie Flash-Next auf beiden Karten). Variante „schnell“: 45–48 Token/s Text, 54–61 Code, 70K-Prompt 1.470 Token/s, braucht aber ~46 GiB Arbeitsspeicher. Beide Karten gehen mit Engine 0.1.55 nicht. OpenAI-API auf Port 8109.",
       "farbe": "#B56B35",
       "python": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\.venv\\Scripts\\python.exe",
       "server_skript": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\serve\\server.py",
       "engine": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\build\\strata.exe",
-      "konfig": "C:\\LLM\\runtimes\\Edge0\\edge0-145b-q3k-1gpu-128k.json",
+      "konfig": "C:\\LLM\\runtimes\\Edge0\\edge0-145b-q3k-1gpu-128k-ram-sparen.json",
+      "varianten": [
+        {
+          "id": "1gpu-128k-ram-sparen",
+          "name": "eine Karte · 128K · RAM sparen",
+          "standard": true
+        },
+        {
+          "id": "1gpu-128k",
+          "name": "eine Karte · 128K · schnell",
+          "konfig": "C:\\LLM\\runtimes\\Edge0\\edge0-145b-q3k-1gpu-128k.json",
+          "ram_bedarf_gib": 46
+        }
+      ],
       "modell": "edge0-145b",
       "port": 8109,
       "fit_max_tokens": true,
@@ -254,9 +267,9 @@
         "RTX 3090"
       ],
       "bedarf_je_karte_mib": 23500,
-      "bedarf_grund": "geschätzt, Herstellerwerte, noch nicht gemessen",
-      "ram_bedarf_gib": 34,
-      "ram_grund": "geschätzt, Herstellerwerte, noch nicht gemessen",
+      "bedarf_grund": "14.11.2026 gemessen auf der FE: 22.846 MiB (Engine 0.1.55 füllt den freien Platz selbst: 6.873 Experten-Plätze = 10,4 GiB, --vram-reserve-mib 1000, 858 MiB frei bei allem geladen). Der Bedarf sorgt dafür, dass vorher praktisch eine ganze Karte frei ist.",
+      "ram_bedarf_gib": 40,
+      "ram_grund": "14.11.2026 gemessen, Standard „RAM sparen“ (--resident-experts; Sascha: „Ja, als Standard“): 32,4 GiB Experten fest im RAM, freier Arbeitsspeicher fiel von rund 49 auf 12,8–13,8 GiB nach dem Laden und auf 9,6 GiB, sobald der Gesprächsspeicher gefüllt ist – daher Prüfung 40 GiB. Die PLE-Tabelle (47,7 GiB) liest die Engine direkt von der SSD. Variante „schnell“: alle 37,3 GiB Experten fest im RAM, frei nur 2,8–3,3 GiB, Prüfung 46 GiB. Nach dem Beenden wieder rund 50 GiB frei.",
       "startzeit_max_s": 300,
       "eingebaut_grund": "14.11.2026, Auftrag Sascha: Edge0-145B Q3_K als zusätzlichen Eintrag auf einer RTX 3090 nach Kartenwahl einbauen."
     },
