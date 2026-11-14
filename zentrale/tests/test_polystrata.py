@@ -182,5 +182,133 @@ class PolyStrata(unittest.TestCase):
         self.assertEqual(z.laufend, {})
 
 
+class Edge0(unittest.TestCase):
+    """Edge0 und die beiden bisherigen Strata-Dienste bleiben auch bei gleichem Engine-Namen getrennt."""
+
+    def setUp(self):
+        PolyStrata.setUp(self)
+        self.ornith = self.e
+        self.e = self.erf.polystrata['edge0-145b']
+        server = (f'"{self.e["python"]}" "{self.e["server_skript"]}" --engine strata '
+                  f'--config "{self.e["konfig"]}" "--port" "8109" --gpu 0')
+        self.procs.update({60: (0, 'python.exe'), 61: (60, 'python.exe'), 62: (61, 'strata.exe'),
+                           63: (0, 'pythonw.exe'), 64: (0, 'strata.exe')})
+        self.infos.update({60: (self.e['python'], server), 61: (sys.executable, server),
+                           62: (self.e['engine'], '--serve'),
+                           63: (self.e['python'], server.replace('8109', '8110')),
+                           64: (r'C:\Fremd\strata.exe', '--serve')})
+        self.erf.messen.return_value['dienste']['edge0-145b'] = {'zustand': 'aus'}
+
+    def test_eintrag_und_schaetzwerte(self):
+        self.assertEqual(self.e['art'], 'polystrata')
+        self.assertEqual(self.e['name'], 'Edge0 145B · Q3_K')
+        self.assertEqual(self.e['untertitel'], 'Flash-Next-Umbau · 128K · ohne Bilder · eine RTX 3090')
+        self.assertEqual(self.e['modell'], 'edge0-145b')
+        self.assertEqual(self.e['karten'], ['RTX 3090'])
+        self.assertEqual((self.e['port'], self.e['bedarf_je_karte_mib'], self.e['ram_bedarf_gib'],
+                          self.e['startzeit_max_s'], self.e['fit_max_tokens']), (8109, 23500, 34, 300, True))
+        self.assertNotIn('vision_exe', self.e)
+        for feld in ('bedarf_grund', 'ram_grund'):
+            self.assertEqual(self.e[feld], 'geschätzt, Herstellerwerte, noch nicht gemessen')
+        for text in ('14.11.2026', 'Auftrag Sascha'):
+            self.assertIn(text, self.e['eingebaut_grund'])
+        self.assertNotIn(self.e['farbe'], [e['farbe'] for e in self.cfg['eintraege'] if e['id'] != self.e['id']])
+
+    def test_erkennung_trennt_alle_drei_dienste(self):
+        for pid in (60, 61, 62):
+            with self.subTest(pid=pid):
+                self.assertEqual(self.erf.ist_polystrata(pid, self.procs), 'edge0-145b')
+                self.assertFalse(self.erf.ist_strata(pid, self.procs))
+                self.assertEqual(self.erf.einordnen(pid, self.procs), ('polystrata:edge0-145b', self.e['name']))
+        for pid in (63, 64):
+            self.assertIsNone(self.erf.ist_polystrata(pid, self.procs))
+            self.assertFalse(self.erf.ist_strata(pid, self.procs))
+        for pid in (50, 51, 52, 53):
+            self.assertEqual(self.erf.ist_polystrata(pid, self.procs), 'ornith-polystrata')
+        for pid in (55, 56, 57):
+            self.assertIsNone(self.erf.ist_polystrata(pid, self.procs))
+            self.assertTrue(self.erf.ist_strata(pid, self.procs))
+
+    def test_leerer_engine_pfad_nur_mit_eigenem_python_server(self):
+        self.procs[56] = (57, 'strata.exe')
+        for pid in (56, 62, 64):
+            self.infos[pid] = ('', '')
+        self.test_erkennung_trennt_alle_drei_dienste()
+        for eltern in (0, 62, 63, 64, 50, 57):
+            with self.subTest(eltern=eltern):
+                self.procs[62] = (eltern, 'strata.exe')
+                self.assertIsNone(self.erf.ist_polystrata(62, self.procs))
+                self.assertEqual(self.erf.ist_strata(62, self.procs), eltern == 57)
+
+    def test_ornith_erkennung_bei_leerem_pfad_bleibt_unveraendert(self):
+        for pid in (52, 53):
+            self.infos[pid] = ('', '')
+            self.assertIsNone(self.erf.ist_polystrata(pid, self.procs))
+            self.assertFalse(self.erf.ist_strata(pid, self.procs))
+
+    def test_fremder_pfad_wird_nicht_durch_eltern_ersetzt(self):
+        self.infos[62] = (r'C:\Fremd\strata.exe', '')
+        self.assertIsNone(self.erf.ist_polystrata(62, self.procs))
+        self.assertFalse(self.erf.ist_strata(62, self.procs))
+
+    def test_zustaende_und_belegung_bleiben_getrennt(self):
+        self.health.return_value = {'loaded': True, 'max_context': 131072, 'model': 'edge0-145b'}
+        s = self.erf._dienste(self.procs, {8109: 61})
+        self.assertEqual((s['edge0-145b']['zustand'], s['edge0-145b']['pids']), ('bereit', [60, 61, 62]))
+        self.assertNotIn(62, s['strata']['pids'])
+        self.assertNotIn(62, s['ornith-polystrata']['pids'])
+        self.health.assert_called_once_with('http://127.0.0.1:8109/health', timeout=1.0)
+        nur_edge0 = {p: self.procs[p] for p in (60, 61, 62)}
+        s = self.erf._dienste(nur_edge0, {8109: 61})
+        self.assertEqual(s['strata']['zustand'], 'aus')
+        self.assertEqual(s['ornith-polystrata']['zustand'], 'aus')
+        self.assertEqual(self.erf._dienste(self.procs, {8109: 57})['edge0-145b']['zustand'], 'fremd')
+        karten = [{'index': 0, 'belegt': 23500, 'gesamt': 24576}]
+        v = self.erf._verbraucher(nur_edge0, karten, {0: {62: 23500}}, {'geladen': []}, {})
+        x = next(x for x in v if x['schluessel'] == 'polystrata:edge0-145b')
+        self.assertEqual((x['eintrag'], x['mib_je_karte'], x['schritt']['id']),
+                         ('edge0-145b', {0: 23500}, 'beenden:edge0-145b'))
+
+    def test_start_ohne_bildteil_mit_gewaehlter_karte(self):
+        self.starte_losgeloest.return_value = Mock(pid=70, poll=Mock(return_value=None))
+        self.antwort.return_value = {'loaded': True, 'max_context': 131072}
+        self.assertIn('ist bereit', self.akt.starten('edge0-145b', karte=0))
+        args, kwargs = self.starte_losgeloest.call_args
+        self.assertEqual(args[0], [self.e['python'], self.e['server_skript'], '--engine', 'strata', '--config',
+                                   self.e['konfig'], '--port', '8109', '--gpu', '0', '--fit-max-tokens'])
+        self.assertEqual(args[1], os.path.dirname(os.path.dirname(self.e['server_skript'])))
+        self.assertEqual(kwargs['log_basis'], os.path.join('logs', 'edge0-145b'))
+        self.assertEqual([c.args[0] for c in self.datei.call_args_list],
+                         [self.e[f] for f in ('python', 'server_skript', 'engine', 'konfig')])
+        self.antwort.assert_called_once_with('http://127.0.0.1:8109/health', timeout=1.0)
+
+    def test_kartenwahl_nimmt_eine_3090_mit_genug_platz(self):
+        karten = [{'index': 0, 'belegt': 0, 'gesamt': 24576, 'name': 'RTX 3090'},
+                  {'index': 1, 'belegt': 1500, 'gesamt': 24576, 'name': 'RTX 3090', 'monitor': True}]
+        self.assertEqual(planung.karte_waehlen(karten, [], self.e, 768, 2048), (0, None))
+
+    def test_stoppen_trifft_nur_edge0_auch_bei_leerem_pfad(self):
+        for pfad in (self.e['engine'], ''):
+            with self.subTest(pfad=pfad):
+                self.infos[62] = (pfad, '')
+                self.prozesse.return_value = {p: self.procs[p] for p in (50, 51, 52, 53, 55, 56, 57)}
+                self.lauschende_ports.return_value = [('127.0.0.1', 8097, 51), ('127.0.0.1', 8095, 57)]
+                self.beenden.reset_mock()
+                self.assertEqual(self.akt.schritt('beenden:edge0-145b'), f"{self.e['name']} beendet.")
+                self.assertEqual([c.args[0] for c in self.beenden.call_args_list], [62, 60, 61])
+
+    def test_anzeige_port_karte_und_link(self):
+        z = Zentrale.__new__(Zentrale)
+        z.cfg = dict(self.cfg, eintraege=[self.e])
+        z.erf, z.akt, z.laufend = self.erf, self.akt, {}
+        roh = {'dienste': {'edge0-145b': {'zustand': 'bereit', 'fremd': None, 'kontext': 131072}},
+               'karten': [{'index': 0, 'name': 'NVIDIA GeForce RTX 3090'}],
+               'verbraucher': [{'schluessel': 'polystrata:edge0-145b', 'mib_je_karte': {0: 23500}}]}
+        s = z._zustaende(roh)['edge0-145b']
+        self.assertEqual(s['detail'], 'Kontext 131.072 · Port 8109 · RTX 3090')
+        self.assertEqual(z.konfig()['eintraege'][0]['links'],
+                         [{'art': 'polystrata', 'text': 'Chat öffnen', 'url': 'http://127.0.0.1:8109/'}])
+
+
 if __name__ == '__main__':
     unittest.main()

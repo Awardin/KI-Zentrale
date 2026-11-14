@@ -250,7 +250,9 @@ class Aktionen:
             return f"{e['name']} läuft bereits."
         if s['zustand'] == 'fremd':
             raise Fehler(f"Port {e['port']} ist von {s['fremd']} belegt. {e['name']} wurde nicht gestartet.")
-        for pfad in (e['python'], e['server_skript'], e['engine'], e['vision_exe'], e['konfig']):
+        for pfad in (e['python'], e['server_skript'], e['engine'], e.get('vision_exe'), e['konfig']):
+            if not pfad:
+                continue
             if not os.path.exists(pfad):
                 raise Fehler(f'Datei fehlt: {pfad}')
         prozess = None
@@ -291,12 +293,16 @@ class Aktionen:
         ziele = [p for p in procs if self.erf.ist_polystrata(p, procs) == e['id']]
         if not ziele:
             return f"{e['name']} lief nicht."
-        engine, vision = norm(e['engine']), norm(e['vision_exe'])
+        engine, vision = norm(e['engine']), norm(e.get('vision_exe'))
 
         # Erst die Engine, dann der Bildprozess, dann Python-Dienst und Starter.
         def reihenfolge(pid):
             pfad = self.erf.info(pid, procs[pid][1])['pfad']
-            return 0 if pfad == engine else 1 if pfad == vision else 2
+            # Bei leerem Pfad ist die Zugehörigkeit bereits über den Elternprozess geprüft.
+            name = procs[pid][1].lower()
+            if pfad == engine or (not pfad and name == os.path.basename(engine)):
+                return 0
+            return 1 if vision and (pfad == vision or (not pfad and name == os.path.basename(vision))) else 2
         ziele.sort(key=reihenfolge)
         for pid in ziele:
             winapi.beenden(pid)

@@ -236,6 +236,31 @@
       "eingebaut_grund": "18.10.2026, Auftrag Sascha: „bau PolyStrata mit Ornith Q4 (Ollama-Datei, eine Karte, 128K, Bilder) als zusätzliche Variante in die Zentrale ein; Ollama-Ornith bleibt daneben.“ PolyStrata liegt in C:\\LLM\\runtimes\\PolyStrata (Handaufbau ohne Setup) und nutzt die Python-Umgebung von Strata nur lesend. Messung: Projekte\\Lokale-Wissensextraktion\\auswertungen\\2026-10-18-polystrata.md."
     },
     {
+      "id": "edge0-145b",
+      "art": "polystrata",
+      "gruppe": "Sprachmodelle",
+      "name": "Edge0 145B · Q3_K",
+      "untertitel": "Flash-Next-Umbau · 128K · ohne Bilder · eine RTX 3090",
+      "wofuer": "Flash-Next-Umbau auf einer Karte – zweite Karte bleibt frei. OpenAI-API auf Port 8109. Noch nicht gemessen.",
+      "farbe": "#B56B35",
+      "python": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\.venv\\Scripts\\python.exe",
+      "server_skript": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\serve\\server.py",
+      "engine": "C:\\LLM\\runtimes\\Edge0\\paket\\edge0-chat-0.2.0-windows-x64\\edge0-strata\\build\\strata.exe",
+      "konfig": "C:\\LLM\\runtimes\\Edge0\\edge0-145b-q3k-1gpu-128k.json",
+      "modell": "edge0-145b",
+      "port": 8109,
+      "fit_max_tokens": true,
+      "karten": [
+        "RTX 3090"
+      ],
+      "bedarf_je_karte_mib": 23500,
+      "bedarf_grund": "geschätzt, Herstellerwerte, noch nicht gemessen",
+      "ram_bedarf_gib": 34,
+      "ram_grund": "geschätzt, Herstellerwerte, noch nicht gemessen",
+      "startzeit_max_s": 300,
+      "eingebaut_grund": "14.11.2026, Auftrag Sascha: Edge0-145B Q3_K als zusätzlichen Eintrag auf einer RTX 3090 nach Kartenwahl einbauen."
+    },
+    {
       "id": "flash-next-strata",
       "art": "strata",
       "gruppe": "Sprachmodelle",
