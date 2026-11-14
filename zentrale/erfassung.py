@@ -77,7 +77,7 @@ class Erfassung:
         # Bildprogramm im PolyStrata-Ordner bzw. an Server-Skript und Port in der Kommandozeile von Python.
         self.polystrata = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'polystrata'}
         self._polystrata_kennung = {i: (norm(e['server_skript']), f"--port {e['port']}", norm(e['engine']),
-                                        norm(e['vision_exe'])) for i, e in self.polystrata.items()}
+                                        norm(e.get('vision_exe'))) for i, e in self.polystrata.items()}
         # Allgemeine Python-Dienste (seit 22.10.2026, erster Eintrag Fibo 2.0): erkannt an Skriptpfad und Port in der
         # Kommandozeile, egal welcher Interpreter. Der uv-Starter und sein Kindprozess tragen beide dieselbe Kennung.
         self.python_dienst = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'python_dienst'}
@@ -178,15 +178,24 @@ class Erfassung:
         if not self.polystrata or pid not in procs:
             return None
         name = procs[pid][1].lower()
-        if name not in ('strata-poly.exe', 'strata-vision.exe', 'python.exe', 'pythonw.exe'):
+        namen = {os.path.basename(p) for _, _, engine, vision in self._polystrata_kennung.values()
+                 for p in (engine, vision) if p}
+        if name not in namen | {'python.exe', 'pythonw.exe'}:
             return None
         i = self.info(pid, procs[pid][1])
         cmd = i['cmd'].replace('"', '')
         for eid, (skript, port_arg, engine, vision) in self._polystrata_kennung.items():
-            if name == 'strata-poly.exe' and i['pfad'] == engine:
-                return eid
-            if name == 'strata-vision.exe' and i['pfad'] == vision:
-                return eid
+            for pfad in (engine, vision):
+                if not pfad or name != os.path.basename(pfad):
+                    continue
+                if i['pfad'] == pfad:
+                    return eid
+                if not i['pfad'] and name == os.path.basename(self.strata_engine):
+                    # Bei gleichem Engine-Namen wie Strata entscheidet bei leerem Pfad der eigene Server samt Port.
+                    eltern = procs[pid][0]
+                    if eltern != pid and eltern in procs and procs[eltern][1].lower() in ('python.exe', 'pythonw.exe') \
+                            and self.ist_polystrata(eltern, procs) == eid:
+                        return eid
             if name in ('python.exe', 'pythonw.exe') and skript in cmd and port_arg in cmd:
                 return eid
         return None
