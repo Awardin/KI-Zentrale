@@ -3911,6 +3911,64 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
   Herstelleroptionen aus `model.json` (`--pcie-mode dma`, `--pcie-frac 0.1`, `--pool-workers 24`) prüfen;
   `--ple-io mmap` gegen `direct`; Qualitätsvergleich mit Flash-Next; Anbieter in DSH/Hermes erst danach.
 
+## Apex-35B als Testeintrag (18.11.2026)
+
+- **Anlass:** Video von Fahd Mirza (18.11.2026) über Apex-35B-V1.0 (Apex Intelligence). Das Modell ist ein Agenten-Finetune
+  von Qwen3.6-35B-A3B: MoE mit 3B aktiv, 262K Kontext, laut Modellkarte BFCL V4 84,0 (Basis 75,2),
+  AutomationBench 49,3 (10,0), SWE-bench Pro 92,4 (72,4). Verglichen wird es nicht mit Qwen3.8.
+  Sascha: „Ja, vorbereiten“.
+- **Datei:** `C:\LLM\models\Apex-35B\Apex-35B-V1.0-Q4_K_M.gguf` aus `Apexintelligence-AI/Apex-35B-V1.0-GGUF`, 21,7 GB,
+  SHA-256 `c3b92d94…6ab3355` gleich wie bei Hugging Face. Ohne Bildteil.
+- **Eintrag** `apex-35b`: Art `llamacpp`, Port 8110, llama-server b11838, 128K, q8-Cache, eine RTX 3090 nach Kartenwahl.
+  Sampling laut Karte: 1,0 / 0,95 / 20 / Min-P 0, `--jinja`. Die MTP-Schicht ist noch aus.
+- **Erster Start auf der FE:** 22.034 MiB (Bedarf 22.500 eingetragen), Schreiben ~160 Token/s bei kurzer Antwort.
+  Ein Werkzeugaufruf (OpenAI-`tools`) kam sauber als `tool_calls`. Zentrale-Tests 204/204 grün.
+- **Tempo auf der FE** (Zeitangaben von llama-server, ohne Prompt-Cache):
+
+  | Kontext | Schreiben | Einlesen |
+  |---|---|---|
+  | kurz | 170 Token/s | – |
+  | 9K | 156 Token/s | 3.533 Token/s |
+  | 29K | 130 Token/s | 3.228 Token/s |
+  | 78K | 94 Token/s | 2.628 Token/s |
+
+  Das ist etwa dreimal so schnell beim Schreiben und mehr als doppelt so schnell beim Einlesen wie Qwen 27B Unsloth.
+  Das Modell liegt ganz im VRAM: Geteilter Speicher 224 MiB, das ist der Grundwert. Die ~21 GB Arbeitsspeicher des
+  Prozesses sind das mmap der Datei.
+- **DSH-Vergleich, Umgebung:** liegt in `%LOCALAPPDATA%\dsh-vergleich`.
+  - Bestandteile: eigener DSH-Ordner, `overlay.yml` mit den Anbietern `apex-local`, `qwen27-local` und `strata-local`,
+    `vergleich.py <apex|qwen27|flash> <tarif|recherche>`. Sandbox `workspace-write`, keine Websuche, keine Unteragenten.
+  - Aufgabe „tarif“: Solar-Rechner mit verstecktem Blocktarif-Fehler. Geprüft wird mit versteckten Tests in
+    `pruefung\test_versteckt.py`, die eine Referenzlösung vollständig besteht.
+  - Aufgabe „recherche“: vier Fragen zu Kopien von PLAN.md, README.md und config.json. Die Antworten stehen fest.
+- **Probe Apex (18.11.2026):**
+  - **Tarif:** 9 min, 126 Modellaufrufe, 140 Werkzeugaufrufe (77 pwsh, 48 write), ~52K Ausgabe-Token. Die Ursache ist
+    richtig behoben (blockweise Abrechnung), dazu kommen 7 eigene Tests, die grün sind. Versteckte Tests: 6 von 7. Bei
+    0 kWh wird die Grundgebühr doppelt berechnet. Die Zusammenfassung enthält falsche Zwischenzahlen (4210 als falscher
+    Wert bezeichnet, Ersparnis 2435 statt 2750), das Endergebnis von 15,2 Jahren stimmt.
+  - **Recherche:** 75 s, 3 Lesevorgänge, nichts geändert. Drei Antworten stimmen und sind mit Zeile belegt. Bei Frage 2
+    stimmt der Grund, der Ablageort `engine\.previous` fehlt. Kleine Unstimmigkeit: „vier Einträge“ angekündigt, drei
+    aufgelistet.
+- **Fester Eintrag mit 256K** (18.11.2026, Sascha: „mit dem größtmöglichen Kontextfenster, das noch passt“):
+  - Varianten `256k` (Standard, 262.144 = Höchstwert des Modells) und `128k`, je mit q8-Cache. Der Name hat kein „Test“ mehr.
+  - 256K auf der FE: 23.778 MiB nach dem Start, 23.802 MiB nach 240K Token Einlesen, Bedarf 23.800 eingetragen.
+    Geteilter Speicher 352 MiB, das ist der Grundwert, also keine Auslagerung.
+  - Mit 240K Token: Einlesen 1.677 Token/s (143 s), Schreiben 48,5 Token/s. Die Suchfrage zu Edge0 hat es richtig
+    beantwortet (8109).
+  - 256K passt nur auf eine Karte ohne Monitor. Rest 770 MiB, die Monitorkarte braucht 2 GiB.
+  - Die Zentrale erkennt die laufende Variante an `-c 262144` bzw. `-c 131072`.
+- **Wahl „128K · fest auf der Suprim (Monitorkarte)“** (18.11.2026, Sascha: „schau mal, ob das auch auf der Suprim
+  laufen könnte“):
+  - Variante `128k-suprim` mit `feste_karte` 1 und `-ub 256` (Kennung). Mit `-ub 512` und Bedarf 22.500 fehlten bei
+    ~1,7 GB Windows-Belegung 356 MiB. Bedarf jetzt 21.800.
+  - Gemessen: 23.174 MiB auf der Karte samt Windows, rund 1,4 GB frei. Nach 124K Token Einlesen 23.188 MiB, geteilter
+    Speicher 152 MiB, also keine Auslagerung.
+  - Tempo: Schreiben 165 Token/s kurz und 77 Token/s nach 124K, Einlesen 1.863 Token/s (124K in 67 s).
+  - Grenze: Wächst die Windows-Belegung auf der Monitorkarte stark (viele Fenster, Videos), wird es eng. Dann die FE nehmen.
+- **Offen:** dieselben zwei Aufgaben mit Qwen 27B (FE) und Flash-Next, etwa 45 min. Am 18.11. verschoben, weil
+  der Arbeitsspeicher fehlte. Danach entscheiden, ob Apex ein DSH-Anbieter wird oder nach
+  `D:\LLM-lokal\Testmodelle` geht.
+
 ## Offen
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update

@@ -154,6 +154,10 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Text, 1.210 Token/s Einlesen; Variante „schnell“: ~46 GiB RAM, 45–48 Token/s, 1.470 Token/s. Beide Karten gehen mit
   Engine 0.1.55 nicht (Edge0#205, Hilfscache NaN). Bildteil von Flash-Next passt (Breite 2560, Test richtig), ist aber
   noch nicht eingebaut. [SPEC-edge0.md](SPEC-edge0.md), PLAN.md 14.11.2026.
+- **Apex-35B** (18.11.2026, Auftrag Sascha nach Video): Eintrag `apex-35b` (Art `llamacpp`, Port 8110, Q4_K_M,
+  Agenten-Finetune von Qwen3.6-35B-A3B, ohne Bilder). Varianten 256K (Standard, 23.800 MiB, nur auf einer Karte ohne
+  Monitor), 128K (22.500) und 128K fest auf der Suprim (`128k-suprim`, `-ub 256`, 21.800, geprüft mit 124K). Schreibt 170 Token/s bei kurzem und 48 bei 240K Kontext. DSH-Vergleich gegen Qwen 27B und
+  Flash-Next steht aus (Umgebung `%LOCALAPPDATA%\dsh-vergleich`). PLAN.md 18.11.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,

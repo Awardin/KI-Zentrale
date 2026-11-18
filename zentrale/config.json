@@ -405,6 +405,30 @@
       "startzeit_max_s": 180
     },
     {
+      "id": "apex-35b",
+      "art": "llamacpp",
+      "gruppe": "Sprachmodelle",
+      "name": "Apex-35B · Q4_K_M",
+      "untertitel": "Qwen3.6-35B-A3B-Finetune · 256K oder 128K (auch auf der Suprim) · ohne Bilder · eine RTX 3090",
+      "wofuer": "Agenten-Finetune von Apex Intelligence auf Qwen3.6-35B-A3B (3B aktiv), laut Modellkarte stark bei Werkzeugaufrufen (BFCL 84) und Agentenaufgaben, nicht gegen Qwen3.8 verglichen. Vergleich mit Qwen 27B und Flash-Next über DSH. Denkt selbst, oft lange. Schreibt 170 Token/s kurz, 94 bei 78K, 48 bei 240K; liest 2.600–3.500 Token/s ein (240K in 143 s). OpenAI-API auf Port 8110.",
+      "farbe": "#7A5C99",
+      "programm": "C:\\LLM\\runtimes\\llama-b11838-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\Apex-35B\\Apex-35B-V1.0-Q4_K_M.gguf",
+      "modell_id": "apex-35b-q4km",
+      "port": 8110,
+      "karten": ["RTX 3090"],
+      "argumente": ["-ngl", "99", "-c", "262144", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--jinja", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--no-webui"],
+      "varianten": [
+        {"id": "256k", "name": "256K Kontext (Höchstwert des Modells)", "standard": true, "kennung": "-c 262144", "argumente": ["-ngl", "99", "-c", "262144", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--jinja", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--no-webui"], "bedarf_je_karte_mib": 23800},
+        {"id": "128k-suprim", "name": "128K Kontext · fest auf der Suprim (Monitorkarte)", "kennung": "-ub 256", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--jinja", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "-ub", "256", "--no-webui"], "bedarf_je_karte_mib": 21800, "feste_karte": 1},
+        {"id": "128k", "name": "128K Kontext", "kennung": "-c 131072", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--jinja", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--no-webui"], "bedarf_je_karte_mib": 22500}
+      ],
+      "argumente_grund": "18.11.2026 (Sascha: „Ja, vorbereiten“): Einstellungen laut Modellkarte (--jinja Pflicht, keine eigene Vorlage, Temperatur 1,0 / Top-P 0,95 / Top-K 20 / Min-P 0). Datei aus Apexintelligence-AI/Apex-35B-V1.0-GGUF, SHA-256 c3b92d94…3355 geprüft. Kein Bildteil im Repo. MTP-Schicht vorhanden, aber vorerst nicht eingeschaltet.",
+      "bedarf_je_karte_mib": 23800,
+      "bedarf_hinweis": "Gemessen 18.11.2026 auf der RTX 3090 FE (q8-Cache): 256K 23.778 MiB nach dem Start, 23.802 MiB nach 240K Token Einlesen (geteilter Speicher 352 MiB = Grundwert, keine Auslagerung); 128K 22.034 MiB. 256K passt nur auf eine Karte ohne Monitor.",
+      "startzeit_max_s": 180
+    },
+    {
       "id": "qwen35-3d-coder",
       "art": "llamacpp",
       "gruppe": "Sprachmodelle",
