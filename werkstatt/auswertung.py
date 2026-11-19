@@ -522,7 +522,7 @@ class Lokal(Anbieter):
         d = _json_datei(self.cfg['zentrale_config']) or {}
         return ({e['id']: e for e in d.get('eintraege', [])
                  if e['art'] in ('ollama', 'ninfer', 'strata', 'polystrata')
-                 or (e['art'] == 'llamacpp' and e['id'] in ('qwen27-unsloth', 'qwen27-iq3s'))}, d.get('ollama', {}))
+                 or (e['art'] == 'llamacpp' and e['id'] in ('qwen27-unsloth', 'qwen27-iq3s', 'apex-35b'))}, d.get('ollama', {}))
 
     @staticmethod
     def _kennungen(e):

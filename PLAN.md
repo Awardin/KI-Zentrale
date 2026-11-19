@@ -3968,6 +3968,125 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
 - **Offen:** dieselben zwei Aufgaben mit Qwen 27B (FE) und Flash-Next, etwa 45 min. Am 18.11. verschoben, weil
   der Arbeitsspeicher fehlte. Danach entscheiden, ob Apex ein DSH-Anbieter wird oder nach
   `D:\LLM-lokal\Testmodelle` geht.
+- **Zusammenfassen in der Werkstatt** (18.11.2026, Auftrag Sascha): `apex-35b` steht in der Liste der lokalen
+  llama.cpp-Einträge (`werkstatt\auswertung.py`, `Lokal._eintraege`), Auswerter „Lokal · Apex-35B · Q4_K_M“ angelegt.
+  Probe mit 256K auf der FE:
+  - Schulter-Video (11 min): Kurzzusammenfassung in 12 s, Ausführliche Analyse in 34 s. Die Kurzfassung ist richtig
+    und genauer als die von Codex Sol vom 23.09. (95 % nach vorn, Testnamen, 15 → 6 Wiederholungen). Die Sätze und
+    die Häufigkeit für Level 1 und 2 fehlen.
+  - Osteopathie-Interview (58 min, ~64.000 Zeichen): Ausführliche Analyse in 127 s, 33.441 Token. Sie hält sich an die
+    Anweisung (13 Abschnitte mit Zeitbereich, Einordnung getrennt, Liste unklarer Stellen). Stichproben zu Zahlen,
+    Namen, ISG und Fresenius stimmen.
+  - Fehler: „gecrushed“ als „gedopt“ gedeutet; die 20.000 € Steuer-Vorauszahlung mit dem Urlaub zu „ein Jahr mit
+    20.000 Euro mehr; das andere im Urlaub“ vermengt; einige holprige Wörter („Kollegine“, „deuterbar“).
+  - Die Werkstatt-Prüfung meldet „keine Zeitmarken“, weil nur Abschnittsbereiche gesetzt sind.
+  - Urteil: brauchbar und sehr schnell. Wie bei jedem lokalen Modell sind Stichproben nötig.
+- **DSH Desktop** (18.11.2026, Auftrag Sascha, statt des 45-min-Vergleichs): Anbieter `apex-local` „Apex-35B – lokal“
+  in `~\.dsh\profiles\desktop\cordis.patch.yml`. Er bietet zwei Modelle: `apex-35b-q4km` 256K (maxTokens 52428) und
+  `apex-35b-q4km-128k` 128K (maxTokens 26214). llama-server nimmt jeden Modellnamen an (geprüft), daher reicht ein
+  Server. Das DSH-Modell muss zur gestarteten Variante passen. Ohne Bilder. Die YAML-Datei liest DSHs Parser
+  fehlerfrei. DSH Desktop übernimmt den Eintrag erst nach einem Neustart.
+
+## Flash-Next: Route Tail Skip gemessen (18.11.2026)
+
+- **Anlass:** Video „Basalt Runs Qwen 3.8 Flash Next At 224 Token/sec“ (Kai). Seit Engine 0.1.42 lässt Strata auf
+  CUDA-Karten einen fehlenden Experten weg, den alle Token eines Prüffensters nur auf Rang 7–10 führen
+  (`STRATA_ROUTE_TAIL_SKIP`, Standard 7). Basalt läuft nur auf RTX 50 und ist für uns kein Thema.
+- **Bei uns an:** Das Engine-Protokoll zeigt `STRATA_ROUTE_TAIL_SKIP=7 is ON (default)`. Bei der Standardwahl Q4 v3.1 +
+  Engram Q8 128K wurden rund 18 von 480 Expertenrechnungen je Token weggelassen, also etwa 4 %
+  (112.404 in ~6.200 Token).
+- **Messung:** Prompts Geschichte, Code und Interview-Transkript (20.107 Token), Temperatur 0, ohne Denken,
+  700 Token. Je Durchgang 3 Runden, Reihenfolge mit Skip → ohne → mit Skip, jeweils frisch gestartet. Mediane in Token/s:
+
+  | | Geschichte | Code | Dokument 20K | Einlesen 20K |
+  |---|---|---|---|---|
+  | mit Skip (6 Läufe) | 86,4 | 108,1 | 83,3 | 12,3–12,9 s |
+  | ohne Skip (3 Läufe) | 85,5 | 101,1 | 79,7 | 12,4–13,0 s |
+
+  Ohne Skip ist das Schreiben 1–6 % langsamer, im Mittel etwa 4 %. Das Einlesen ist gleich schnell.
+- **Genauigkeit** nicht selbst gemessen. Ohne Skip rechnet die Engine laut Strata-Doku wieder byte-gleich wie vor 0.1.42.
+- **Entscheidung Sascha (18.11.2026, „Ja, ausschalten“):** Der Skip ist für alle fünf Q4-Einstellungen aus.
+  Dafür steht `"env": {"STRATA_ROUTE_TAIL_SKIP": "0"}` in `strata-unsloth-ud-iq4_xs-{2gpu-128k,2gpu-256k,v31-2gpu-128k,
+  v31-q8engram-2gpu-128k,v31-q8engram-2gpu-256k}.json`. Nach dem Neustart gibt es keine „ON“-Zeile und keine
+  übersprungenen Experten mehr, die Antwort ist richtig.
+- **Überall aus (Sascha 18.11.2026: „überall bitte ausschalten ohne Rückfrage“):** `STRATA_ROUTE_TAIL_SKIP=0` steht im
+  `env` aller 30 Server-Einstellungen in `C:\LLM\runtimes\Strata`, `PolyStrata`, `Edge0` und `Strata-DeepSeek`.
+  Dazu gehören IQ3_XXS, Edge0 (alle vier), Ornith über PolyStrata, DeepSeek V4.1 Flash und die alten Testdateien;
+  vorhandene `env`-Werte bleiben erhalten. Alle vier `serve\server.py` reichen `env` an die Engine weiter (geprüft).
+  - Ornith über PolyStrata hatte nie übersprungen, weil alle 10.496 Experten im Grafikspeicher liegen.
+  - Bei Edge0 (eine Karte, viele Fehltreffer) kostet das vermutlich mehr Tempo als die ~4 % bei Flash-Next.
+    Das ist noch nicht gemessen.
+
+## DaisyRose-27B als Testeintrag (19.11.2026)
+
+- **Anlass:** ein Video über DaisyRose-27B von RadixArk. Das ist Qwen3.8 27B, nur mit Reinforcement Learning
+  nachtrainiert (ohne SFT und ohne Distillation). Laut Hersteller ist es besser bei Agenten- und Terminalaufgaben:
+  Terminal Bench 4.1 12,0 statt 5,6, DeepSWE 46,2 statt 42,2, IFBench 82,4 statt 79,5. Die Testumgebungen sind
+  teils intern.
+- **Datei (Sascha: „ja lad mal Xylolabs runter“):** Es gibt GGUF-Fassungen von Xylolabs, bartowski und angt.
+  Gewählt wurde Xylolabs, weil sie Kalibrierdaten (imatrix) nutzt, dem Layout von Unsloth UD-Q4_K_M folgt und den
+  MTP-Kopf in voller Dateigenauigkeit hat. Nach ihrer eigenen Messung liegt sie am nächsten an BF16 (KL 0,011,
+  bartowski 0,012, angt 0,022).
+  - `C:\LLM\models\DaisyRose-27B\DaisyRose-27B-Q4_K_M.gguf`: 16,65 GB, SHA-256 `ce34fbc0…ca8d`, stimmt mit
+    Hugging Face überein.
+  - `mmproj-DaisyRose-27B-Q8_0.gguf`: 0,63 GB, SHA-256 `22d95bf1…01c7`, stimmt überein.
+  - Gebaut wurde sie mit llama.cpp b12531. Wir nutzen b11838; ob das lädt, ist noch ungeprüft. Die Bauart ist
+    dieselbe wie beim laufenden `qwen27-unsloth`.
+- **Eintrag `daisyrose-27b`:** Port 8111, gebaut wie `qwen27-unsloth`.
+  - fest auf der FE, 128K, q8-Cache, MTP mit 3 Vorschlägen, Bildteil im Arbeitsspeicher
+  - Sampling laut Modellkarte: 1,0 / 0,95 / 20 / 0
+  - Die Chat-Vorlage kennt die Denkstufen `xhigh` (ihr Standard), `medium` und `low`. Daraus sind drei Varianten
+    geworden, Standard ist `medium`.
+  - Bedarf 23.000 MiB, gemessen 22.289
+- **Startprobe (Sascha: „Ja, entladen“):** ComfyUI 1 wurde über die Zentrale entladen. Mit b11838 bricht der Start
+  ab: `check_tensor_dims: tensor 'blk.0.ssm_beta.weight' not found`.
+  - Die Xylolabs-Datei hat zusammengelegte Tensoren: `attn_qkv_gate` statt `attn_qkv` + `attn_gate`, `ssm_beta_alpha`
+    statt `ssm_beta` + `ssm_alpha`. Die Unsloth-Datei von Qwen3.8 27B hat noch die getrennte Form.
+  - Diese Form braucht einen neueren llama.cpp; Xylolabs nennt b12531. Auf dem Rechner liegen b10754, b11669, b11838
+    und unsloth-b10715.
+- **Neuer llama-server (Sascha: „Ja, neuer llama.cpp“):** b12549, das neueste Release vom 19.11.2026, in
+  `C:\LLM\runtimes\llama-b12549-cuda`. Geladen wurden `llama-b12549-bin-win-cuda-13.5-x64.zip` und
+  `cudart-llama-bin-win-cuda-13.5-x64.zip`, SHA-256 stimmt mit dem GitHub-Release überein. Nur `daisyrose-27b` nutzt
+  ihn; alle anderen Einträge bleiben auf b11838. Der Treiber 617.42 meldet CUDA 13.4, die Laufzeit 13.5 läuft
+  trotzdem.
+  - Start auf der FE: bereit nach 9 s. Geladen sind der MTP-Entwurf, der Bildteil und 128K.
+  - Speicher: 22.249 MiB nach dem Start, 22.289 nach 60K Einlesen und einem Bild.
+- **Messung (Denkstufe medium, Werte aus den llama-server-Timings):**
+
+  | Test | Einlesen Token/s | Schreiben Token/s | MTP angenommen |
+  |---|---|---|---|
+  | kurze Frage | – | 73,3 | 51 % |
+  | Interview 20K | 1.374 | 71,9 | 60 % |
+  | Interview ×3, 60K | 1.094 | 57,3 | 58 % |
+  | Bild (1.789 Token) | – | 72,6 | 52 % |
+
+  - Zum Vergleich `qwen27-unsloth` mit b11838: schreibt 54,6 / 53,5 / 41,9 Token/s (kurz / 34K / 72K) und liest
+    1.210 / 994 Token/s ein (8K / 34K). DaisyRose schreibt also etwa ein Drittel schneller. Weil der llama-server
+    neuer ist, ist nicht getrennt, wie viel davon auf ihn und wie viel aufs Modell geht.
+  - Inhalt: Die Zusammenfassung mit Zeitmarken stimmt in den Stichproben, die Bildbeschreibung ist richtig.
+    Einzelne Schreibfehler kommen vor, etwa „Z-Scheinen“ statt „Z-Scheiben“, „plädiiert“, „Sarcolemma“.
+  - Gedacht wird kurz: bei medium 470 bis 3.400 Zeichen.
+- **DSH Desktop:** Anbieter „DaisyRose 27B – FE (128K)“ (`daisyrose-local`, Modell `daisyrose-27b-q4km`, 128K, maxTokens
+  26.214, Text und Bild).
+- **Qwen 27B Q4 auf b11838 und b12549 (Sascha: „Ja, messen“):** Gemessen wurde `qwen27-unsloth`, Denkstufe low, mit
+  demselben Skript und denselben Prompts, je ein Lauf auf der FE.
+
+  | Test | b11838 Schreiben | b12549 Schreiben | Einlesen (b11838 / b12549) | MTP angenommen |
+  |---|---|---|---|---|
+  | kurze Frage | 58,4 | 70,5 | – | 45 % / 52 % |
+  | Interview 20K | 63,9 | 68,9 | 1.285 / 1.303 | 63 % / 60 % |
+  | Interview ×3, 60K | 48,5 | 53,2 | 1.051 / 1.050 | 54 % / 55 % |
+
+  - Mit dem neuen Server schreibt Qwen 27B 8–20 % schneller; das Einlesen ist gleich. Die Werte stammen aus je einem
+    Lauf, die Antwortlängen unterscheiden sich, die Zahlen sind also nur ungefähr.
+  - Speicher: 23.109 MiB mit b11838, 23.157 MiB mit b12549.
+  - DaisyRose ist damit nur noch 3–8 % schneller als Qwen 27B auf demselben Server. Der große Abstand in der ersten
+    Messung kam also vor allem vom neuen llama-server.
+  - `qwen27-unsloth` läuft seit dem 19.11.2026 auf b12549 (Sascha: „Ja, behalten“). Rückweg: `programm` wieder auf
+    `llama-b11838-cuda`.
+- **Noch offen:** Vergleich bei Agentenarbeit (testet Sascha selbst in DSH). In der Werkstatt ist DaisyRose noch kein
+  Zusammenfasser. Auf b11838 laufen weiter `qwen27-iq3s`, `qwen27-abl`, `apex-35b`, `qwen35-3d-coder` und
+  `qwen35-glb-coder`, auf b10754 `lightonocr`.
 
 ## Offen
 

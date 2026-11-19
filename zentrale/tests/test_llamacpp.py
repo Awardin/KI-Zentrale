@@ -214,12 +214,31 @@ class LlamaCpp(unittest.TestCase):
         self.assertEqual(z._zustaende({'dienste': {'qwen27-abl': s}})['qwen27-abl']['detail'],
                          'Denkstufe hoch (gründlicher) · Port 8105')
 
+    def test_daisyrose_fest_auf_der_fe(self):
+        """DaisyRose 27B (19.11.2026): eigener llama-server b12549, fest auf der FE, 128K, MTP, Denkstufe medium/low/xhigh."""
+        q = self.erf.llamacpp['daisyrose-27b']
+        self.assertEqual((q['art'], q['port'], q['feste_karte'], q['karten'], q['bedarf_je_karte_mib']),
+                         ('llamacpp', 8111, 0, ['RTX 3090'], 23000))
+        self.assertEqual(q['programm'], r'C:\LLM\runtimes\llama-b12549-cuda\llama-server.exe')
+        self.assertEqual([(v['id'], v.get('standard', False)) for v in q['varianten']],
+                         [('medium', True), ('low', False), ('xhigh', False)])
+        self.assertEqual(q['argumente'], q['varianten'][0]['argumente'])
+        for v in q['varianten']:
+            with self.subTest(variante=v['id']):
+                argumente = v['argumente']
+                for flag, wert in (('-c', '131072'), ('--spec-type', 'draft-mtp'), ('--temp', '1.0'), ('--top-k', '20')):
+                    self.assertEqual(argumente[argumente.index(flag) + 1], wert)
+                self.assertEqual(argumente[argumente.index('--chat-template-kwargs') + 1],
+                                 json.dumps({'reasoning_effort': v['id']}, separators=(',', ':')))
+        self.assertEqual(planung.variante(q)['variante'], 'medium')
+
     def test_unsloth_q4_fest_auf_der_fe(self):
         """Qwen 27B Unsloth Q4 (30.10.2026): fest auf der FE, 128K, Bildteil im Arbeitsspeicher, Denkstufe wählbar."""
         q = self.erf.llamacpp['qwen27-unsloth']
         self.assertEqual((q['art'], q['port'], q['feste_karte'], q['karten'], q['bedarf_je_karte_mib']),
                          ('llamacpp', 8106, 0, ['RTX 3090'], 23000))
-        self.assertEqual(q['programm'], r'C:\LLM\runtimes\llama-b11838-cuda\llama-server.exe')
+        # 19.11.2026: auf b12549 umgestellt (8–20 % schneller beim Schreiben, PLAN.md)
+        self.assertEqual(q['programm'], r'C:\LLM\runtimes\llama-b12549-cuda\llama-server.exe')
         self.assertEqual(q['modelldatei'], r'C:\LLM\models\Qwen3.8-27B\Qwen3.8-27B-UD-Q4_K_XL.gguf')
         self.assertEqual(q['mmproj'], r'C:\LLM\models\Qwen3.8-27B-GSQ-RCO\mmproj-Qwen3.8-27B-BF16.gguf')
         self.assertEqual([(v['id'], v.get('standard', False)) for v in q['varianten']], [('low', True), ('high', False)])

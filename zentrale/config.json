@@ -386,7 +386,7 @@
       "untertitel": "UD-Q4_K_XL · 128K · mit Bildern · Denkstufe wählbar · fest auf der RTX 3090 FE",
       "wofuer": "Genaueres dichtes Qwen 27B (Unsloth UD-Q4_K_XL, nicht unzensiert) mit MTP für Wissensarbeit: liest lange Texte 45–50 % schneller ein als NInfer und schreibt etwa gleich schnell; Bilder über den Bildteil im Arbeitsspeicher (~7–10 s je Bild). In DSH als Anbieter „Qwen 27B Q4 – FE (128K)“; OpenAI-API auf Port 8106.",
       "farbe": "#3F7F5F",
-      "programm": "C:\\LLM\\runtimes\\llama-b11838-cuda\\llama-server.exe",
+      "programm": "C:\\LLM\\runtimes\\llama-b12549-cuda\\llama-server.exe",
       "modelldatei": "C:\\LLM\\models\\Qwen3.8-27B\\Qwen3.8-27B-UD-Q4_K_XL.gguf",
       "mmproj": "C:\\LLM\\models\\Qwen3.8-27B-GSQ-RCO\\mmproj-Qwen3.8-27B-BF16.gguf",
       "modell_id": "qwen3.8-27b-unsloth-q4kxl",
@@ -402,6 +402,33 @@
       "bedarf_hinweis": "Gemessen 30.10.2026 auf der RTX 3090 FE (128K, q8-Cache, MTP, Bildteil im Arbeitsspeicher): 22.716 MiB nach dem Start, 22.760 MiB nach 72K Token Einlesen und einem Bild; keine Auslagerung in den Arbeitsspeicher (Shared 402–444 MiB = Grundwert).",
       "karten_grund": "30.10.2026 (Sascha: „Ja, bauen lassen“): fest auf der FE (Karte 0, ohne Monitor). Auf der Suprim mit Monitor (Windows ~2 GiB) passen 128K nicht. Kommt der Monitor an die FE, muss der Kontext kleiner werden.",
       "mtp_grund": "Die Unsloth-Datei enthält den MTP-Kopf (blk.64.nextn); draft-mtp mit 3 Vorschlägen wie bei qwen27-abl. Gemessen auf der FE: Schreiben 54,6 / 54,6 / 53,5 / 41,9 Token/s (kurz / nach 8K / 34K / 72K), Einlesen 1.356 / 1.210 / 994 Token/s; NInfer 52,8 / 55,8 / 52,3 / 46,0 und 907 / 824 / 706.",
+      "startzeit_max_s": 180
+    },
+    {
+      "id": "daisyrose-27b",
+      "art": "llamacpp",
+      "gruppe": "Sprachmodelle",
+      "name": "DaisyRose 27B · Q4_K_M · RTX 3090 FE",
+      "untertitel": "RL-Finetune von Qwen3.8 27B · 128K · mit Bildern · Denkstufe wählbar · fest auf der RTX 3090 FE",
+      "wofuer": "Qwen3.8 27B von RadixArk nur per Reinforcement Learning nachtrainiert, laut Hersteller besser bei Agenten- und Terminalaufgaben (Terminal Bench 4.1 12,0 statt 5,6; IFBench 82,4 statt 79,5). Gebaut wie „Qwen 27B Q4 – FE“: MTP, Bildteil im Arbeitsspeicher; schreibt 72–73 Token/s (57 bei 60K), liest 1.374 Token/s ein (1.094 bei 60K). Braucht llama-server b12549 (zusammengelegte Tensoren). In DSH als Anbieter „DaisyRose 27B – FE (128K)“; OpenAI-API auf Port 8111.",
+      "farbe": "#B5577A",
+      "programm": "C:\\LLM\\runtimes\\llama-b12549-cuda\\llama-server.exe",
+      "modelldatei": "C:\\LLM\\models\\DaisyRose-27B\\DaisyRose-27B-Q4_K_M.gguf",
+      "mmproj": "C:\\LLM\\models\\DaisyRose-27B\\mmproj-DaisyRose-27B-Q8_0.gguf",
+      "modell_id": "daisyrose-27b-q4km",
+      "port": 8111,
+      "karten": ["RTX 3090"],
+      "feste_karte": 0,
+      "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"medium\"}", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"],
+      "varianten": [
+        {"id": "medium", "name": "Denkstufe mittel", "standard": true, "kennung": "reasoning_effort:medium", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"medium\"}", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"]},
+        {"id": "low", "name": "Denkstufe niedrig (schneller)", "kennung": "reasoning_effort:low", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"low\"}", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"]},
+        {"id": "xhigh", "name": "Denkstufe sehr hoch (Standard des Modells, gründlich)", "kennung": "reasoning_effort:xhigh", "argumente": ["-ngl", "99", "-c", "131072", "-np", "1", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0", "--no-mmproj-offload", "--jinja", "--chat-template-kwargs", "{\"reasoning_effort\":\"xhigh\"}", "--temp", "1.0", "--top-p", "0.95", "--top-k", "20", "--min-p", "0.0", "--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "--no-webui"]}
+      ],
+      "argumente_grund": "19.11.2026 (Sascha: „ja lad mal Xylolabs runter“): Xylolabs/DaisyRose-27B-GGUF Q4_K_M (SHA-256 ce34fbc0…ca8d geprüft, imatrix, Unsloth-UD-Layout, MTP-Kopf in voller Dateigenauigkeit) und Bildteil Q8_0 (22d95bf1…01c7 geprüft). Sampling laut Modellkarte 1,0 / 0,95 / 20 / 0. Die Vorlage kennt reasoning_effort xhigh (Standard), medium, low; enable_thinking false schaltet Denken ab.",
+      "bedarf_je_karte_mib": 23000,
+      "bedarf_hinweis": "Gemessen 19.11.2026 auf der RTX 3090 FE (128K, q8-Cache, MTP, Bildteil im Arbeitsspeicher): 22.249 MiB nach dem Start, 22.289 MiB nach 60K Token Einlesen und einem Bild.",
+      "karten_grund": "Wie qwen27-unsloth fest auf der FE (Karte 0, ohne Monitor); auf der Suprim mit Monitor passen 128K nicht.",
       "startzeit_max_s": 180
     },
     {

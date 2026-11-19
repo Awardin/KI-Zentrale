@@ -22,6 +22,9 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   RAM-Prüfung je 42 GiB bei 256K;
   [SPEC-strata.md](SPEC-strata.md), Abnahme in PLAN.md). Seit 18.10.2026 startet Strata mit `--fit-max-tokens`
   (`fit_max_tokens` im Eintrag): zu große `max_tokens` werden auf den Restplatz gekürzt statt mit 400 abgelehnt (DSH).
+  Seit 18.11.2026 laufen alle Strata-Engines (Flash-Next, Edge0, PolyStrata, Strata-DeepSeek) ohne Route Tail Skip
+  (`STRATA_ROUTE_TAIL_SKIP=0` im `env` jeder Einstellung, Wunsch Sascha: überall aus; Flash-Next ~4 % langsamer beim
+  Schreiben). Neue Strata-Einstellungen bekommen den Eintrag ebenfalls (PLAN.md 18.11.2026).
 - **Werkstatt** (`werkstatt\`, Port 3895): fertig und abgenommen am 23.09.2026 – Transkription,
   Zusammenfassung, Studio (Bilder, Videos, Bibliothek), Messungen. Claude ist angemeldet, DeepSeek direkt
   angebunden (Schlüssel wird aus DSH Desktop gelesen), OpenRouter nur für kostenlose Modelle. Ornith hat
@@ -156,8 +159,15 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   noch nicht eingebaut. [SPEC-edge0.md](SPEC-edge0.md), PLAN.md 14.11.2026.
 - **Apex-35B** (18.11.2026, Auftrag Sascha nach Video): Eintrag `apex-35b` (Art `llamacpp`, Port 8110, Q4_K_M,
   Agenten-Finetune von Qwen3.6-35B-A3B, ohne Bilder). Varianten 256K (Standard, 23.800 MiB, nur auf einer Karte ohne
-  Monitor), 128K (22.500) und 128K fest auf der Suprim (`128k-suprim`, `-ub 256`, 21.800, geprüft mit 124K). Schreibt 170 Token/s bei kurzem und 48 bei 240K Kontext. DSH-Vergleich gegen Qwen 27B und
-  Flash-Next steht aus (Umgebung `%LOCALAPPDATA%\dsh-vergleich`). PLAN.md 18.11.2026.
+  Monitor), 128K (22.500) und 128K fest auf der Suprim (`128k-suprim`, `-ub 256`, 21.800, geprüft mit 124K). Schreibt 170 Token/s bei kurzem und 48 bei 240K Kontext. In DSH Desktop Anbieter
+  „Apex-35B – lokal“ mit Modell 256K und 128K (passend zur gestarteten Variante wählen); Zusammenfasser in der Werkstatt.
+  Großer DSH-Vergleich gegen Qwen 27B/Flash-Next nicht gewünscht (Sascha testet selbst). PLAN.md 18.11.2026.
+- **DaisyRose-27B** (19.11.2026, Auftrag Sascha nach Video): Eintrag `daisyrose-27b` (Art `llamacpp`, Port 8111,
+  RL-Finetune von Qwen3.8 27B, Xylolabs Q4_K_M + Bildteil Q8, SHA-256 geprüft, MTP, 128K, `feste_karte` 0,
+  Denkstufen medium (Standard)/low/xhigh, Bedarf 23.000 MiB, gemessen 22.289). Läuft mit eigenem llama-server b12549 (`C:\LLM\runtimes\llama-b12549-cuda`;
+  b11838 kennt die zusammengelegten Tensoren nicht), schreibt 72–73 Token/s (57 bei 60K). In DSH Desktop Anbieter
+  „DaisyRose 27B – FE (128K)“. Seit 19.11.2026 läuft auch `qwen27-unsloth` auf b12549 (8–20 % schneller beim
+  Schreiben); die übrigen llama.cpp-Einträge bleiben auf ihren Servern. PLAN.md 19.11.2026.
 - **Zwei RTX 3090, freie Kartenwahl** (Stufe 6, 14.10.2026, Auftrag Sascha): NInfer, LightOnOCR und ComfyUI nehmen die
   engste passende Karte (Monitorkarte nur bis 2 GiB Rest), Ornith verteilt Ollama (Gesamtbedarf), Strata braucht beide.
   Das Studio wählt je Auftrag: Bild ganz auf einer Karte, sonst geteilt; Videos seit Stufe 8 ganz auf einer Karte,
