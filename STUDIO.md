@@ -1044,6 +1044,16 @@ gleichzeitig bei 100 %. Gemessen 04.11.2026 (kein Monitor an den 3090): zwei Vid
 rund 30 Minuten. Nach einem Video hält ComfyUI 2 rund 20 GiB auf der Suprim (Zwischenspeicher, in der Zentrale
 freigebbar).
 
+**Video weicht aus (seit 24.11.2026):** Prozess 2 bekommt ein Ein-Karten-Video nur noch, wenn es nach dem frischen
+Stand der Zentrale jetzt auf die Suprim passt. Sonst nimmt es ein anderer freier Prozess, bei dem es jetzt ganz auf
+eine eigene Karte passt (Prozess 1 auf der FE). Hat ein Prozess das Video schon genommen und fehlt ihm der Speicher,
+gibt er es zurück in die Schlange, sobald ein anderer freier Prozess es jetzt rechnen würde (Protokoll: „zurück in die
+Schlange“). Es wartet nur noch, wenn es bei keinem freien Prozess passt. Anlass: Hängt der Monitor an der Suprim, passt
+ein INT8-Video (19.456 MiB) dort nur, solange Windows und Programme höchstens 4.352 MiB belegen; am 24.11.2026 lagen sie
+darüber, vier Videos warteten bei Prozess 2, die FE war frei. Geprüft mit künstlich gefüllter Suprim: Video 1 sofort auf
+der FE, Video 2 nach dessen Ende zurückgegeben und auf der FE; bei freier Suprim wie bisher Prozess 2. Bilder und
+Hilfsabläufe sind unverändert (PLAN.md, 24.11.2026).
+
 ## 12. Wie es intern arbeitet
 
 Alle Abläufe baut `werkstatt\studio.py` aus ComfyUI-Kernknoten (keine Zusatzknoten); die je Auftrag gewählten Karten

@@ -107,6 +107,8 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   je ein Arbeiter im Studio; Dateien aus Prozess 2 mit `-2`; Anmeldung je Prozess (`bild-video`, `bild-video-2`).
   MiniMax-H3 passt auf eine 3090 (gemessen, nicht langsamer): Videos rechnet Prozess 2 auf der Suprim, Bilder daneben
   Prozess 1 auf der FE (Video + Bild gleichzeitig; nie ein Video allein auf der Monitorkarte – außer mit der INT8-VAE seit 05.11.2026, Stufe 3v).
+  Seit 24.11.2026 weicht ein Video auf den freien Prozess aus, bei dem es jetzt passt (etwa die FE, wenn Windows-Programme
+  die Suprim über 4.352 MiB füllen), und ein schon genommenes geht dafür zurück in die Schlange (PLAN.md 24.11.2026).
   Seit 22.10.2026 **Prozess 3** (8190, nur RTX 3080, `bild-video-3`, Dateien `-3`, `comfy_weitere` in `zentrale\config.json`):
   nur Bilder und Hilfsabläufe, die auf die 3080 passen, keine Videos; Bilder gehen zuerst an ihn (3090 bleiben frei, auch
   neben Strata). Passt ein Auftrag gerade nirgends, wartet er in der Schlange auf einen rechnenden Prozess (PLAN.md 22.10.2026).

@@ -4088,6 +4088,41 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
   Zusammenfasser. Auf b11838 laufen weiter `qwen27-iq3s`, `qwen27-abl`, `apex-35b`, `qwen35-3d-coder` und
   `qwen35-glb-coder`, auf b10754 `lightonocr`.
 
+## Video weicht auf den freien Prozess aus (24.11.2026)
+
+- **Anlass (Sascha):** Die Suprim sei „so voll, ohne dass etwas gemacht wird“, Videos liefen dort nicht mehr. Befund:
+  Auf der Suprim lagen nur Windows und Programme, kein Modell und kein ComfyUI. Größter Einzelposten nach den
+  Windows-Zählern war der Snagit Editor (rund 2 GiB zugesagt, läuft seit dem Windows-Start), dazu Desktop, Codex-App,
+  Explorer und Claude; zusammen 4,1 GiB zugesagt, zum Messzeitpunkt 2,7 GiB tatsächlich belegt. Die Zähler je Programm
+  sind in sich nicht stimmig (Spalte „dediziert“ summiert auf 15 GiB) und nur ein Hinweis. Die Zentrale schreibt die
+  Belegung nicht mit; was mittags genau auf der Karte lag, ist nicht belegt.
+- **Grenze:** Ein INT8-Video braucht auf der Monitorkarte 19.456 MiB. Mit 768 MiB Reserve passt es, solange Windows und
+  Programme dort höchstens 4.352 MiB belegen.
+- **Fehler im Studio:** `_wer_zuerst` gab ein Ein-Karten-Video dem Video-Prozess (Suprim), sobald der nichts rechnete,
+  ohne zu prüfen, ob es dort passt; hatte Prozess 2 den Auftrag genommen, hielt er ihn fest. Im Log: 12:09–12:17 vier
+  Videos bei Prozess 2 ohne Start, die FE war frei; 08:05–08:27 wartete ein Video 22 Minuten.
+- **Geändert** ([SPEC-video-ausweichen.md](SPEC-video-ausweichen.md), gebaut von Codex Sol xhigh im Worktree, ein Lauf
+  ohne Korrekturrunde; nur `werkstatt/studio.py`, Abschnitt „Ablauf“):
+  - Verteilen: Mit frischem Stand bekommt das Video der erste freie Video-Prozess, bei dem es jetzt passt, sonst ein
+    anderer freier Prozess, bei dem es jetzt ganz auf eine eigene Karte passt. Passt es nirgends oder ist der Stand
+    älter als 15 s, bleibt es wie bisher beim Video-Prozess.
+  - Zurückgeben: Fehlt einem Prozess, der das Video schon genommen hat, der Speicher, und würde ein anderer freier
+    Prozess es laut demselben Stand jetzt rechnen, geht der Auftrag zurück in die Schlange (Protokollzeile „zurück in
+    die Schlange“). Ein Abbruch gewinnt. Nicht bei Gründen der Zentrale, abgelehnter Anmeldung, Bildern,
+    Hilfsabläufen und `video_hochrechnen`.
+- **Tests:** 13 neue in `werkstatt/tests/test_parallel.py` (`VideoAusweichen`), eine vorhandene Behauptung angepasst
+  (Suprim voll und FE frei → jetzt Prozess 1). Werkstatt 528 Tests: 1 Fehler, weil Port 3897 von einem anderen Programm
+  belegt war (`test_echte_http_routen_auf_3897…`, nicht Teil dieser Änderung), 1 übersprungen; Zentrale 205 grün.
+- **Am echten System geprüft (24.11.2026):** Suprim mit 2,6 GiB künstlich gefüllt (17,9 GiB frei), zwei Videos aus
+  Text (960 × 544, 5 s, Schnell) bestellt. 14:43:41 Video 1 sofort auf der FE (51,7 s); 14:43:44 nahm Prozess 2 das
+  zweite und wartete; 14:44:35 „zurück in die Schlange (ComfyUI 2 (Suprim) hat keinen Platz, ComfyUI ist frei)“, dann
+  auf der FE (48,3 s). Gegenprobe ohne Füllung: Video 3 ging wie bisher an Prozess 2 auf die Suprim.
+- **Beobachtet, nicht geklärt:** Das erste Video auf der Suprim brauchte 180 s. Das erste Laden des Videomodells
+  dauerte dort etwa 3 Minuten (auf der FE 15 s), die Schritte danach liefen mit 8 s je Schritt wie auf der FE.
+- **Nicht geändert:** Bilder und Hilfsabläufe; die Belegung durch Windows-Programme selbst.
+- **Noch offen:** Probe, ob das Beenden des Snagit Editors die Suprim entlastet (Sascha). Die Änderung ist nicht
+  eingecheckt; der Bau-Worktree `C:\Worktrees\ki-zentrale-video-ausweichen` (Zweig `bau/video-ausweichen`) steht noch.
+
 ## Offen
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update

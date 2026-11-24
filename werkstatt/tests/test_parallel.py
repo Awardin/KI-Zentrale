@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -199,8 +200,12 @@ class Kartenwahl(unittest.TestCase):
         a.zustand = b.zustand = (time.time(), {'laeuft': True})
         self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), a)
         self.assertEqual(studio.karten_waehlen(ohne, VIDEO_EINE, a)[0]['mib'], {0: 22528})
-        # Ist Prozess 2 frei, bekommt er das Video wie bisher.
+        # Ist Prozess 2 frei, entscheidet der Platz auf der Suprim (24.11.2026).
         s.auftraege = []
+        self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), a)
+        frei = antwort(23400, 23400)
+        frei['karten'][0]['monitor'] = False
+        s._stand_zentrale = (time.time(), frei)
         self.assertIs(studio.Studio._wer_zuerst(s, VIDEO_EINE), b)
         # Hängt der Monitor an der FE, wartet das zweite Video auf Prozess 2 (nie allein auf die Monitorkarte).
         s.auftraege = [{'id': 'x', 'art': 'video_text', 'zustand': 'laeuft', 'prozess': 2}]
@@ -227,6 +232,176 @@ class Kartenwahl(unittest.TestCase):
         v, fehlend, _ = studio.karten_waehlen(mon, VIDEO_EINE, a)
         self.assertEqual((v['rang'], bool(fehlend)), (1, True))
         self.assertEqual(studio.verteilungen(VIDEO_EINE, [0])[0]['ohne_monitor'], True)
+
+
+class VideoAusweichen(unittest.TestCase):
+    def setUp(self):
+        self.a, self.b = instanzen()
+        an = {'laeuft': True}
+        self.a.zustand = self.b.zustand = (time.time(), an)
+        self.s = studio.Studio.__new__(studio.Studio)
+        self.s.instanzen = [self.a, self.b]
+        self.s.auftraege, self.s.folgen = [], []
+        self.s.comfy_name = self.a.name
+        self.s._ort = threading.local()
+        self.s._ort.inst = self.b
+        self.s._lock = threading.RLock()
+        self.s._abbruch = set()
+        self.s._wecker = mock.Mock()
+        self.s._speichern = mock.Mock()
+        self.s._bedarf = mock.Mock(return_value=VIDEO_INT8)
+        self.s.comfy_zustand = mock.Mock(return_value=an)
+        self.s.zentrale = mock.Mock()
+        self.s.log = mock.Mock()
+        self.s._warten = mock.Mock(side_effect=AssertionError('Der Arbeiter wartet weiter.'))
+        self.s._rechnen = mock.Mock()
+        self.s._stand_zentrale = (time.time(), self._antwort(23400, 20000))
+        self.s._monitor_merken(self.s._stand_zentrale[1])
+        self.s.zentrale.stand.return_value = (200, self._antwort(23400, 19000))
+
+    @staticmethod
+    def _antwort(frei_fe, frei_suprim, comfy2=0):
+        stand = antwort(frei_fe, frei_suprim, comfy2=comfy2)
+        stand['karten'][0]['monitor'], stand['karten'][1]['monitor'] = False, True
+        return stand
+
+    def _auftrag(self, art='video_text'):
+        a = {'id': 'v', 'art': art, 'zustand': 'wartet', 'schritte': 8, 'variation': 123, 'dateien': []}
+        self.s.auftraege.append(a)
+        return a
+
+    def _arbeiter_einmal(self, a):
+        self.assertIs(self.s._naechster(self.b), a)
+        with mock.patch.object(self.s, '_lage_auffrischen'), \
+                mock.patch.object(self.s, '_naechster', side_effect=[a]), self.assertRaises(StopIteration):
+            self.s._schleife(self.b)
+        self.s._warten.assert_not_called()
+        self.s._rechnen.assert_not_called()
+        self.s.zentrale.anmelden.assert_not_called()
+
+    def test_video_weicht_von_der_suprim_auf_die_fe_aus(self):
+        self.s._stand_zentrale = (time.time(), self._antwort(23400, 19000))
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.a)
+
+    def test_suprim_passt_genau(self):
+        self.s._stand_zentrale = (time.time(), self._antwort(23400, 19456))
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.b)
+
+    def test_kein_platz_auf_beiden_karten(self):
+        self.s._stand_zentrale = (time.time(), self._antwort(5000, 19000))
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.b)
+
+    def test_fe_rechnet_schon(self):
+        self.s._stand_zentrale = (time.time(), self._antwort(23400, 19000))
+        self.s.auftraege = [{'zustand': 'laeuft', 'prozess': 1}]
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.b)
+
+    def test_suprim_passt_mit_eigenem_cache(self):
+        self.s._stand_zentrale = (time.time(), self._antwort(23400, 3000, comfy2=18000))
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.b)
+
+    def test_alter_stand_behaelt_video_prozess(self):
+        self.s._stand_zentrale = (time.time() - 16, self._antwort(23400, 19000))
+        self.assertIs(self.s._wer_zuerst(VIDEO_INT8), self.b)
+
+    def test_video_geht_zurueck_und_ist_fuer_die_fe_wartend(self):
+        a = self._auftrag()
+        vorher = dict(a)
+        gespeichert = []
+        self.s._speichern.side_effect = lambda: gespeichert.append(dict(a))
+        self._arbeiter_einmal(a)
+        self.assertEqual(a, dict(vorher, schritt=None, meldung='', prozess=None, begonnen=None))
+        self.assertEqual(gespeichert[-1], a)
+        self.s._wecker.set.assert_called_once_with()
+        self.s.log.assert_any_call('Studio: Auftrag v zurück in die Schlange '
+                                   '(ComfyUI 2 hat keinen Platz, ComfyUI ist frei)')
+        self.assertIs(self.s._stand_zentrale[1], self.s.zentrale.stand.return_value[1])
+        self.assertIs(self.s._naechster(self.a), a)
+        self.assertIsNone(self.s._naechster(self.b))
+
+    def test_keine_rueckgabe_ohne_freien_passenden_prozess_oder_bei_bild(self):
+        for art, bedarf, frei_fe, fe_rechnet in (('video_text', VIDEO_INT8, 23400, True),
+                                                 ('video_text', VIDEO_INT8, 5000, False),
+                                                 ('bild', BILD, 23400, False)):
+            with self.subTest(art=art, frei_fe=frei_fe, fe_rechnet=fe_rechnet):
+                self.s.auftraege = [{'zustand': 'laeuft', 'prozess': 1}] if fe_rechnet else []
+                a = self._auftrag(art)
+                a.update(zustand='laeuft', prozess=2, begonnen=time.time())
+                self.s._bedarf.return_value = bedarf
+                self.s.zentrale.stand.return_value = (200, self._antwort(frei_fe, 17000))
+                anmeldung, grund, geraete = self.s._platz(a)
+                self.assertEqual((anmeldung, geraete), (None, None))
+                self.assertIn('Wartet auf freien Grafikspeicher', grund)
+                self.assertEqual((a['zustand'], a['prozess']), ('laeuft', 2))
+        self.s._wecker.set.assert_not_called()
+        self.s.zentrale.anmelden.assert_not_called()
+
+    def test_keine_rueckgabe_bei_gruenden_aus_der_zentrale(self):
+        a = self._auftrag()
+        a.update(zustand='laeuft', prozess=2)
+        stand = self.s.zentrale.stand.return_value[1]
+        for grund in ('Die Modellzentrale ist belegt.', 'ComfyUI rechnet.'):
+            with self.subTest(grund=grund):
+                stand['gruende'] = [grund]
+                self.assertIsNotNone(self.s._platz(a)[1])
+                self.assertEqual(a['zustand'], 'laeuft')
+        self.s._wecker.set.assert_not_called()
+        self.s.zentrale.anmelden.assert_not_called()
+
+    def test_keine_rueckgabe_wenn_zentrale_nicht_antwortet_oder_anmeldung_ablehnt(self):
+        a = self._auftrag()
+        a.update(zustand='laeuft', prozess=2)
+        self.s.zentrale.stand.side_effect = studio.platz.NichtErreichbar('Zeitüberschreitung')
+        self.assertIn('Die Modellzentrale antwortet nicht', self.s._platz(a)[1])
+        self.s.zentrale.anmelden.assert_not_called()
+        self.assertEqual(a['zustand'], 'laeuft')
+        self.s.zentrale.stand.side_effect = None
+        stand = self._antwort(23400, 20000)
+        self.s.zentrale.stand.return_value = (200, stand)
+        self.s.zentrale.anmelden.return_value = (409, self._antwort(23400, 19000))
+        self.assertIn('Wartet auf freien Grafikspeicher', self.s._platz(a)[1])
+        self.s.zentrale.anmelden.assert_called_once()
+        self.assertEqual(a['zustand'], 'laeuft')
+        self.s._wecker.set.assert_not_called()
+
+    def test_laufende_abfrage_ueberschreibt_den_stand_der_rueckgabe_nicht(self):
+        a = self._auftrag()
+        a.update(zustand='laeuft', prozess=2)
+        self.s._stand_zentrale = (0, None)
+
+        def stand_waehrend_rueckgabe():
+            with self.assertRaises(studio.Zurueck):
+                self.s._platz(a)
+            return 200, self._antwort(23400, 20000)
+
+        self.s.zentrale.stand_ohne_start.side_effect = stand_waehrend_rueckgabe
+        self.s._lage_auffrischen()
+        self.s.zentrale.stand_ohne_start.assert_called_once_with()
+        self.assertIs(self.s._stand_zentrale[1], self.s.zentrale.stand.return_value[1])
+        self.assertIs(self.s._naechster(self.a), a)
+
+    def test_abbruch_waehrend_platzabfrage_gewinnt(self):
+        a = self._auftrag()
+
+        def stand_mit_abbruch():
+            self.assertEqual(self.s.aktion(a['id'], 'abbrechen')[0], 200)
+            return 200, self._antwort(23400, 19000)
+
+        self.s.zentrale.stand.side_effect = stand_mit_abbruch
+        self._arbeiter_einmal(a)
+        self.assertEqual((a['zustand'], a['meldung'], a['prozess']), ('abgebrochen', 'Abgebrochen.', 2))
+        self.assertIsNotNone(a['beendet'])
+        self.assertNotIn(a['id'], self.s._abbruch)
+
+    def test_szenenfolge_laeuft_nach_rueckgabe_weiter(self):
+        a = self._auftrag()
+        folge = {'zustand': 'laeuft', 'szene': 0, 'takes': [[a['id']]], 'meldung': ''}
+        self.s.folgen.append(folge)
+        self._arbeiter_einmal(a)
+        self.assertEqual(a['zustand'], 'wartet')
+        with self.s._lock:
+            self.s._folgen_abgleichen()
+        self.assertEqual((folge['zustand'], folge['meldung']), ('laeuft', ''))
 
 
 class StudioMitMehrerenProzessen(unittest.TestCase):

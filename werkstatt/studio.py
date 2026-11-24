@@ -72,6 +72,10 @@ class ComfyAus(Exception):
     pass
 
 
+class Zurueck(Exception):
+    pass
+
+
 # ---------------------------------------------------------------- Namen und Pfade
 
 def projektname(name, reserviert=()):
@@ -3891,9 +3895,8 @@ class Studio:
 
     def _naechster(self, inst):
         """Erster wartender Auftrag, den dieser Prozess rechnen kann (unter `self._lock`). Weitere Prozesse nehmen nur,
-        wenn sie laufen, und nichts über zwei Karten; Videos auf einer Karte nimmt der Video-Prozess zuerst, und
-        Prozess 1 lässt sie ihm, solange er läuft (sonst legte Prozess 1 das Video über beide Karten, und ein Bild
-        daneben müsste warten)."""
+        wenn sie laufen, und nichts über zwei Karten. Bei Videos auf einer Karte entscheidet `_wer_zuerst`, welcher
+        Prozess sie jetzt nehmen soll."""
         if inst.nr > 1 and not self.comfy_zustand(inst=inst).get('laeuft'):
             return None
         wartend = [(x, self._bedarf(x)) for x in self.auftraege if x['zustand'] == 'wartet']
@@ -3916,35 +3919,46 @@ class Studio:
         return not any(i is not inst and i.nr in rechnet and (i.nr == 1 or i.laeuft()) and i.kann(b)
                        for i in self.instanzen)
 
-    def _wer_zuerst(self, b):
+    def _wer_zuerst(self, b, *, platzstand=None):
         """Welcher Prozess soll einen Auftrag mit Bedarf `b` nehmen (unter `self._lock`)? None = wer zuerst kommt.
 
-        Videos auf einer Karte der Video-Prozess, solange er läuft. Sonst der erste freie Prozess, der den Auftrag
-        jetzt ganz auf eine eigene Karte legen kann – Nebenkarten zuerst (die RTX 3080, damit die 3090 frei bleiben),
-        danach Prozess 1 vor den weiteren, damit die Suprim für ein Video daneben frei bleibt (gemessen 16.10.2026:
-        Bild zuerst bestellt → Prozess 2 nahm es, das Video wartete). Grundlage ist der letzte Stand der Zentrale
-        (`_lage_auffrischen`, höchstens 15 s alt); ohne ihn oder wenn nichts allein passt: None."""
-        zeit, stand = self._stand_zentrale
-        frisch = bool(stand) and time.time() - zeit <= 15
+        Ein-Karten-Videos gehen an einen freien Prozess, bei dem sie jetzt passen, bevorzugt an einen Video-Prozess
+        (24.11.2026: Windows-Programme füllten die Suprim, vier Videos warteten bei Prozess 2, die FE war frei). Passt
+        es nirgends oder ist der Stand älter, bekommt sie wie bisher der Video-Prozess.
+        Für Bilder und Hilfsabläufe der erste freie Prozess, der den Auftrag jetzt ganz auf eine eigene Karte legen
+        kann – Nebenkarten zuerst (die RTX 3080, damit die 3090 frei bleiben), danach Prozess 1 vor den weiteren, damit
+        die Suprim für ein Video daneben frei bleibt (gemessen 16.10.2026: Bild zuerst bestellt → Prozess 2 nahm es,
+        das Video wartete); ohne frischen Stand oder wenn nichts allein passt: None.
+        Grundlage ist der letzte Stand der Zentrale (`_lage_auffrischen`, höchstens 15 s alt). Mit `platzstand`
+        (Zurückgeben in `_platz`) wird nur ein freier Prozess gesucht, der das Video laut diesem Stand jetzt auf einer
+        Karte rechnen kann; sonst None."""
+        if platzstand is None:
+            zeit, stand = self._stand_zentrale
+            frisch = bool(stand) and time.time() - zeit <= 15
+        else:
+            stand, frisch = platzstand, True
         if frisch:
             self._monitor_merken(stand)
         verfuegbar = [i for i in self.instanzen if i.nr == 1 or i.laeuft()]
         verfuegbar.sort(key=lambda i: (not i.nebenkarte, i.nr))
         rechnet = {x.get('prozess') for x in self.auftraege if x['zustand'] == 'laeuft'}
         video_prozesse = [i for i in verfuegbar if i.bevorzugt(b)]
-        if video_prozesse:
-            frei_video = next((i for i in video_prozesse if i.nr not in rechnet), None)
-            if frei_video is not None or not frisch:
-                return frei_video or video_prozesse[0]
-            # Alle Video-Prozesse rechnen schon: ein freier anderer Prozess nimmt das nächste Video, wenn es jetzt
-            # ganz auf eine eigene Karte passt (Monitorkarte nur mit geeignetem Dekoder)
-            # (Prozess 1 auf der FE neben dem Video auf der Suprim). Sonst wartet es auf den Video-Prozess.
-            for i in verfuegbar:
-                if i.nr not in rechnet and i not in video_prozesse and i.videos and i.kann(b):
-                    v, fehlend, _ = karten_waehlen(stand, b, i)
-                    if v and v['rang'] == 0 and not fehlend:
+        if video_prozesse or platzstand is not None:
+            def passt_jetzt(i):
+                v, fehlend, _ = karten_waehlen(stand, b, i)
+                return v is not None and v['rang'] == 0 and not fehlend
+
+            frei_video = [i for i in video_prozesse if i.nr not in rechnet]
+            if frisch:
+                for i in frei_video:
+                    if passt_jetzt(i):
                         return i
-            return video_prozesse[0]
+                for i in verfuegbar:
+                    if i.nr not in rechnet and i not in video_prozesse and i.videos and i.kann(b) and passt_jetzt(i):
+                        return i
+            if platzstand is not None:
+                return None
+            return (frei_video or video_prozesse)[0]
         if len(verfuegbar) < 2 or not frisch:
             return None
         for i in verfuegbar:
@@ -3961,15 +3975,19 @@ class Studio:
             return
         for i in self.instanzen:
             self.comfy_zustand(inst=i)
-        if time.time() - self._stand_zentrale[0] < 3:
+        bisher = self._stand_zentrale
+        if time.time() - bisher[0] < 3:
             return
         try:
             code, antwort = self.zentrale.stand_ohne_start()
         except platz.NichtErreichbar:
             return
         if code == 200:
-            self._monitor_merken(antwort)
-            self._stand_zentrale = (time.time(), antwort)
+            with self._lock:
+                # 24.11.2026: Eine laufende Abfrage darf den Stand einer inzwischen erfolgten Rückgabe nicht ersetzen.
+                if self._stand_zentrale is bisher:
+                    self._monitor_merken(antwort)
+                    self._stand_zentrale = (time.time(), antwort)
 
     def _monitor_merken(self, antwort):
         """Monitor, Nebenkarte und Kapazität (Gesamt minus Reserve) je Prozess aus dem Stand der Zentrale merken."""
@@ -4005,10 +4023,13 @@ class Studio:
             if a.get('bilder'):
                 groesse += f", {a['bilder']} Bilder"
             self.log(f"Studio: Auftrag {a['id']} ({a['art']}, {groesse}, {a['schritte']} Schritte) in {inst.name}")
+            zurueckgegeben = False
             try:
                 self._durchfuehren(a)
                 a.update(zustand='fertig', meldung='')
                 self.log(f"Studio: Auftrag {a['id']} fertig in {a.get('rechenzeit_s')} s")
+            except Zurueck:
+                zurueckgegeben = True
             except Abgebrochen:
                 a.update(zustand='abgebrochen', meldung='Abgebrochen.')
             except ComfyAus:
@@ -4020,12 +4041,13 @@ class Studio:
                 a.update(zustand='fehler', meldung=f'Unerwarteter Fehler: {ex}')
                 self.log(f"Studio: Auftrag {a['id']} unerwartet: " + traceback.format_exc(limit=4).replace('\n', ' | '))
             finally:
-                with self._lock:
-                    a.update(schritt=None, beendet=time.time())
-                    self._abbruch.discard(a['id'])
-                    self._bib = (0, None)
-                    self._folgen_abgleichen()  # ohne Prüfen startet hier die nächste Szene
-                    self._speichern()
+                if not zurueckgegeben:
+                    with self._lock:
+                        a.update(schritt=None, beendet=time.time())
+                        self._abbruch.discard(a['id'])
+                        self._bib = (0, None)
+                        self._folgen_abgleichen()  # ohne Prüfen startet hier die nächste Szene
+                        self._speichern()
 
     def _schritt(self, a, schritt, meldung):
         with self._lock:
@@ -4074,7 +4096,8 @@ class Studio:
     def _platz(self, a):
         """-> (anmeldung oder None, None, Geräte) wenn es losgehen kann, sonst (None, Grund zum Warten, None).
 
-        Geräte: die gewählten Karten je Rolle (`karten_waehlen`), None für Abläufe ohne Kartenwahl."""
+        Geräte: die gewählten Karten je Rolle (`karten_waehlen`), None für Abläufe ohne Kartenwahl.
+        `Zurueck`, wenn das Video wegen fehlenden Platzes wieder in der Schlange liegt."""
         self._schritt(a, 'platz', 'Fragt die Modellzentrale nach freiem Grafikspeicher …')
         try:
             code, antwort = self.zentrale.stand()
@@ -4091,12 +4114,25 @@ class Studio:
                     return None, 'Hochrechnen wartet auf beide Grafikkarten im ersten Studio-Prozess.', None
                 if commit_frei_mib() < int(self.s['video']['hochrechnen']['commit_frei_mib']):
                     return None, 'Wartet auf Arbeitsspeicher.', None
+            b = self._bedarf(a)
             verteilung, fehlend, zusatz = karten_waehlen(
-                antwort, self._bedarf(a), inst, haupt_ohne_monitor=a['art'] == 'video_hochrechnen')
+                antwort, b, inst, haupt_ohne_monitor=a['art'] == 'video_hochrechnen')
             if verteilung is None:
                 return None, ('Die Modellzentrale meldet keine Grafikkarten.' if not antwort.get('karten') else
                               'Dieser Auftrag braucht zwei Grafikkarten; die Modellzentrale meldet nur eine.'), None
             if fehlend:
+                if not antwort.get('gruende') and (b.get('eine_ohne_monitor') or b.get('monitorkarte')):
+                    with self._lock:
+                        self._pruefe_abbruch(a)
+                        anderer = self._wer_zuerst(b, platzstand=antwort)
+                        if anderer is not None and anderer is not inst:
+                            a.update(zustand='wartet', schritt=None, meldung='', prozess=None, begonnen=None)
+                            self._stand_zentrale = (time.time(), antwort)
+                            self._speichern()
+                            self._wecker.set()
+                            self.log(f"Studio: Auftrag {a['id']} zurück in die Schlange "
+                                     f"({inst.name} hat keinen Platz, {anderer.name} ist frei)")
+                            raise Zurueck()
                 return None, platz_text(antwort, fehlend, self.comfy_name), None
             karten = karten_text(antwort, verteilung)
             zweck = 'Video (Studio)' if a['art'] in VIDEO_ARTEN else 'Bild (Studio)'
