@@ -4120,8 +4120,13 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
 - **Beobachtet, nicht geklärt:** Das erste Video auf der Suprim brauchte 180 s. Das erste Laden des Videomodells
   dauerte dort etwa 3 Minuten (auf der FE 15 s), die Schritte danach liefen mit 8 s je Schritt wie auf der FE.
 - **Nicht geändert:** Bilder und Hilfsabläufe; die Belegung durch Windows-Programme selbst.
-- **Noch offen:** Probe, ob das Beenden des Snagit Editors die Suprim entlastet (Sascha). Eingecheckt als `eb16241`
-  und gepusht; Bau-Worktree und Zweig `bau/video-ausweichen` sind entfernt.
+- **Probe Snagit (24.11.2026, 16:28):** Sascha hat Snagit beendet (Editor und Capture laufen nicht mehr). Windows und
+  Programme belegen auf der Suprim danach 1,7 GiB statt 2,7 GiB (Zentrale 1.787 statt 2.751 MiB, Windows-Zähler 1.662
+  statt 2.732 MiB) – rund 1 GiB weniger, passend zu den 877 MiB, die der Editor vorher tatsächlich auf der Karte hielt
+  (zugesagt 2.018 MiB). Abstand zur Grenze von 4.352 MiB: vorher 1,6 GiB, jetzt 2,6 GiB. Gemessen als Rest neben dem
+  Zwischenspeicher von ComfyUI 2 (20,7 GiB), nicht auf leerer Karte. Schon mit laufendem Snagit lag die Karte bei der
+  Messung um 12:20 unter der Grenze; was mittags zusätzlich belegt war, bleibt unbelegt.
+- Eingecheckt als `eb16241` und gepusht; Bau-Worktree und Zweig `bau/video-ausweichen` sind entfernt.
 
 ## Offen
 
