@@ -4121,7 +4121,7 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
   dauerte dort etwa 3 Minuten (auf der FE 15 s), die Schritte danach liefen mit 8 s je Schritt wie auf der FE.
 - **Nicht geändert:** Bilder und Hilfsabläufe; die Belegung durch Windows-Programme selbst.
 - **Noch offen:** Probe, ob das Beenden des Snagit Editors die Suprim entlastet (Sascha). Eingecheckt als `eb16241`
-  (nicht gepusht); der Bau-Worktree `C:\Worktrees\ki-zentrale-video-ausweichen` (Zweig `bau/video-ausweichen`) steht noch.
+  und gepusht; Bau-Worktree und Zweig `bau/video-ausweichen` sind entfernt.
 
 ## Offen
 
