@@ -4219,13 +4219,13 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
     „Qwen3.8-Flash-Next · Strata 256K“ wählen. Messdateien im selben Nachweise-Ordner (`strata_256k_test.*`,
     `neu_0167_256k.json`).
   - **Nicht geprüft:** DSH-Agentenlauf, Dauerbetrieb, Genauigkeit; Bilder nur mit einem einfachen Testbild.
-  - **Committet am 25.11.2026 (lokal, Sascha: „Ja, einchecken“), noch nicht auf GitHub gepusht:** Zentrale-Code,
-    Tests, `config.json`, Kopfzeile, Spec und Doku dieser Arbeit in einem Commit auf `main`. Bau-Worktree und Zweig
+  - **Committet und auf GitHub gepusht am 25.11.2026 (Sascha: „Ja, einchecken“, „Ja, pushen“):** Zentrale-Code,
+    Tests, `config.json`, Kopfzeile, Spec und Doku dieser Arbeit als Commit `5cc56f8` auf `main`. Bau-Worktree und Zweig
     `bau/strata-zweite-installation` bestehen noch.
   - **Lehre aus diesem Lauf:** Zeit kostete vor allem das Setup der neuen Strata-Fassung (Abschottung gegen das
     Einsammeln alter Modelldateien) und der Drafter, den das Setup trotz `--drafter dflash2` nicht lädt
     (`strata.py drafting fetch`). Der Bau selbst ging in einem Stück. Keine Änderung an Skills nötig.
-- **Offen (Sascha entscheidet):** neue Wahl zum Standard machen (nach eigenem Eindruck über DSH), auf GitHub pushen.
+- **Offen (Sascha entscheidet):** neue Wahl zum Standard machen (nach eigenem Eindruck über DSH).
 - **Anzeigefehler in der Kopfzeile behoben (25.11.2026, Bildschirmfoto Sascha, dann „Ja, beheben“):** Während eines
   Starts schob sich die Reiterleiste (Modelle / Monitor / Chat) über den Titel „Modellzentrale“ und die Standzeit,
   wenn der Text der laufenden Aktion lang war (hier: „… (Q4 v3.1 + Engram Q8 · Strata 0.2.21 (neu, im Test) · 256K ·
@@ -4275,7 +4275,7 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
     Der Rechner-Check des Setups: UD-Q4_K_XL „fits“, UD-Q5_K_XL und UD-Q6_K_XL „may run slower“.
     Gemessen am 24.11.2026 abends und danach als zusätzliche Wahl `q4-v31-q8-s21` in die Zentrale aufgenommen; beides
     steht im Abschnitt „Flash-Next: Strata v0.2.21 gegen v0.2.1.3 gemessen“ direkt über „Offen“. Seit 25.11.2026 auch
-    mit 256K (`q4-v31-q8-s21-256k`). Offen: neue Wahl zum Standard machen, auf GitHub pushen.
+    mit 256K (`q4-v31-q8-s21-256k`). Offen: neue Wahl zum Standard machen.
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update
   Pfadprüfung in `gehoert_zu_comfy`, getrennter Testverbraucher, laufzeitunabhängiger Modellpfad, Wechsel-/Rückweg.
