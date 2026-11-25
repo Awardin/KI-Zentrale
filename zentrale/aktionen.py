@@ -225,7 +225,7 @@ class Aktionen:
         # Erst die Engine, dann der Bildprozess, dann Python-Dienste und Starter.
         def reihenfolge(pid):
             pfad = self.erf.info(pid, procs[pid][1])['pfad']
-            return 0 if pfad == self.erf.strata_engine else 1 if pfad == self.erf.strata_vision else 2
+            return 0 if pfad in self.erf.strata_engines else 1 if pfad in self.erf.strata_visions else 2
         ziele.sort(key=reihenfolge)
         for pid in ziele:
             winapi.beenden(pid)

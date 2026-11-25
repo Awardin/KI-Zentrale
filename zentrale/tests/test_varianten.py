@@ -56,6 +56,29 @@ class Auswahl(unittest.TestCase):
         paare = [(v['modell'], v['kontext']) for v in E['flash-next-strata']['varianten']]
         self.assertEqual(len(paare), len(set(paare)))
 
+    def test_strata_varianten_der_zweiten_installation(self):
+        # 24./25.11.2026: 128K und 256K aus C:\LLM\runtimes\Strata-0.2.21; nur Kontext, RAM-Prüfung und Einstellung
+        # unterscheiden sich, das Modell heißt gleich (die Anzeige trennt über Modell + Kontext).
+        stamm = r'C:\LLM\runtimes\Strata-0.2.21\terminal'
+        varianten = {v['id']: v for v in E['flash-next-strata']['varianten']}
+        self.assertEqual([v['id'] for v in E['flash-next-strata']['varianten']][-2:],
+                         ['q4-v31-q8-s21', 'q4-v31-q8-s21-256k'])
+        for vid, kurz, kontext, ram in (('q4-v31-q8-s21', '128K', 131072, 40),
+                                        ('q4-v31-q8-s21-256k', '256K', 262144, 42)):
+            with self.subTest(variante=vid):
+                self.assertEqual(varianten[vid], {
+                    'id': vid,
+                    'name': f'Q4 v3.1 + Engram Q8 · Strata 0.2.21 (neu, im Test) · {kurz} · mit Bildern',
+                    'kontext': kontext,
+                    'modell': 'qwen3.8-flash-next-unsloth-ud-iq4_xs-v31-q8engram-s21',
+                    'ram_bedarf_gib': ram,
+                    'python': stamm + r'\.venv\Scripts\python.exe',
+                    'server_skript': stamm + r'\serve\server.py',
+                    'engine': stamm + r'\engine\strata.exe',
+                    'vision_exe': stamm + r'\engine\strata-vision.exe',
+                    'konfig': stamm + rf'\strata-unsloth-ud-iq4_xs-v31-q8engram-2gpu-{kurz.lower()}.json',
+                })
+
 
 class Server(unittest.TestCase):
     def setUp(self):
@@ -103,7 +126,8 @@ class Server(unittest.TestCase):
         self.assertEqual([(v['id'], v['kontext']) for v in s['varianten']],
                          [('128k', 131072), ('256k', 262144), ('q4', 131072), ('q4-256k', 262144),
                           ('q4-v31', 131072), ('q4-v31-q8', 131072),
-                          ('q4-v31-q8-256k', 262144)])
+                          ('q4-v31-q8-256k', 262144), ('q4-v31-q8-s21', 131072),
+                          ('q4-v31-q8-s21-256k', 262144)])
         self.assertNotIn('konfig', s['varianten'][0])  # Pfade bleiben im Dienst
 
 

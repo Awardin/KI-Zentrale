@@ -5,6 +5,7 @@ Ports, Prozessen, den Programmschnittstellen oder nvidia-smi.
 """
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -69,6 +70,21 @@ class Erfassung:
             os.path.dirname(self.strata['engine']), 'strata-vision.exe'))) if self.strata else ''
         self.strata_skript = norm(self.strata['server_skript']) if self.strata else ''
         self.strata_port_arg = f"--port {self.strata['port']}" if self.strata else ''
+        self.strata_engines = {self.strata_engine} if self.strata_engine else set()
+        self.strata_visions = {self.strata_vision} if self.strata_vision else set()
+        self.strata_skripte = {self.strata_skript} if self.strata_skript else set()
+        for v in (self.strata or {}).get('varianten') or []:
+            engine = norm(v.get('engine'))
+            skript = norm(v.get('server_skript'))
+            vision = norm(v.get('vision_exe'))
+            if engine:
+                self.strata_engines.add(engine)
+                if 'vision_exe' not in v:
+                    vision = norm(os.path.join(os.path.dirname(engine), 'strata-vision.exe'))
+            if vision:
+                self.strata_visions.add(vision)
+            if skript:
+                self.strata_skripte.add(skript)
         # llama.cpp-Dienste (z. B. LightOnOCR): erkannt an Programmpfad, Port und Modelldatei in der Kommandozeile.
         self.llamacpp = {e['id']: e for e in cfg['eintraege'] if e['art'] == 'llamacpp'}
         self._llamacpp_kennung = {i: (norm(e['programm']), f"--port {e['port']}", norm(e['modelldatei']))
@@ -153,11 +169,12 @@ class Erfassung:
             return eltern != pid and eltern in procs and procs[eltern][1].lower() in ('python.exe', 'pythonw.exe') \
                 and self.ist_strata(eltern, procs)
         if name == 'strata-vision.exe':
-            return i['pfad'] == self.strata_vision
-        cmd = i['cmd'].replace('"', '')
-        return i['pfad'] == self.strata_engine or (
-            i['name'].lower() in ('python.exe', 'pythonw.exe') and
-            self.strata_skript in cmd and self.strata_port_arg in cmd)
+            return i['pfad'] in self.strata_visions
+        if name == 'strata.exe':
+            return i['pfad'] in self.strata_engines
+        argumente = [a.strip('"') for a in re.findall(r'"[^"]*"|\S+', i['cmd'])]
+        return bool(self.strata_skripte.intersection(argumente)) and (
+            tuple(self.strata_port_arg.split()) in zip(argumente, argumente[1:]))
 
     def ist_llamacpp(self, pid, procs):
         """-> ID des llama.cpp-Eintrags, zu dem der Prozess gehört, sonst None."""

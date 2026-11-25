@@ -69,6 +69,43 @@ class Strata(unittest.TestCase):
             with self.subTest(pid=pid):
                 self.assertFalse(self.erf.ist_strata(pid, self.procs))
 
+    def _prozesse_zweite_installation(self):
+        v = planung.variante(self.e, 'q4-v31-q8-s21')
+        cmd = f'"{v["python"]}" "{v["server_skript"]}" --engine strata --config "{v["konfig"]}" --port 8095'
+        self.infos.update({
+            30: (v['python'], cmd),
+            31: (sys.executable, cmd),
+            32: (v['vision_exe'], ''),
+            33: (v['engine'], '--serve'),
+        })
+        return {30: (0, 'python.exe'), 31: (30, 'python.exe'), 32: (31, 'strata-vision.exe'),
+                33: (31, 'strata.exe')}
+
+    def test_erkennt_zweite_installation_und_ordnet_sie_ein(self):
+        procs = self._prozesse_zweite_installation()
+        procs[34] = (31, 'strata.exe')
+        self.infos[34] = ('', '')
+        for pid in procs:
+            with self.subTest(pid=pid):
+                self.assertTrue(self.erf.ist_strata(pid, procs))
+                self.assertEqual(self.erf.einordnen(pid, procs), ('strata', self.e['name']))
+
+    def test_zweite_installation_lehnt_fremde_pfade_und_ports_ab(self):
+        procs = self._prozesse_zweite_installation()
+        procs.update({34: (31, 'strata.exe'), 35: (31, 'strata-vision.exe'), 36: (0, 'python.exe'),
+                      37: (0, 'python.exe'), 38: (0, 'python.exe')})
+        python, cmd = self.infos[31]
+        self.infos.update({
+            34: (r'C:\Fremd\strata.exe', ''),
+            35: (r'C:\Fremd\strata-vision.exe', ''),
+            36: (python, cmd.replace('--port 8095', '--port 8096')),
+            37: (python, cmd.replace('--port 8095', '--port 80950')),
+            38: (python, cmd.replace('server.py"', 'server.py.bak"')),
+        })
+        for pid in (34, 35, 36, 37, 38):
+            with self.subTest(pid=pid):
+                self.assertFalse(self.erf.ist_strata(pid, procs))
+
     def test_engine_ohne_lesbaren_pfad_ueber_den_server(self):
         # 29.10.2026: Windows lieferte für strata.exe und strata-vision.exe keinen Pfad; ihr Elternprozess ist der Server.
         self.procs.update({14: (11, 'strata.exe'), 15: (11, 'strata-vision.exe'), 16: (20, 'strata.exe'),
@@ -112,6 +149,20 @@ class Strata(unittest.TestCase):
                     self.infos[25] = (vision, '')
                     self.assertTrue(erf.ist_strata(25, self.procs))
 
+    def test_installationspfade_bei_teilweisen_variantenangaben(self):
+        engine = r'C:\NurEngine\strata.exe'
+        bild_engine = r'C:\EigeneEngine\strata.exe'
+        bild = r'C:\AndererOrdner\strata-vision.exe'
+        skript = r'C:\NurSkript\serve\server.py'
+        self.e['varianten'] = [{'engine': engine}, {'engine': bild_engine, 'vision_exe': bild},
+                              {'server_skript': skript}]
+        with patch('gemeinsam.winapi.VramJeProzess'), patch('gemeinsam.winapi.adapter_pci_busse', return_value={}):
+            erf = Erfassung(self.cfg)
+        self.assertEqual(erf.strata_engines, {norm(self.e['engine']), norm(engine), norm(bild_engine)})
+        self.assertEqual(erf.strata_visions, {norm(self.e['vision_exe']), norm(r'C:\NurEngine\strata-vision.exe'),
+                                             norm(bild)})
+        self.assertEqual(erf.strata_skripte, {norm(self.e['server_skript']), norm(skript)})
+
     def test_stoppt_engine_bildprozess_python_in_dieser_reihenfolge(self):
         self._bildprozesse()
         self.prozesse.return_value = {}
@@ -120,6 +171,15 @@ class Strata(unittest.TestCase):
         self.assertEqual([c.args[0] for c in self.beenden.call_args_list], [12, 13, 10, 11, 21])
         self.assertEqual([c.args[0] for c in self.log.call_args_list],
                          ['Strata beendet, PID ' + str(p) for p in (12, 13, 10, 11, 21)])
+
+    def test_stoppt_zweite_installation_engine_bildprozess_python(self):
+        procs = self._prozesse_zweite_installation()
+        fremd = {23: self.procs[23]}
+        self.erf.messen.return_value['procs'] = {**procs, **fremd}
+        self.prozesse.return_value = fremd
+        self.lauschende_ports.return_value = []
+        self.assertEqual(self.akt.stoppen(self.e['id']), f"{self.e['name']} beendet.")
+        self.assertEqual([c.args[0] for c in self.beenden.call_args_list], [33, 32, 30, 31])
 
     def test_ist_strata_erkennt_vollstaendig_quotierte_kommandozeile(self):
         for pid in (10, 11):
@@ -222,6 +282,16 @@ class Strata(unittest.TestCase):
                 self.assertEqual(str(ex.exception), 'Datei fehlt: ' + self.e[feld])
         self.starte_losgeloest.assert_not_called()
 
+    def test_fehlende_startdateien_der_zweiten_installation_werden_genannt(self):
+        v = planung.variante(self.e, 'q4-v31-q8-s21')
+        for feld in ('python', 'server_skript', 'engine', 'konfig'):
+            with self.subTest(feld=feld):
+                self.datei.side_effect = lambda p: p != v[feld]
+                with self.assertRaises(Fehler) as ex:
+                    self.akt.starten(self.e['id'], variante='q4-v31-q8-s21')
+                self.assertEqual(str(ex.exception), 'Datei fehlt: ' + v[feld])
+        self.starte_losgeloest.assert_not_called()
+
     def test_start_argumente_arbeitsordner_env_logs_und_kontext(self):
         self.starte_losgeloest.return_value = Mock(pid=30, poll=Mock(return_value=None))
         self.antwort.side_effect = [{'loaded': False}, {'loaded': True, 'max_context': 131072}]
@@ -235,6 +305,23 @@ class Strata(unittest.TestCase):
         self.assertEqual(args[2]['PYTHONIOENCODING'], 'utf-8')
         self.assertEqual(kwargs['log_basis'], os.path.join('logs', 'strata'))
         self.antwort.assert_called_with('http://127.0.0.1:8095/health', timeout=1.0)
+
+    def test_start_nutzt_pfade_der_zweiten_installation_oder_des_standards(self):
+        standard = next(v for v in self.e['varianten'] if v['id'] == 'q4-v31-q8')
+        neu = next(v for v in self.e['varianten'] if v['id'] == 'q4-v31-q8-s21')
+        self.starte_losgeloest.return_value = Mock(pid=30, poll=Mock(return_value=None))
+        self.antwort.return_value = {'loaded': True, 'max_context': 131072}
+        for auswahl, e, ordner in (
+                ({'variante': neu['id']}, neu, r'C:\LLM\runtimes\Strata-0.2.21\terminal'),
+                ({}, dict(self.e, konfig=standard['konfig']), r'C:\LLM\runtimes\Strata')):
+            with self.subTest(auswahl=auswahl):
+                self.starte_losgeloest.reset_mock()
+                self.assertIn('Kontext 131.072', self.akt.starten(self.e['id'], **auswahl))
+                self.starte_losgeloest.assert_called_once()
+                argv, arbeitsordner, _ = self.starte_losgeloest.call_args.args
+                self.assertEqual(argv, [e['python'], e['server_skript'], '--engine', 'strata', '--config',
+                                        e['konfig'], '--port', '8095', '--fit-max-tokens'])
+                self.assertEqual(arbeitsordner, ordner)
 
     def test_ohne_fit_max_tokens_kein_schalter(self):
         # Der Schalter kommt nur aus dem Eintrag (18.10.2026: Antwortlänge kürzen statt mit 400 ablehnen).
@@ -330,6 +417,18 @@ class Strata(unittest.TestCase):
         z.akt = Mock(schritt=schritt)
         z._schritte_ausfuehren(['beenden:strata'])
         self.assertEqual(z.laufend, {})
+
+    def test_server_zeigt_variante_der_zweiten_installation_aus_health(self):
+        v = planung.variante(self.e, 'q4-v31-q8-s21')
+        self.health.return_value = {'loaded': True, 'max_context': 131072,
+                                    'model': 'qwen3.8-flash-next-unsloth-ud-iq4_xs-v31-q8engram-s21'}
+        dienste = self.erf._dienste(self._prozesse_zweite_installation(), {8095: 31})
+        z = Zentrale.__new__(Zentrale)
+        z.cfg = dict(self.cfg, eintraege=[self.e])
+        z.laufend = {}
+        s = z._zustaende({'dienste': dienste})[self.e['id']]
+        self.assertEqual((s['zustand'], s['detail']), ('bereit', f"{v['variante_name']} · Port 8095"))
+        self.health.assert_called_once_with('http://127.0.0.1:8095/health', timeout=1.0)
 
 
 class Arbeitsspeicher(unittest.TestCase):

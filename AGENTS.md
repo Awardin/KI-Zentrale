@@ -25,6 +25,15 @@ Ebenen-Layouts im Atelier (Thumbnail, Flyer, Social) und Fibo 2.0 – nur nicht-
   Seit 18.11.2026 laufen alle Strata-Engines (Flash-Next, Edge0, PolyStrata, Strata-DeepSeek) ohne Route Tail Skip
   (`STRATA_ROUTE_TAIL_SKIP=0` im `env` jeder Einstellung, Wunsch Sascha: überall aus; Flash-Next ~4 % langsamer beim
   Schreiben). Neue Strata-Einstellungen bekommen den Eintrag ebenfalls (PLAN.md 18.11.2026).
+  Seit 24.11.2026 gibt es dazu die Wahl „Q4 v3.1 + Engram Q8 · Strata 0.2.21 (neu, im Test)“ (`q4-v31-q8-s21`): Strata
+  v0.2.21 / Engine 0.1.67 aus der zweiten Installation `C:\LLM\runtimes\Strata-0.2.21` (Daten `…\Strata-0.2.21-data`),
+  gleicher Port 8095, MTP; Schreiben 6–9 % schneller, Agenten-Runden etwa doppelt so schnell beim ersten Token. Seit
+  25.11.2026 auch mit 256K und Bildern (`q4-v31-q8-s21-256k`, RAM-Prüfung 42 GiB, gleich schnell). Standard
+  bleibt die alte Installation. Strata-Varianten dürfen `python`, `server_skript`, `engine`, `vision_exe` und `konfig`
+  überschreiben; die Zentrale erkennt die Prozesse aller so genannten Installationen. Das Setup der neuen Fassung nur mit
+  `STRATA_SETTINGS_FILE=C:\LLM\runtimes\Strata-0.2.21\settings-test.json` und `--data-dir` aufrufen, sonst sammelt es
+  die Modelldateien der alten Installation ein ([SPEC-strata-zweite-installation.md](SPEC-strata-zweite-installation.md),
+  PLAN.md 24.11.2026).
 - **Werkstatt** (`werkstatt\`, Port 3895): fertig und abgenommen am 23.09.2026 – Transkription,
   Zusammenfassung, Studio (Bilder, Videos, Bibliothek), Messungen. Claude ist angemeldet, DeepSeek direkt
   angebunden (Schlüssel wird aus DSH Desktop gelesen), OpenRouter nur für kostenlose Modelle. Ornith hat

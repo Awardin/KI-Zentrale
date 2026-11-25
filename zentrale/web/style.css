@@ -70,7 +70,10 @@ h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
   border-bottom: 1px solid var(--linie);
 }
 
-.kopf-titel { flex: 1; min-width: 0; }
+/* Titel und Standzeit behalten ihre Breite; ein langer Aktionstext bricht um statt sie zu überdecken (25.11.2026). */
+.kopf-titel { flex: 1 0 auto; }
+
+.kopf .reiter, .kopf .knopf { flex: none; }
 
 .kopf h1 {
   font: 600 26px/1.1 var(--display);
@@ -89,11 +92,17 @@ h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; padding: 0; }
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
   font-weight: 600;
   font-size: 14px;
+  line-height: 1.25;
 }
 
+#aktion-text { min-width: 0; overflow-wrap: anywhere; }
+
 .puls {
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -520,6 +529,9 @@ dialog p + *, dialog ul + *, dialog .projektion + * { margin-top: 12px; }
 /* ---------------------------------------------------------------- Schmal */
 
 @media (max-width: 900px) {
+  /* Schmal: der Aktionstext bekommt eine eigene Zeile unter Titel, Reitern und Knopf. */
+  .kopf { flex-wrap: wrap; row-gap: 8px; }
+  .kopf-aktion { order: 5; flex-basis: 100%; }
   .karte {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "name" "leiste" "legende" "werte" "verlauf";

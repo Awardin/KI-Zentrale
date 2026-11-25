@@ -4128,7 +4128,154 @@ Strata-Abspaltung `edge0-strata`. Sascha: „Ja, planen“, „Ja, laden“, „
   Messung um 12:20 unter der Grenze; was mittags zusätzlich belegt war, bleibt unbelegt.
 - Eingecheckt als `eb16241` und gepusht; Bau-Worktree und Zweig `bau/video-ausweichen` sind entfernt.
 
+## Apex-35B: MTP gemessen (24.11.2026)
+
+- **Anlass:** Video „Qwen 3.8 Flash Next At 193 Tok/s“ (Locally) nennt MTP als ersten Hebel. Bei Strata (`--mtp` in allen
+  Einstellungen), Qwen 27B Q4 und DaisyRose läuft es schon; nur bei Apex war die Schicht vorhanden, aber aus.
+  Sascha: „Ja, messen“.
+- **Messung:** Wahl 128K auf der FE über die Zentrale, llama-server b11838, einmal ohne und einmal mit
+  `--spec-type draft-mtp --spec-draft-n-max 3`. Drei Prompts (Geschichte, Code, Auszug aus PLAN.md mit 32.363 Token),
+  Temperatur 0, 1.000 Token Antwort, Denken an, ohne Prompt-Cache, je 3 Runden. Mediane:
+
+  | | Geschichte | Code | Schreiben nach 32K | Einlesen 32K | Karte nach dem Start |
+  |---|---|---|---|---|---|
+  | ohne MTP | 168,3 Token/s | 168,3 Token/s | 128,2 Token/s | 3.227 Token/s | 22.034 MiB |
+  | mit MTP | 167,0 Token/s | 188,7 Token/s | 141,6 Token/s | 2.941 Token/s | 23.160 MiB |
+
+  Angenommene Vorschläge: 42 % (Geschichte), 54 % (Code), 44 % (Dokument).
+- **Befund:** Schreiben 0–12 % schneller, Einlesen 9 % langsamer, 1.126 MiB mehr Grafikspeicher (23.216 MiB nach dem
+  32K-Lauf). 256K (23.778 MiB ohne MTP) und die Suprim-Wahl (rund 1,4 GB frei) passten damit nicht mehr auf eine
+  RTX 3090. Die Antworten weichen bei Temperatur 0 von denen ohne MTP ab (andere Prüfsummen); die Qualität ist nicht
+  verglichen.
+- **Entscheidung Sascha (24.11.2026, „Nein, aus lassen“):** MTP bleibt bei Apex aus, auch keine eigene Wahl
+  „128K mit MTP“ für die FE. Der Eintrag ist wie vor dem Test, dazu `mtp_grund`. Zentrale neu gestartet,
+  Tests 205/205 grün. Messdateien: `Projekte\Lokale-Wissensextraktion\nachweise\2026-11-24-apex-mtp`.
+
+## Flash-Next: Strata v0.2.21 gegen v0.2.1.3 gemessen (24.11.2026)
+
+- **Anlass:** Recherche „bessere Möglichkeiten für zwei RTX 3090“ (erster Punkt unter „Offen“); Sascha: „Ja neue Fassung
+  testen“.
+- **Aufbau:** zweite Installation `C:\LLM\runtimes\Strata-0.2.21` (Einzelheiten und Warnung zum Setup unter „Offen“).
+  Testserver auf Port 8112, direkt gestartet, Grafikspeicher bei der Zentrale angemeldet (`/api/platz`, 23.400 +
+  22.000 MiB). Test-Einstellungen `terminal\strata-test-q8engram*.json`: wie vom Setup geschrieben, dazu `--native` und
+  `--ple-gguf` auf den Ordner mit Engram Q8, also dieselben Dateien wie die Standardwahl der Zentrale. Rechner vorher
+  neu gestartet, 50–52 GiB RAM frei, Monitor an der Suprim.
+- **Verfahren:** jede Fassung frisch gestartet. (a) `tools\strata_bench.py --long` der alten Installation gegen den
+  jeweiligen Port, 3 Läufe, Mediane. (b) Drei lange Antworten (Geschichte, Code, Auszug aus PLAN.md mit 32.393 Token),
+  Temperatur 0, ohne Denken, 700 Token, 3 Runden, Mediane.
+
+  | | alt: v0.2.1.3, Engine 0.1.45.3, MTP | neu: Engine 0.1.67, MTP | neu: DFlash2 (Schwelle 0,35) | neu: DFlash2 (0,5) |
+  |---|---|---|---|---|
+  | Geschichte (Token/s) | 86,2 | 94,2 | 93,0 | 92,0 |
+  | Code (Token/s) | 110,2 | 116,7 | 114,8 | 118,7 |
+  | Schreiben nach 32K (Token/s) | 97,0 | 103,3 | 100,0 | 104,7 |
+  | Einlesen 32K, lange Antwort (Token/s) | 2.012 | 2.193 | 2.363 | 2.336 |
+  | Messwerkzeug: kurzer Chat (Token/s) | 100,1 | 106,5 | 99,5 | – |
+  | Messwerkzeug: Einlesen 4K / 16K / 32K | 976 / 1.750 / 2.112 | 978 / 1.832 / 2.178 | 1.014 / 1.906 / 2.309 | – |
+  | Agent: erstes Token je Folgerunde | 4,06 s | 2,16 s | 2,21 s | – |
+  | Agent: Schreiben (Token/s, je 64 Token) | 77,2 | 127,6 | 103,6 | – |
+  | Karten nach dem Laden (MiB) | 23.369 / 23.083 | 22.375 / 22.745 | 22.425 / 23.411 | – |
+  | RAM frei, geladen | 11–12 GiB | 11–15 GiB | 10–13 GiB | 12–14 GiB |
+
+- **Befund:** Schreiben 6–9 % schneller, Einlesen bis 9 % (mit DFlash2 bis 17 %, dann ist die MTP-Schicht nicht
+  geladen). Deutlich besser in Agenten-Sitzungen: erste Runde 1,2 statt 2,7 s bis zum ersten Token, Folgerunden
+  1,4–4,0 statt 3,5–4,4 s. DFlash2 schreibt hier nicht schneller als MTP, auch nicht mit Schwelle 0,5. Die rund
+  150 Token/s des Linux-Rezepts werden unter Windows nicht erreicht (Engine-Protokoll: „page-locking refused (out of
+  memory); trying pageable memory“). Die Engine hält ihre Reserve für die Monitorkarte selbst (WDDM, 1.280 MiB), kein
+  Auslagern beobachtet. Drafter-Wortschatz: Bei DFlash2 wählt der Server nach der Systemsprache „latin“, die
+  MTP-Kopie nutzt weiter „cjk“.
+- **Nicht geprüft:** Genauigkeit der Antworten, Bilder, 256K, Werkzeugaufrufe über DSH, Dauerbetrieb.
+- **Stand nach der Messung:** Zentrale und alte Installation unverändert, Karten danach frei. Programm 2,1 GB; Daten:
+  `mtp`-Kopie 6,5 GB, Pack 1,4 GB, DFlash2 0,5 GB. Messdateien:
+  `Projekte\Lokale-Wissensextraktion\nachweise\2026-11-24-strata-0221`.
+- **Zusätzliche Wahl in der Zentrale (24.11.2026 abends, Sascha: „Ja, vorbereiten“, dann „ok testen“):**
+  - Variante `q4-v31-q8-s21` „Q4 v3.1 + Engram Q8 · Strata 0.2.21 (neu, im Test) · 128K · mit Bildern“ im Eintrag
+    `flash-next-strata`, gleicher Port 8095, RAM-Prüfung 40 GiB. Standard bleibt `q4-v31-q8` aus der alten Installation.
+  - Feste Einstellung `C:\LLM\runtimes\Strata-0.2.21\terminal\strata-unsloth-ud-iq4_xs-v31-q8engram-2gpu-128k.json`:
+    wie gemessen (Engram Q8, `--resident-budget-gib 45`, Tail Skip aus), `"drafting": "mtp"`, Modellname
+    `…-v31-q8engram-s21` (daran erkennt die Anzeige die Variante), Aliasnamen der alten Fassung.
+  - Code ([SPEC-strata-zweite-installation.md](SPEC-strata-zweite-installation.md), gebaut von Codex Sol xhigh im
+    Worktree `C:\Worktrees\ki-zentrale-strata21`, Zweig `bau/strata-zweite-installation`, 3 min 40 s, keine
+    Korrekturrunde, rund 0,94 Mio. Eingabe-Token, davon 0,87 Mio. aus dem Cache, 10.833 Ausgabe-Token): `erfassung.py` kennt die Engines, Bildprozesse und Server-Skripte des Eintrags und aller Varianten
+    (`strata_engines`, `strata_visions`, `strata_skripte`), `aktionen.py` nutzt sie für die Reihenfolge beim Beenden.
+    Abweichung vom Spec, angenommen: Die Kommandozeile des Python-Servers wird jetzt als ganze Argumente geprüft
+    (Skriptpfad exakt, `--port 8095` als Paar) statt als Teilzeichenkette – enger als vorher.
+  - Tests: 213 grün (vorher 205), im Worktree und im Hauptordner außerhalb des Sandkastens gelaufen.
+  - **Abnahme am echten System** (53 GiB RAM frei, Zentrale neu gestartet): neue Wahl über `/api/plan` und
+    `/api/starten` → bereit nach 32 s, Detail zeigt den Variantennamen, Grafikspeicher steht unter Strata (22.385 +
+    22.033 MiB, daneben 751 MiB Windows), alle vier Prozesse stammen aus `Strata-0.2.21`, Anfrage mit dem DSH-Modellnamen
+    beantwortet. Beenden über die Zentrale: Port frei, keine Prozesse übrig, Karten frei. Gegenprobe Standardwahl:
+    startet aus der alten Installation, bereit, Speicher unter Strata, sauber beendet.
+  - **256K-Wahl (25.11.2026, Sascha: „256k mit bilder bitte kurz testen und auch als wahlmöglichkeit installieren“):**
+    Variante `q4-v31-q8-s21-256k` „… Strata 0.2.21 (neu, im Test) · 256K · mit Bildern“, RAM-Prüfung 42 GiB, Einstellung
+    `…\terminal\strata-unsloth-ud-iq4_xs-v31-q8engram-2gpu-256k.json` = Kopie der 128K-Datei mit `--max-context 262144`
+    und `--resident-budget-gib 43` (so rechnet es das neue Setup für 256K: der Kontextspeicher liegt mit 3,6 GB im RAM).
+    Kein Code nötig, nur `config.json` und `test_varianten.py` (von Hand, 213 Tests grün).
+    Kurztest über die Zentrale (46,5 GiB RAM frei): bereit nach 35 s, `/health` 262.144 mit Bildern, Anzeige zeigt die
+    Variante. Testbild (Wort, Zahl, drei farbige Formen) in 2,7 s richtig gelesen. Prompt aus PLAN.md + STUDIO.md mit
+    179.389 Token: Kennwort aus der Mitte und erste Überschrift richtig, Einlesen 2.584 Token/s (70 s). Drei lange
+    Antworten, 2 Runden: Geschichte 93, Code 114, nach 32K 96 Token/s, Einlesen 32K 2.163 – wie bei 128K.
+    Karten 22.415 + 23.389 MiB, RAM frei geladen 6,7–7,7 GiB (128K: 11–15). Sauber beendet. In DSH dazu den Eintrag
+    „Qwen3.8-Flash-Next · Strata 256K“ wählen. Messdateien im selben Nachweise-Ordner (`strata_256k_test.*`,
+    `neu_0167_256k.json`).
+  - **Nicht geprüft:** DSH-Agentenlauf, Dauerbetrieb, Genauigkeit; Bilder nur mit einem einfachen Testbild.
+  - **Committet am 25.11.2026 (lokal, Sascha: „Ja, einchecken“), noch nicht auf GitHub gepusht:** Zentrale-Code,
+    Tests, `config.json`, Kopfzeile, Spec und Doku dieser Arbeit in einem Commit auf `main`. Bau-Worktree und Zweig
+    `bau/strata-zweite-installation` bestehen noch.
+  - **Lehre aus diesem Lauf:** Zeit kostete vor allem das Setup der neuen Strata-Fassung (Abschottung gegen das
+    Einsammeln alter Modelldateien) und der Drafter, den das Setup trotz `--drafter dflash2` nicht lädt
+    (`strata.py drafting fetch`). Der Bau selbst ging in einem Stück. Keine Änderung an Skills nötig.
+- **Offen (Sascha entscheidet):** neue Wahl zum Standard machen (nach eigenem Eindruck über DSH), auf GitHub pushen.
+- **Anzeigefehler in der Kopfzeile behoben (25.11.2026, Bildschirmfoto Sascha, dann „Ja, beheben“):** Während eines
+  Starts schob sich die Reiterleiste (Modelle / Monitor / Chat) über den Titel „Modellzentrale“ und die Standzeit,
+  wenn der Text der laufenden Aktion lang war (hier: „… (Q4 v3.1 + Engram Q8 · Strata 0.2.21 (neu, im Test) · 256K ·
+  mit Bildern) wird gestartet …“). Ursache: Der Titelblock durfte auf 0 schrumpfen (`flex: 1; min-width: 0`), sein
+  Inhalt lief dann unter die Reiter. Nur `zentrale\web\style.css` geändert: Titel schrumpft nicht mehr
+  (`flex: 1 0 auto`), Reiter und Knopf bleiben fest, der Aktionstext bricht um statt zu drängen; bis 900 px Breite
+  steht er in einer eigenen Zeile. Im Browser mit dem langen Text nachgestellt (per Skript gesetzt, kein echter
+  Modellstart) bei 1280, 1000, 800 und 480 px, dazu Chat-Reiter und ein kurzer Text: nichts überdeckt sich, kein
+  Querlauf, bei 1280 px bleibt die Kopfzeile gleich hoch, ohne Aktion sieht alles aus wie vorher. Kein Neustart der
+  Zentrale nötig (Seite neu laden).
+
 ## Offen
+
+- **Flash-Next auf zwei RTX 3090: bessere Möglichkeiten? (Recherche 24.11.2026, nichts geändert):** Anlass: Video
+  „Qwen 3.8 Flash Next At 193 Tok/s“ (Locally); Sascha: „schauen, ob es schon bessere Möglichkeiten gibt für 2 Karten,
+  Q6 z. B.“
+  - **Q6/Q5 scheitern am Arbeitsspeicher:** UD-Q6_K_XL 169 GB (Experten 101,7 GiB), UD-Q5_K_XL 158 GB (91,6 GiB).
+    Strata hält erst ab etwa 118 GB RAM alle Experten im Arbeitsspeicher (`docs\UNSLOTH_Q6.md`), darunter kommt der Rest
+    von der SSD. Der 6-Bit-Lauf aus dem Video (72–86 Token/s, llamaperf, ohne Link) hatte 256 GB RAM. Hier stecken
+    2 × 32 GB DDR5-6400, zwei Steckplätze sind frei (Z890 AERO G).
+  - **UD-Q4_K_XL** (111 GB, Experten 71,7 GiB) wäre der Schritt dazwischen: Abweichung gegen Q8 etwa halb so groß wie
+    bei UD-IQ4_XS (KL 0,056 statt 0,101), rund 20 % langsamer (Rezept alesha-pro, 256 GB RAM). Mit 64 GB knapp, ungetestet.
+  - **Strata ist hier alt:** v0.2.1.3 / Engine 0.1.45.3 (20.10.), aktuell v0.2.21 / Engine 0.1.67 (24.11.). Laut
+    Release-Notes dazwischen: DFlash2 als Standard-Drafter (0.2.10, +8–15 % gegen MTP), neue Prompt-Kernels (0.2.11,
+    32K +11 % auf sm_86), RAM-Regel „RAM minus 17 GiB“ (0.2.17), RTX 3090 Einlesen +12–26 % und Schreiben +13–20 %,
+    bitgleich (0.2.19, genannt für IQ3_S, UD-Q4_K_XL, IQ2_XS). „All-cards split“ nur unter Linux.
+    Rezept alesha-pro (2 × 3090 mit 300 W, Linux, 256 GB RAM, 0.2.10, dieselbe UD-IQ4_XS v3.1, DFlash2, 262K): Code 152,
+    englischer Text 131 Token/s, Einlesen 16K 2.550 Token/s. Hier: 101–108 / 85–88 / rund 1.700.
+  - **Windows:** Unter WDDM werden bei zwei Karten nur 8 GiB der Experten-Arena fest gehalten (`STRATA_ARENA_PIN_GIB`);
+    bekannter Absturz 0xC0000409 bei kleiner Auslagerungsdatei (0.2.16).
+  - **Sonst:** Beide Karten laufen unter Last mit PCIe 4.0 ×8 (geprüft; im Leerlauf zeigt nvidia-smi Gen 1).
+    gpu-unlock (Kernel-Modul, Einlesen +8–16 %) gibt es nur für Linux. Bild-Grenze `vision.max_tokens` steht auf 1024;
+    ein Nutzer liest kleine Schrift in Screenshots erst mit 4096 (ruashots).
+  - **Nachtrainieren:** Für Flash-Next beschreibt ms-swift LoRA auf 8 Karten mit rund 70 GB je Karte – lokal nicht
+    machbar. QLoRA für Qwen3.8 27B passt laut Unsloth in 24 GB.
+  - **Zweite Installation eingerichtet (24.11.2026, Sascha: „Ja neue Fassung testen“):**
+    `C:\LLM\runtimes\Strata-0.2.21` (Tag v0.2.21, `d46f5f26`, neuer Aufbau mit `terminal\setup.py`, eigene
+    `terminal\.venv`), Engine 0.1.67 aus dem signierten Feed, Daten in `C:\LLM\runtimes\Strata-0.2.21-data`: GGUF-Teile
+    der UD-IQ4_XS v3.1 und Bildteil als Hardlinks (kein Zusatzplatz, SHA-256 vom Setup geprüft), `mtp` als Kopie
+    (6,5 GB, vom Setup angenommen), Pack neu gebaut. Einstellung `terminal\strata-unsloth-ud-iq4_xs-v31.json`: Port
+    8112, beide Karten, 128K, Bilder, `--resident-budget-gib 45`, `--vram-reserve-mib 700`, Tail Skip aus; noch ohne
+    Engram Q8 und ohne eigene Reserve für die Monitorkarte. Nicht in der Zentrale eingetragen; die alte Installation
+    (8095) und `%APPDATA%\Strata\settings.json` sind unverändert.
+    **Achtung bei jedem Aufruf des neuen Setups:** immer mit `STRATA_SETTINGS_FILE=C:\LLM\runtimes\Strata-0.2.21\settings-test.json`
+    und `--data-dir`. Ohne beides sammelt es die Modelldateien älterer Strata-Ordner derselben Platte in seinen
+    Datenordner ein und schreibt deren Einstellungen um (`data_folder()` in `setup.py`).
+    Der Rechner-Check des Setups: UD-Q4_K_XL „fits“, UD-Q5_K_XL und UD-Q6_K_XL „may run slower“.
+    Gemessen am 24.11.2026 abends und danach als zusätzliche Wahl `q4-v31-q8-s21` in die Zentrale aufgenommen; beides
+    steht im Abschnitt „Flash-Next: Strata v0.2.21 gegen v0.2.1.3 gemessen“ direkt über „Offen“. Seit 25.11.2026 auch
+    mit 256K (`q4-v31-q8-s21-256k`). Offen: neue Wahl zum Standard machen, auf GitHub pushen.
 
 - **ComfyUI 0.44 und Sol-H3-VAE** (Phase B, [SPEC-comfyui-044.md](SPEC-comfyui-044.md)): nur Skizze; vor einem Update
   Pfadprüfung in `gehoert_zu_comfy`, getrennter Testverbraucher, laufzeitunabhängiger Modellpfad, Wechsel-/Rückweg.
